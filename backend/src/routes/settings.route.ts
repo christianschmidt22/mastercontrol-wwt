@@ -22,3 +22,12 @@ settingsRouter.put('/', validateBody(SettingsSetSchema), (req, res) => {
   const masked = settingsModel.getMasked(key);
   res.json({ key, value: masked });
 });
+
+// DELETE /:key — remove a setting (used by tile-layout reset flow)
+settingsRouter.delete('/:key', (req, res, next) => {
+  const { key } = req.params;
+  if (!key || key.trim() === '') return next(new HttpError(400, 'Invalid key'));
+  const removed = settingsModel.remove(key);
+  if (!removed) return next(new HttpError(404, 'Setting not found'));
+  res.status(204).end();
+});

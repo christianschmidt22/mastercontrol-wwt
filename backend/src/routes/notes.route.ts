@@ -15,7 +15,12 @@ notesRouter.post('/', validateBody(NoteCreateSchema), (req, res) => {
     role?: 'user' | 'assistant' | 'agent_insight' | 'imported';
     thread_id?: number | null;
   };
-  const note = noteModel.create(input.organization_id, input.content, input.role ?? 'user', input.thread_id ?? null);
+  const note = noteModel.create({
+    organization_id: input.organization_id,
+    content: input.content,
+    role: input.role ?? 'user',
+    thread_id: input.thread_id ?? null,
+  });
   bumpOrgVersion(input.organization_id);
   res.status(201).json(note);
 });

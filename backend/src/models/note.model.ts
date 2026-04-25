@@ -70,8 +70,34 @@ function hydrate(row: NoteRow): Note {
   };
 }
 
+/**
+ * R-016 / Phase 1 chat: claude.service builds the volatile system-prompt
+ * block from "recent notes for this org". `confirmedOnly: false` gives the
+ * org's own page its unconfirmed insights for the inline review surface;
+ * other agents call with `confirmedOnly: true` so they only see accepted
+ * insights from this org (per R-002 and Q-4).
+ */
+export interface NoteListOpts {
+  confirmedOnly?: boolean;
+}
+
+const listRecentStmt = db.prepare<[number, number], NoteRow>(
+  'SELECT * FROM notes WHERE organization_id = ? ORDER BY created_at DESC LIMIT ?'
+);
+const listRecentConfirmedStmt = db.prepare<[number, number], NoteRow>(
+  'SELECT * FROM notes WHERE organization_id = ? AND confirmed = 1 ORDER BY created_at DESC LIMIT ?'
+);
+
 export const noteModel = {
   listFor: (orgId: number): Note[] => listStmt.all(orgId).map(hydrate),
+
+  /** R-016: returns the most recent N notes for an org, optionally filtering
+   *  to confirmed-only. Used by claude.service to hydrate the volatile
+   *  system-prompt block on every chat turn. */
+  listRecent: (orgId: number, limit: number, opts: NoteListOpts = {}): Note[] => {
+    const stmt = opts.confirmedOnly ? listRecentConfirmedStmt : listRecentStmt;
+    return stmt.all(orgId, limit).map(hydrate);
+  },
 
   get: (id: number): Note | undefined => {
     const row = getStmt.get(id);

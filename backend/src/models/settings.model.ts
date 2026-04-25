@@ -182,4 +182,14 @@ export const settingsModel = {
       : value;
     upsertStmt.run(key, stored);
   },
+
+  /**
+   * Delete a setting. Used by the tile-dashboard "Reset to default" flow,
+   * which clears `layout.customer` / `layout.oem` so the in-code default
+   * layout takes over again. Returns true if a row was deleted.
+   */
+  remove: (key: string): boolean => {
+    const result = db.prepare('DELETE FROM settings WHERE key = ?').run(key);
+    return result.changes > 0;
+  },
 };

@@ -108,8 +108,13 @@ export const taskModel = {
     return getStmt.get(id);
   },
 
-  /** Sets status='done' and stamps completed_at = datetime('now'). */
-  complete: (id: number): boolean => completeStmt.run(id).changes > 0,
+  /** Sets status='done' and stamps completed_at = datetime('now').
+   *  Returns the updated row or undefined if no task with that id exists. */
+  complete: (id: number): Task | undefined => {
+    const result = completeStmt.run(id);
+    if (result.changes === 0) return undefined;
+    return getStmt.get(id);
+  },
 
   remove: (id: number): boolean => deleteStmt.run(id).changes > 0,
 };
