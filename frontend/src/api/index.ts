@@ -80,3 +80,6 @@ export {
   useSetting,
   useSetSetting,
 } from './useSettings';
+
+export { useStreamChat } from './useStreamChat';
+export type { UseStreamChat, StreamChatMessage } from './useStreamChat';

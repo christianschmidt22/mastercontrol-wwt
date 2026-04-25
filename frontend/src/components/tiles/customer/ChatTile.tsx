@@ -8,33 +8,12 @@ import {
 } from 'react';
 import { Send, Square } from 'lucide-react';
 import { Tile } from '../Tile';
-
-interface Message {
-  id: string;
-  role: 'user' | 'assistant';
-  content: string;
-  timestamp: Date;
-}
-
-interface StreamState {
-  streaming: boolean;
-  partial: string;
-  failed: boolean;
-}
-
-interface UseStreamChat {
-  messages: Message[];
-  stream: StreamState;
-  send: (content: string, threadId?: number) => void;
-  stop: () => void;
-}
+import { useStreamChat } from '../../../api/useStreamChat';
 
 /**
  * ChatTile — composer + thread feed for the current org.
  *
- * Assumes `useStreamChat(orgId, threadId)` hook exists (built in parallel).
- * Import contract: { messages, stream, send, stop } = useStreamChat(orgId, threadId?)
- *
+ * Uses `useStreamChat(orgId, threadId)` for all stateful streaming logic.
  * Streaming caret is a 1px vertical block that blinks via the .stream-caret CSS class
  * defined in index.css (blink suppressed under prefers-reduced-motion).
  *
@@ -45,36 +24,12 @@ interface ChatTileProps {
   orgId: number;
   orgName: string;
   threadId?: number;
-  /** Injected for testing / Storybook; real app uses the real hook */
-  _useStreamChat?: (orgId: number, threadId?: number) => UseStreamChat;
 }
 
-function formatTime(date: Date): string {
-  return new Intl.DateTimeFormat('en-US', {
-    hour: 'numeric',
-    minute: '2-digit',
-    hour12: true,
-  }).format(date);
-}
-
-/**
- * Stub hook used when the real hook is not yet available.
- * The real hook will be wired at merge time.
- */
-function useStreamChatStub(_orgId: number, _threadId?: number): UseStreamChat {
-  const [messages] = useState<Message[]>([]);
-  const [stream] = useState<StreamState>({ streaming: false, partial: '', failed: false });
-  const send = useCallback((_content: string) => {}, []);
-  const stop = useCallback(() => {}, []);
-  return { messages, stream, send, stop };
-}
-
-export function ChatTile({ orgId, orgName, threadId, _useStreamChat }: ChatTileProps) {
-  const useStream = _useStreamChat ?? useStreamChatStub;
-  const { messages, stream, send, stop } = useStream(orgId, threadId);
+export function ChatTile({ orgId, orgName, threadId }: ChatTileProps) {
+  const { messages, stream, send, stop, retry } = useStreamChat(orgId, threadId);
 
   const [draft, setDraft] = useState('');
-  const [lastDraft, setLastDraft] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const feedRef = useRef<HTMLDivElement>(null);
 
@@ -101,7 +56,6 @@ export function ChatTile({ orgId, orgName, threadId, _useStreamChat }: ChatTileP
       e?.preventDefault();
       const trimmed = draft.trim();
       if (!trimmed || stream.streaming) return;
-      setLastDraft(trimmed);
       setDraft('');
       send(trimmed);
     },
@@ -118,10 +72,6 @@ export function ChatTile({ orgId, orgName, threadId, _useStreamChat }: ChatTileP
     [handleSubmit],
   );
 
-  const handleRetry = useCallback(() => {
-    if (lastDraft) send(lastDraft);
-  }, [lastDraft, send]);
-
   return (
     <Tile title={`${orgName} Agent`}>
       <div
@@ -133,7 +83,7 @@ export function ChatTile({ orgId, orgName, threadId, _useStreamChat }: ChatTileP
         }}
       >
         {/* Stream failure banner */}
-        {stream.failed && (
+        {stream.failed !== null && (
           <div
             role="alert"
             style={{
@@ -150,7 +100,7 @@ export function ChatTile({ orgId, orgName, threadId, _useStreamChat }: ChatTileP
             </span>
             <button
               type="button"
-              onClick={handleRetry}
+              onClick={retry}
               style={{
                 background: 'transparent',
                 border: '1px solid var(--rule)',
@@ -182,9 +132,9 @@ export function ChatTile({ orgId, orgName, threadId, _useStreamChat }: ChatTileP
             minHeight: 0,
           }}
         >
-          {messages.map((msg) => (
+          {messages.map((msg, idx) => (
             <div
-              key={msg.id}
+              key={msg.id ?? `msg-${idx}`}
               data-role={msg.role}
               style={{
                 display: 'grid',
@@ -193,17 +143,16 @@ export function ChatTile({ orgId, orgName, threadId, _useStreamChat }: ChatTileP
                 alignItems: 'baseline',
               }}
             >
-              <time
-                dateTime={msg.timestamp.toISOString()}
+              {/* Spacer column — persisted messages have no client-side timestamp */}
+              <span
                 style={{
                   fontSize: 10,
                   color: 'var(--ink-3)',
                   fontVariantNumeric: 'tabular-nums',
                   paddingTop: 2,
                 }}
-              >
-                {formatTime(msg.timestamp)}
-              </time>
+                aria-hidden="true"
+              />
               <p
                 style={{
                   fontSize: 14,
@@ -251,6 +200,30 @@ export function ChatTile({ orgId, orgName, threadId, _useStreamChat }: ChatTileP
                     animation: 'blink 1s steps(2, start) infinite',
                   }}
                 />
+              </p>
+            </div>
+          )}
+
+          {/* Partial text preserved after user abort (no failure banner) */}
+          {!stream.streaming && stream.failed === null && stream.partial && (
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: '60px 1fr',
+                gap: 14,
+                alignItems: 'baseline',
+              }}
+            >
+              <span style={{ fontSize: 10, color: 'var(--ink-3)' }} aria-hidden="true" />
+              <p
+                style={{
+                  fontSize: 14,
+                  lineHeight: 1.55,
+                  color: 'var(--ink-2)',
+                  margin: 0,
+                }}
+              >
+                {stream.partial}
               </p>
             </div>
           )}

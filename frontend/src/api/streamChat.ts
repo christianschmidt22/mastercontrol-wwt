@@ -23,9 +23,10 @@ export interface StreamChatArgs {
  *
  *   data: [DONE]\n\n
  *
- * On AbortSignal abort the function returns immediately, leaving whatever
- * partial text the caller has accumulated (caller preserves it per
- * DESIGN.md § stream-failure UI).
+ * On AbortSignal abort the promise rejects with a DOMException whose
+ * `name === 'AbortError'`. The caller inspects `signal.aborted` to
+ * distinguish a user-abort (keep partial, no error banner) from a real
+ * network error (DESIGN.md § States stream-failure pattern).
  */
 export async function streamChat(args: StreamChatArgs): Promise<void> {
   const { orgId, threadId, content, onText, onToolUse, onToolResult, onDone, signal } = args;
@@ -33,19 +34,14 @@ export async function streamChat(args: StreamChatArgs): Promise<void> {
   const body: { content: string; thread_id?: number } = { content };
   if (threadId !== undefined) body.thread_id = threadId;
 
-  let res: Response;
-  try {
-    res = await fetch(`/api/agents/${orgId}/chat`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-      signal,
-    });
-  } catch (err) {
-    // AbortError — caller controls partial text
-    if (signal?.aborted) return;
-    throw err;
-  }
+  // AbortError thrown by fetch propagates as-is; callers inspect signal.aborted
+  // to distinguish user-abort from network error.
+  const res = await fetch(`/api/agents/${orgId}/chat`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+    signal,
+  });
 
   if (!res.ok) {
     let message = res.statusText;
@@ -106,7 +102,9 @@ export async function streamChat(args: StreamChatArgs): Promise<void> {
 
   try {
     while (true) {
-      if (signal?.aborted) return;
+      if (signal?.aborted) {
+        throw new DOMException('The operation was aborted.', 'AbortError');
+      }
 
       const { done, value } = await reader.read();
       if (done) break;
@@ -119,7 +117,9 @@ export async function streamChat(args: StreamChatArgs): Promise<void> {
       buf = frames.pop() ?? '';
 
       for (const frame of frames) {
-        if (signal?.aborted) return;
+        if (signal?.aborted) {
+          throw new DOMException('The operation was aborted.', 'AbortError');
+        }
         // A frame may contain multiple lines; find the "data:" line
         for (const line of frame.split('\n')) {
           const stop = processLine(line.trim());
