@@ -1,8 +1,11 @@
 # Changelog
 
-## Phase 1 — Feature complete (2026-04-25)
+## Phase 1 — Feature complete + audited + tested (2026-04-25)
 
-All commits on branch `claude/great-tesla-6c5416` off `main`.
+All commits on branch `claude/great-tesla-6c5416` off `main`. Verification
+(npm install + typecheck + lint + test + browser smoke) is documented in
+[`VERIFICATION.md`](VERIFICATION.md) and pending — Node wasn't available in
+the sandboxed shell that produced these commits.
 
 ---
 
@@ -185,7 +188,49 @@ All commits on branch `claude/great-tesla-6c5416` off `main`.
 
 ---
 
-## Phase 1 — Verified (TODO)
+### Round 4 — audits, docs polish, Phase 2 plan, test coverage fill — `a4509ef` + `b078447` + `a7816ce` + `2778bed` + `8ebc978`
+
+`docs: README, CHANGELOG rewrite with SHAs, ADRs 0001-0003, PRD updates`
+`docs(audit): pre-ship backend code review`
+`docs(audit): pre-ship frontend + a11y review`
+`docs(plan): Phase 2 plan + Q-3 scheduler ADR (task scheduler only)`
+`test: fill coverage gaps — 9 new test files + RTL infra`
+
+- `README.md` (root) authored — cold-start orientation, prereqs, quick-start.
+- `docs/CHANGELOG.md` rewritten with commit SHAs traceable to history.
+- `docs/PRD.md § Open Questions`: Q-1/2/4/5 marked RESOLVED with date +
+  one-liner; Q-3 added as RESOLVED via ADR-0004.
+- ADRs 0001 (single-org table), 0002 (mtime-wins ingest), 0003 (no
+  crud-router factory), 0004 (Task Scheduler over Windows Service).
+- `docs/BACKEND-AUDIT.md`: 6 H/Critical findings (B-01..B-07 incl. blocker
+  B-06 schema-import mismatch, B-07 missing model methods).
+- `docs/FRONTEND-AUDIT.md`: 4× outline:none a11y blockers, fixture-stub
+  gaps, useStreamChat abort race, optimistic-pending duplication.
+- `docs/plans/phase-2.md` (~1150 lines): full Phase 2 plan covering the
+  migration framework, schema additions, ingest pipeline reconciliation
+  matrix, reports module, scheduler, tool hardening, frontend additions.
+- 9 new test files closing every coverage gap surfaced; React Testing
+  Library + jest-dom + user-event added to frontend devDeps.
+
+### Round 5 — audit-fix batch — `8db441f`
+
+`fix: address every Critical + High finding from BACKEND/FRONTEND audits`
+
+- Backend: B-06 schema imports reconciled, B-07 missing model methods
+  added (agentConfigModel listAll/updateById), B-01 double-JSON of
+  provenance fixed, B-02 warmDpapi() now called at boot, B-03 notes
+  feed reads notes_unified VIEW via new noteModel.listUnified, B-05
+  agentThreadModel.create call sites converted to object form.
+  OrgType union dropped 'agent'. bumpOrgVersion now fires after
+  record_insight.
+- Frontend: 4 outline:none overrides removed, fixture stubs replaced
+  with real useOrganizations hooks, useStreamChat abort-signal race
+  fixed (per-send AbortController capture), optimisticPending cleared
+  on onDone.
+
+---
+
+## Phase 1 — Verified (TODO — see [`VERIFICATION.md`](VERIFICATION.md))
 
 - [ ] `npm install` — both workspaces install clean
 - [ ] `npm run typecheck` — both workspaces clean
