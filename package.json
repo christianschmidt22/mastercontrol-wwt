@@ -1,0 +1,15 @@
+{
+  "name": "mastercontrol",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": ["frontend", "backend"],
+  "scripts": {
+    "dev": "concurrently -n be,fe -c cyan,magenta \"npm run dev -w backend\" \"npm run dev -w frontend\"",
+    "build": "npm run build -w frontend && npm run build -w backend",
+    "typecheck": "npm run typecheck -w frontend && npm run typecheck -w backend",
+    "lint": "npm run lint -w frontend && npm run lint -w backend"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
