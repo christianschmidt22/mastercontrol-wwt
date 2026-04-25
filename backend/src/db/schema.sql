@@ -1,6 +1,15 @@
--- MasterControl schema (source of truth) — Phase 1, v0.3
+-- MasterControl schema (source of truth) — Phase 1, v0.4
 -- Single `organizations` table with type discriminator + JSON metadata.
 -- Run on startup; CREATE IF NOT EXISTS so repeated boots are safe.
+--
+-- This file ships P0 corrections from docs/REVIEW.md:
+--   R-002: notes.provenance (JSON) + notes.confirmed columns; agent_insight
+--          rows insert with confirmed=0 awaiting user accept/reject.
+--   R-004: agent_configs UNIQUE(section, organization_id) replaced with two
+--          partial unique indexes — SQLite treats NULLs as distinct in unique
+--          constraints, which would otherwise allow duplicate archetype rows.
+--   R-005: notes_unified VIEW exposes assistant turns from agent_messages
+--          to the notes feed without duplicating storage.
 
 CREATE TABLE IF NOT EXISTS settings (
   key TEXT PRIMARY KEY,
@@ -63,9 +72,19 @@ CREATE TABLE IF NOT EXISTS notes (
   file_mtime DATETIME,
   role TEXT NOT NULL DEFAULT 'user' CHECK(role IN ('user', 'assistant', 'agent_insight', 'imported')),
   thread_id INTEGER,
+  -- R-002: provenance + confirmation gate for agent-authored content.
+  -- provenance is JSON like {"tool":"record_insight","source_thread_id":7,
+  -- "source_org_id":3,"web_citations":[...]}; populated only for role='agent_insight'.
+  -- confirmed=0 means the user has not yet accepted the insight; an org's
+  -- buildSystemPrompt only includes others' unconfirmed insights when the
+  -- target org matches (i.e. own-org review surface).
+  provenance TEXT,
+  confirmed INTEGER NOT NULL DEFAULT 1 CHECK(confirmed IN (0, 1)),
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_notes_org_created ON notes(organization_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_notes_unconfirmed ON notes(organization_id, created_at DESC)
+  WHERE confirmed = 0;
 
 CREATE TABLE IF NOT EXISTS note_mentions (
   note_id INTEGER NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
@@ -95,9 +114,17 @@ CREATE TABLE IF NOT EXISTS agent_configs (
   tools_enabled TEXT NOT NULL DEFAULT '[]',
   model TEXT NOT NULL DEFAULT 'claude-sonnet-4-6',
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-  UNIQUE(section, organization_id)
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  -- R-004: NO table-level UNIQUE(section, organization_id) — SQLite treats
+  -- NULLs as distinct, so two `(section='customer', org_id=NULL)` archetype
+  -- rows would both succeed. Uniqueness is enforced via partial indexes below.
 );
+-- R-004: exactly one archetype per section (org_id IS NULL).
+CREATE UNIQUE INDEX IF NOT EXISTS uq_agent_configs_archetype
+  ON agent_configs(section) WHERE organization_id IS NULL;
+-- R-004: exactly one override per (section, org).
+CREATE UNIQUE INDEX IF NOT EXISTS uq_agent_configs_override
+  ON agent_configs(section, organization_id) WHERE organization_id IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS agent_threads (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -117,3 +144,41 @@ CREATE TABLE IF NOT EXISTS agent_messages (
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_messages_thread ON agent_messages(thread_id, created_at);
+
+-- R-005: notes_unified VIEW. The org's notes feed reads from this view so that
+-- assistant chat messages appear in the timeline without being duplicated as
+-- rows in `notes`. `agent_messages` is the canonical store for assistant
+-- turns; `notes` rows are written only by user input, agent_insight tool
+-- calls, and Phase 2 imports. Deleting an agent_thread CASCADEs to
+-- agent_messages, which removes the assistant rows from this view.
+--
+-- The id-offset (+1_000_000_000) namespaces synthetic ids so the frontend can
+-- treat the view as a flat list without colliding with real notes ids when
+-- showing detail/edit affordances. Real notes get their own id; assistant-
+-- mirrored rows get an id well above any expected SQLite autoincrement.
+CREATE VIEW IF NOT EXISTS notes_unified AS
+  SELECT
+    id,
+    organization_id,
+    content,
+    role,
+    thread_id,
+    confirmed,
+    provenance,
+    created_at,
+    'note' AS source_table
+  FROM notes
+  UNION ALL
+  SELECT
+    (m.id + 1000000000) AS id,
+    t.organization_id,
+    m.content,
+    'assistant' AS role,
+    m.thread_id,
+    1 AS confirmed,
+    NULL AS provenance,
+    m.created_at,
+    'agent_message' AS source_table
+  FROM agent_messages m
+  JOIN agent_threads t ON t.id = m.thread_id
+  WHERE m.role = 'assistant';

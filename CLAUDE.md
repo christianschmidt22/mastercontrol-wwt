@@ -60,15 +60,32 @@ Full data model: [`schema.sql`](backend/src/db/schema.sql) and
 - Components: one per file, named exports, under ~150 lines.
 
 ## AI Integration Rules
-- System prompt is hydrated from `agent_configs` and sent with
-  `cache_control: { type: 'ephemeral' }`.
+- System prompt is hydrated from `agent_configs` and sent split into two
+  blocks (R-016): a **stable** block with `cache_control: ephemeral`
+  (playbook + org name + type + metadata + contacts + projects) and a
+  **volatile** trailing block (last N notes + recent insights) that is
+  not cached so note saves don't bust the cache.
 - Streaming endpoint: `POST /api/agents/:org_id/chat`,
   `text/event-stream`. Client uses `fetch()` + `response.body.getReader()`.
 - After stream end, persist the assistant message to `agent_messages`
-  AND mirror it as a `notes` row.
-- Phase 1 tools: `web_search` (Anthropic native), `record_insight`
-  (writes a note row on the named target org with `role='agent_insight'`).
-- API key never leaves the backend; it lives in the `settings` table.
+  only. The notes feed reads from the `notes_unified` VIEW (R-005) — no
+  duplicate row in `notes`.
+- Phase 1 tools: `web_search` (Anthropic native, capped per
+  `agent_configs.tools_enabled`), `record_insight` (writes a note row
+  with `role='agent_insight'`, `confirmed=0`). The `record_insight`
+  tool input is `target_org_name: string`, resolved server-side
+  against an allowlist = `{currentOrgId} ∪ orgs whose names appear in
+  the latest user message ∪ orgs in the current org's `note_mentions`}`.
+  Reject anything outside the allowlist. Unconfirmed insights only
+  flow into their target org's own context; other agents ignore them.
+- When system-prompt logic embeds web_search results or any future
+  ingested content, wrap each chunk in
+  `<untrusted_document src="…">…</untrusted_document>` and never
+  enable write tools (`record_insight`) in the same call (R-021,
+  R-026).
+- Anthropic API key is DPAPI-wrapped in `settings.value` for any key
+  in `SECRET_KEYS`. Routes only ever return `getMasked(...)`. The
+  plaintext getter is callable only from `claude.service.ts` (R-003).
 
 ## Code Standards
 - TypeScript strict. No `any`. No `ts-ignore` without a comment explaining
@@ -98,7 +115,13 @@ npm run lint                # both workspaces
 
 ## Security — Off Limits Without Discussion
 - No multi-user auth in any phase.
+- Express and Vite bind `127.0.0.1` only. Never `0.0.0.0` (R-001).
 - DB file lives at `C:\mastercontrol\database\` — outside any cloud sync.
+- Backend CORS uses an explicit allowlist; no env override (R-013).
+- Errors are logged through the redacting error handler in
+  `backend/src/middleware/errorHandler.ts` — never `console.error(req.body)`
+  or `console.error(err)` raw, especially around settings or Anthropic
+  SDK calls (R-013).
 - The user's note repo at
   `C:\Users\schmichr\OneDrive - WWT\Documents\redqueen\WorkVault` is
   read-only until Phase 2 ingestion lands. Don't touch it without

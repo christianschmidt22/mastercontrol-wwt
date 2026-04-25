@@ -18,6 +18,31 @@
 - `CLAUDE.md` trimmed to ~110 lines and reorganized as operational guide
   + glossary + pointers, per official Anthropic memory best practices.
 
+### P0 review-driven foundation (2026-04-25)
+- **R-001** Backend binds `127.0.0.1` only (was implicit `0.0.0.0`).
+  CORS allowlist replaces env-overridable origin; explicit Origin check
+  on every POST/PUT/DELETE.
+- **R-002 (schema)** `notes.provenance JSON` + `notes.confirmed INT
+  DEFAULT 1` columns added. `agent_insight` rows will insert with
+  `confirmed=0`. Partial index `idx_notes_unconfirmed` accelerates the
+  Insights queue.
+- **R-003 (model)** `settings.model.ts` rewritten with single chokepoint:
+  `SECRET_KEYS` set, `get` (plaintext, backend-only), `getMasked`
+  (`***last4` for secrets), encrypt/decrypt stubs ready for DPAPI swap.
+- **R-004** `agent_configs` UNIQUE constraint replaced with two partial
+  unique indexes — SQLite treats NULLs as distinct, which would have
+  let two `(section='customer', org_id=NULL)` archetype rows coexist
+  and made the fallback chain non-deterministic.
+- **R-005** `notes_unified` VIEW added; the assistant-message mirror to
+  `notes` is dropped from the plan. Notes feed reads from the view;
+  `agent_messages` stays canonical.
+- **R-013** Redacting error handler. Strips `anthropic_api_key`,
+  `authorization`, `x-api-key`, generic `value` (settings PUT shape),
+  and `apiKey`/`api_key` from logged objects. Anthropic SDK errors
+  collapse to status + error type only.
+- CLAUDE.md AI integration rules + security boundaries updated to
+  match.
+
 ### Design (2026-04-25)
 - `docs/DESIGN.md` authored — "Field Notes" aesthetic direction. Commits
   to Fraunces (display) + Switzer (body) + JetBrains Mono; warm-paper /
