@@ -101,14 +101,6 @@ export function TabStrip({ active, onChange, insightCount }: TabStripProps) {
                 }}
               />
             )}
-            {/* Focus ring — supplemental to :focus-visible */}
-            <style>{`
-              #agents-tab-${tab}:focus-visible {
-                outline: 2px solid var(--accent);
-                outline-offset: 2px;
-                border-radius: 3px;
-              }
-            `}</style>
           </button>
         );
       })}

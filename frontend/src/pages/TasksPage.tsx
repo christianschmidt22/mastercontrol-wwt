@@ -625,6 +625,7 @@ interface AddTaskFormProps {
     title: string;
     dueDate: string;
     orgId: string;
+    contactId: string;
   }) => void;
   onCancel: () => void;
   isCreating: boolean;
@@ -655,7 +656,7 @@ function AddTaskForm({
     e.preventDefault();
     const trimmed = title.trim();
     if (!trimmed) return;
-    onSubmit({ title: trimmed, dueDate, orgId });
+    onSubmit({ title: trimmed, dueDate, orgId, contactId });
     setTitle('');
     setDueDate('');
     setOrgId('');
@@ -738,7 +739,6 @@ function AddTaskForm({
             value={orgId}
             onChange={(e) => {
               setOrgId(e.target.value);
-              setContactOrgId(e.target.value);
               setContactId('');
             }}
             style={inputStyle}
@@ -774,9 +774,6 @@ function AddTaskForm({
           </div>
         )}
       </div>
-
-      {/* Hidden — keeps unused variable lint-clean */}
-      <input type="hidden" name="_contact_org" value={contactOrgId2} />
 
       <div style={{ display: 'flex', gap: 6 }}>
         <button
@@ -834,7 +831,7 @@ const DUE_OPTIONS: { value: DueFilter; label: string }[] = [
   { value: 'any', label: 'Any time' },
 ];
 
-const DEFAULT_STATUS = 'open';
+const DEFAULT_STATUS: TaskStatus = 'open';
 const DEFAULT_DUE: DueFilter = 'any';
 
 export function TasksPage() {
@@ -966,15 +963,18 @@ export function TasksPage() {
     title,
     dueDate,
     orgId,
+    contactId,
   }: {
     title: string;
     dueDate: string;
     orgId: string;
+    contactId: string;
   }) => {
     createTask({
       title,
       due_date: dueDate || null,
       organization_id: orgId ? parseInt(orgId, 10) : null,
+      contact_id: contactId ? parseInt(contactId, 10) : null,
       status: 'open',
     });
     setShowAddForm(false);

@@ -161,6 +161,8 @@ function ApiKeySection() {
   const [error, setError] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
 
+  useBeforeUnloadGuard(dirty);
+
   // Mark dirty when user types
   function handleChange(e: ChangeEvent<HTMLInputElement>) {
     setValue(e.target.value);
@@ -275,6 +277,8 @@ function DefaultModelSection() {
   const [savedAt, setSavedAt] = useState<number | null>(null);
   const [error, setError] = useState('');
 
+  useBeforeUnloadGuard(dirty);
+
   // Sync once the query resolves
   useEffect(() => {
     if (existing?.value && !dirty) {
@@ -382,6 +386,8 @@ function NoteSourcesSection() {
 
   const workvaultRef = useRef<HTMLInputElement>(null);
   const onedriveRef  = useRef<HTMLInputElement>(null);
+
+  useBeforeUnloadGuard(dirty);
 
   // Sync once queries resolve
   useEffect(() => {

@@ -42,6 +42,7 @@ export function FormField({
 
       {helper && !error && (
         <p
+          id={`${id}-helper`}
           style={{
             fontSize: 12,
             color: 'var(--ink-2)',
@@ -55,6 +56,7 @@ export function FormField({
 
       {error && (
         <p
+          id={`${id}-error`}
           role="alert"
           style={{
             fontSize: 12,
