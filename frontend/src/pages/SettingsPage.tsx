@@ -35,7 +35,6 @@ const INPUT_STYLE: React.CSSProperties = {
   border: '1px solid var(--rule)',
   borderRadius: 6,
   padding: '8px 12px',
-  outline: 'none',
   width: '100%',
   transition: 'border-color 150ms var(--ease)',
 };

@@ -8,26 +8,7 @@ import { AccountChannelTile } from '../components/tiles/oem/AccountChannelTile';
 import { OemQuickLinksTile } from '../components/tiles/oem/OemQuickLinksTile';
 import { OemDocsTile } from '../components/tiles/oem/OemDocsTile';
 import type { Organization } from '../types';
-
-interface UseOrganizationsResult {
-  data: Organization[] | undefined;
-  isLoading: boolean;
-}
-
-/**
- * Stub — will be replaced by the real useOrganizations hook at merge time.
- * Contract: useOrganizations({ type: 'oem' }) => { data: Organization[], isLoading }
- */
-function useOrganizationsStub(_params: { type: string }): UseOrganizationsResult {
-  return {
-    data: [
-      { id: 1, type: 'oem', name: 'Cisco', metadata: null, created_at: '', updated_at: '' },
-      { id: 2, type: 'oem', name: 'NetApp', metadata: null, created_at: '', updated_at: '' },
-      { id: 3, type: 'oem', name: 'Dell', metadata: null, created_at: '', updated_at: '' },
-    ],
-    isLoading: false,
-  };
-}
+import { useOrganizations } from '../api/useOrganizations';
 
 /**
  * Default OEM tile layout.
@@ -188,8 +169,7 @@ export function OemPage() {
   const { id } = useParams<{ id?: string }>();
   const navigate = useNavigate();
 
-  // Real hook at merge time: useOrganizations({ type: 'oem' })
-  const { data: oems, isLoading } = useOrganizationsStub({ type: 'oem' });
+  const { data: oems, isLoading, isError, refetch } = useOrganizations('oem');
 
   const oemList = oems ?? [];
   const selectedId = id ? parseInt(id, 10) : (oemList[0]?.id ?? null);
@@ -275,10 +255,52 @@ export function OemPage() {
       )}
 
       {isLoading && (
-        <p style={{ fontSize: 13, color: 'var(--ink-3)' }}>Loading OEM partners…</p>
+        <div
+          style={{
+            border: '1px dashed var(--rule)',
+            borderRadius: 6,
+            padding: '32px',
+            textAlign: 'center',
+            fontSize: 13,
+            color: 'var(--ink-3)',
+          }}
+        >
+          Loading…
+        </div>
       )}
 
-      {!isLoading && oemList.length === 0 && (
+      {isError && !isLoading && (
+        <div
+          style={{
+            border: '1px dashed var(--rule)',
+            borderRadius: 6,
+            padding: '32px',
+            textAlign: 'center',
+            fontSize: 13,
+            color: 'var(--ink-3)',
+          }}
+        >
+          Couldn't load orgs ·{' '}
+          <button
+            type="button"
+            onClick={() => void refetch()}
+            style={{
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              color: 'var(--ink-2)',
+              fontFamily: 'var(--body)',
+              fontSize: 13,
+              padding: 0,
+              textDecoration: 'underline',
+            }}
+          >
+            Retry
+          </button>
+        </div>
+      )}
+
+      {!isLoading && !isError && oemList.length === 0 && (
         <div
           style={{
             border: '1px dashed var(--rule)',

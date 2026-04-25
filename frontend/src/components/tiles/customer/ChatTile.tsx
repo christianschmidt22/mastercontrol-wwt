@@ -256,7 +256,6 @@ export function ChatTile({ orgId, orgName, threadId }: ChatTileProps) {
             style={{
               width: '100%',
               border: 'none',
-              outline: 'none',
               background: 'transparent',
               fontFamily: 'var(--body)',
               fontWeight: 300,

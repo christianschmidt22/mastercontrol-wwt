@@ -29,6 +29,13 @@ export const TaskUpdateSchema = z.object({
   status: TaskStatusSchema.optional(),
 });
 
+/** GET /tasks?status=&due_before=&org_id= query */
+export const TaskListQuerySchema = z.object({
+  status: TaskStatusSchema.optional(),
+  due_before: z.string().optional(),
+  org_id: z.coerce.number().int().positive().optional(),
+});
+
 export type TaskStatus = z.infer<typeof TaskStatusSchema>;
 export type Task = z.infer<typeof TaskSchema>;
 export type TaskCreate = z.infer<typeof TaskCreateSchema>;

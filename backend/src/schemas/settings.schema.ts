@@ -11,5 +11,8 @@ export const SettingGetResponseSchema = z.object({
   value: z.string(),
 });
 
+/** Alias used by settings.route.ts — same shape as SettingPutSchema. */
+export const SettingsSetSchema = SettingPutSchema;
+
 export type SettingPut = z.infer<typeof SettingPutSchema>;
 export type SettingGetResponse = z.infer<typeof SettingGetResponseSchema>;

@@ -82,7 +82,6 @@ export function TabStrip({ active, onChange, insightCount }: TabStripProps) {
               fontWeight: isActive ? 600 : 400,
               color: isActive ? 'var(--ink-1)' : 'var(--ink-2)',
               transition: 'color 200ms var(--ease)',
-              outline: 'none',
             }}
           >
             {label}

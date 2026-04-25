@@ -105,6 +105,14 @@ interface AgentConfig {
   model: string;
 }
 
+interface NoteProvenance {
+  tool: string;
+  source_thread_id?: number;
+  source_org_id?: number;
+  topic?: string | null;
+  web_citations?: string[];
+}
+
 interface NoteListOpts {
   limit?: number;
   confirmedOnly?: boolean;
@@ -134,7 +142,7 @@ async function models() {
   ]);
   return {
     noteModel: noteModel as {
-      createInsight: (orgId: number, content: string, provenance: string) => NoteRow;
+      createInsight: (orgId: number, content: string, provenance: NoteProvenance) => NoteRow;
       listRecent: (orgId: number, limit: number, opts?: NoteListOpts) => NoteRow[];
     },
     agentMessageModel: agentMessageModel as {
@@ -760,16 +768,20 @@ async function handleRecordInsight({
     return;
   }
 
-  // Build provenance JSON (R-002).
-  const provenance = JSON.stringify({
+  // Build provenance object (R-002). The model's createInsight handles JSON.stringify.
+  const provenance: NoteProvenance = {
     tool: 'record_insight',
     source_thread_id: threadId,
     source_org_id: orgId,
     topic: input.topic ?? null,
-  });
+  };
 
   try {
     const note = await m.noteModel.createInsight(targetOrgId, input.content, provenance);
+
+    // C-07: invalidate the target org's stable system-prompt cache so the next
+    // chat turn against that org sees the newly-recorded insight.
+    bumpOrgVersion(targetOrgId);
 
     const toolResult = {
       type: 'tool_result' as const,

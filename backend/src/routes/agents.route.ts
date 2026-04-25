@@ -26,12 +26,12 @@ agentsRouter.get('/configs', (_req, res) => {
 agentsRouter.put('/configs/:id', validateBody(AgentConfigUpdateSchema), (req, res, next) => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id) || id <= 0) return next(new HttpError(400, 'Invalid id'));
-  const { system_prompt_template, tools_enabled, model } = req.validated as {
-    system_prompt_template: string;
-    tools_enabled: string[];
-    model: string;
+  const patch = req.validated as {
+    system_prompt_template?: string;
+    tools_enabled?: Record<string, unknown>;
+    model?: string;
   };
-  const updated = agentConfigModel.updateById(id, system_prompt_template, tools_enabled, model);
+  const updated = agentConfigModel.updateById(id, patch);
   if (!updated) return next(new HttpError(404, 'Config not found'));
   res.json(updated);
 });
@@ -48,7 +48,7 @@ agentsRouter.post('/threads', validateBody(AgentThreadCreateSchema), (req, res, 
   if (!organizationModel.get(organization_id)) {
     return next(new HttpError(404, 'Organization not found'));
   }
-  const thread = agentThreadModel.create(organization_id, title);
+  const thread = agentThreadModel.create({ organization_id, title });
   res.status(201).json(thread);
 });
 
@@ -79,7 +79,7 @@ agentsRouter.post('/:org_id/chat', validateBody(AgentChatBodySchema), async (req
 
   let threadId = thread_id;
   if (!threadId) {
-    const newThread = agentThreadModel.create(orgId);
+    const newThread = agentThreadModel.create({ organization_id: orgId });
     threadId = newThread.id;
   } else {
     const thread = agentThreadModel.get(threadId);

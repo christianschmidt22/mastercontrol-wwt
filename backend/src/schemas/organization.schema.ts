@@ -31,6 +31,17 @@ export const OrganizationUpdateSchema = z.object({
   metadata: MetadataSchema.optional().nullable(),
 });
 
+/** GET /organizations?type= query */
+export const OrgTypeQuerySchema = z.object({
+  type: OrgTypeSchema.optional(),
+});
+
+/** GET /organizations/:id/notes?limit=&include_unconfirmed= query */
+export const OrgNotesQuerySchema = z.object({
+  limit: z.coerce.number().int().positive().optional(),
+  include_unconfirmed: z.enum(['true', 'false']).optional(),
+});
+
 export type OrgType = z.infer<typeof OrgTypeSchema>;
 export type MetadataValue = z.infer<typeof MetadataValueSchema>;
 export type Metadata = z.infer<typeof MetadataSchema>;

@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import { initSchema } from './db/database.js';
+import { warmDpapi } from './models/settings.model.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { organizationsRouter } from './routes/organizations.route.js';
 import { contactsRouter } from './routes/contacts.route.js';
@@ -68,6 +69,18 @@ app.use('/api/agents', agentsRouter);
 app.use('/api/settings', settingsRouter);
 
 app.use(errorHandler);
+
+// R-003: Pre-warm DPAPI so the native module is resolved before the first
+// PUT /api/settings request arrives. A failure here (e.g. on non-Windows CI)
+// is non-fatal — the model falls back to no-op encryption and logs a warning.
+try {
+  await warmDpapi();
+} catch (err) {
+  console.warn(
+    '[mastercontrol] warmDpapi failed at boot — DPAPI unavailable, API key will be stored without encryption.',
+    err instanceof Error ? err.message : String(err),
+  );
+}
 
 // R-001: bind loopback only. `0.0.0.0` would expose the backend on every
 // network the laptop joins (coffee shops, hotels, conference Wi-Fi) — once

@@ -88,8 +88,58 @@ const listRecentConfirmedStmt = db.prepare<[number, number], NoteRow>(
   'SELECT * FROM notes WHERE organization_id = ? AND confirmed = 1 ORDER BY created_at DESC LIMIT ?'
 );
 
+// ---------------------------------------------------------------------------
+// notes_unified VIEW queries (R-005)
+// ---------------------------------------------------------------------------
+
+/**
+ * R-005: Row shape returned by the notes_unified VIEW.
+ * Matches the SELECT columns in schema.sql.
+ */
+export interface UnifiedNoteRow {
+  id: number;
+  organization_id: number;
+  content: string;
+  role: string;
+  thread_id: number | null;
+  confirmed: number;
+  provenance: string | null;
+  created_at: string;
+  source_table: 'note' | 'agent_message';
+}
+
+const listUnifiedAllStmt = db.prepare<[number, number], UnifiedNoteRow>(
+  `SELECT * FROM notes_unified
+   WHERE organization_id = ?
+   ORDER BY created_at DESC
+   LIMIT ?`,
+);
+
+const listUnifiedConfirmedStmt = db.prepare<[number, number], UnifiedNoteRow>(
+  `SELECT * FROM notes_unified
+   WHERE organization_id = ? AND confirmed = 1
+   ORDER BY created_at DESC
+   LIMIT ?`,
+);
+
 export const noteModel = {
   listFor: (orgId: number): Note[] => listStmt.all(orgId).map(hydrate),
+
+  /**
+   * R-005: Query the notes_unified VIEW for an org's note feed.
+   * By default includes unconfirmed rows (agent_insights awaiting review).
+   * Pass `includeUnconfirmed: false` to restrict to confirmed=1 rows only.
+   */
+  listUnified: (
+    orgId: number,
+    opts: { limit?: number; includeUnconfirmed?: boolean } = {},
+  ): UnifiedNoteRow[] => {
+    const limit = opts.limit ?? 20;
+    const stmt = opts.includeUnconfirmed === false
+      ? listUnifiedConfirmedStmt
+      : listUnifiedAllStmt;
+    return stmt.all(orgId, limit);
+  },
 
   /** R-016: returns the most recent N notes for an org, optionally filtering
    *  to confirmed-only. Used by claude.service to hydrate the volatile

@@ -10,22 +10,7 @@ import { RecentNotesTile } from '../components/tiles/customer/RecentNotesTile';
 import { ContactsTile } from '../components/tiles/customer/ContactsTile';
 import { ReferenceTile } from '../components/tiles/customer/ReferenceTile';
 import { DocumentsTile } from '../components/tiles/customer/DocumentsTile';
-
-interface UseOrganizationResult {
-  data: { id: number; name: string } | undefined;
-  isLoading: boolean;
-}
-
-/**
- * Stub — will be replaced by the real useOrganization hook at merge time.
- * Contract: useOrganization(id) => { data: Organization, isLoading }
- */
-function useOrganizationStub(id: string | undefined): UseOrganizationResult {
-  return {
-    data: id ? { id: parseInt(id, 10), name: `Customer #${id}` } : undefined,
-    isLoading: false,
-  };
-}
+import { useOrganization } from '../api/useOrganizations';
 
 /**
  * Default 12-col layout per DESIGN.md § Tile dashboard.
@@ -52,8 +37,9 @@ const DEFAULT_CUSTOMER_LAYOUT: TileLayout[] = [
 
 export function CustomerPage() {
   const { id } = useParams<{ id: string }>();
-  const { data: org } = useOrganizationStub(id);
-  const orgId = org?.id ?? 0;
+  const numericId = id ? parseInt(id, 10) : 0;
+  const { data: org, isLoading: orgLoading, isError: orgError, refetch: refetchOrg } = useOrganization(numericId);
+  const orgId = org?.id ?? numericId;
   const orgName = org?.name ?? '…';
 
   const { layout, save, reset, revert, isDirty } = useTileLayout(
@@ -254,13 +240,62 @@ export function CustomerPage() {
         </div>
       </div>
 
+      {/* Org loading / error states */}
+      {orgLoading && (
+        <div
+          style={{
+            border: '1px dashed var(--rule)',
+            borderRadius: 6,
+            padding: '32px',
+            textAlign: 'center',
+            fontSize: 13,
+            color: 'var(--ink-3)',
+          }}
+        >
+          Loading…
+        </div>
+      )}
+
+      {orgError && !orgLoading && (
+        <div
+          style={{
+            border: '1px dashed var(--rule)',
+            borderRadius: 6,
+            padding: '32px',
+            textAlign: 'center',
+            fontSize: 13,
+            color: 'var(--ink-3)',
+          }}
+        >
+          Couldn't load orgs ·{' '}
+          <button
+            type="button"
+            onClick={() => void refetchOrg()}
+            style={{
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              color: 'var(--ink-2)',
+              fontFamily: 'var(--body)',
+              fontSize: 13,
+              padding: 0,
+              textDecoration: 'underline',
+            }}
+          >
+            Retry
+          </button>
+        </div>
+      )}
+
       {/* Tile grid */}
-      <TileGrid
-        items={tiles}
-        layout={layout}
-        editMode={editMode}
-        onLayoutChange={save}
-      />
+      {!orgLoading && !orgError && (
+        <TileGrid
+          items={tiles}
+          layout={layout}
+          editMode={editMode}
+          onLayoutChange={save}
+        />
+      )}
     </div>
   );
 }

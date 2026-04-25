@@ -30,6 +30,15 @@ export interface AgentConfigInput {
   model?: string;
 }
 
+export interface AgentConfigUpdate {
+  system_prompt_template?: string;
+  tools_enabled?: Record<string, unknown>;
+  model?: string;
+}
+
+const listAllStmt = db.prepare<[], AgentConfigRow>(
+  'SELECT * FROM agent_configs ORDER BY section, organization_id IS NOT NULL, organization_id'
+);
 const getByOrgStmt = db.prepare<[AgentSection, number], AgentConfigRow>(
   'SELECT * FROM agent_configs WHERE section = ? AND organization_id = ?'
 );
@@ -37,6 +46,11 @@ const getArchetypeStmt = db.prepare<[AgentSection], AgentConfigRow>(
   'SELECT * FROM agent_configs WHERE section = ? AND organization_id IS NULL'
 );
 const getByIdStmt = db.prepare<[number], AgentConfigRow>('SELECT * FROM agent_configs WHERE id = ?');
+const updateByIdStmt = db.prepare<[string, string, string, number]>(
+  `UPDATE agent_configs
+   SET system_prompt_template = ?, tools_enabled = ?, model = ?, updated_at = datetime('now')
+   WHERE id = ?`
+);
 
 /**
  * R-004: Uses two partial unique indexes (uq_agent_configs_archetype,
@@ -68,6 +82,27 @@ function hydrate(row: AgentConfigRow): AgentConfig {
 }
 
 export const agentConfigModel = {
+  /** Return every agent_config row (both archetypes and per-org overrides). */
+  listAll: (): AgentConfig[] => listAllStmt.all().map(hydrate),
+
+  /**
+   * Partial-patch update by id. Reads the current row first, applies only the
+   * supplied fields, and writes back. Returns undefined if the id does not exist.
+   */
+  updateById: (id: number, patch: AgentConfigUpdate): AgentConfig | undefined => {
+    const existing = getByIdStmt.get(id);
+    if (!existing) return undefined;
+    const next = hydrate(existing);
+    const newTemplate = patch.system_prompt_template ?? next.system_prompt_template;
+    const newTools = patch.tools_enabled !== undefined
+      ? JSON.stringify(patch.tools_enabled)
+      : existing.tools_enabled;
+    const newModel = patch.model ?? next.model;
+    updateByIdStmt.run(newTemplate, newTools, newModel, id);
+    const updated = getByIdStmt.get(id);
+    return updated ? hydrate(updated) : undefined;
+  },
+
   /**
    * Fallback chain: (section, org_id) → (section, NULL archetype).
    * Returns null only if neither exists (the archetype should always exist

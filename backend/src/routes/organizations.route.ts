@@ -83,12 +83,13 @@ organizationsRouter.get('/:id/documents', (req, res, next) => {
 });
 
 // GET /:id/notes?limit=20&include_unconfirmed=true|false
+// R-005: reads from notes_unified VIEW so agent_messages turns appear inline.
 organizationsRouter.get('/:id/notes', validateQuery(OrgNotesQuerySchema), (req, res, next) => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id) || id <= 0) return next(new HttpError(400, 'Invalid id'));
   if (!organizationModel.get(id)) return next(new HttpError(404, 'Organization not found'));
   const q = req.validated as { limit?: number; include_unconfirmed?: string };
   const includeUnconfirmed = q.include_unconfirmed !== 'false'; // default true
-  const notes = noteModel.listFor(id, includeUnconfirmed).slice(0, q.limit ?? 20);
+  const notes = noteModel.listUnified(id, { limit: q.limit ?? 20, includeUnconfirmed });
   res.json(notes);
 });

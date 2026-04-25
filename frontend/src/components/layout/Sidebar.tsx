@@ -3,6 +3,7 @@ import { NavLink } from 'react-router-dom';
 import { Home, CheckSquare, BarChart2, Bot, Settings } from 'lucide-react';
 import { clsx } from 'clsx';
 import { ThemeToggle } from './ThemeToggle';
+import { useOrganizations } from '../../api/useOrganizations';
 
 interface NavItemProps {
   to: string;
@@ -54,15 +55,9 @@ function Section({ heading, children }: SectionProps) {
   );
 }
 
-// Static customer list — placeholder until the query layer lands (Agent 2).
-const STATIC_CUSTOMERS = [
-  { id: '1', name: 'Fairview Health' },
-  { id: '2', name: 'CHR Health' },
-  { id: '3', name: 'Memorial Hermann' },
-  { id: '4', name: 'Allina Health' },
-];
-
 export function Sidebar() {
+  const { data: customers, isLoading: customersLoading, isError: customersError, refetch: refetchCustomers } =
+    useOrganizations('customer');
   return (
     <nav
       aria-label="Primary"
@@ -118,7 +113,51 @@ export function Sidebar() {
 
       {/* Customers */}
       <Section heading="Customers">
-        {STATIC_CUSTOMERS.map((c) => (
+        {customersLoading && (
+          <div
+            style={{
+              border: '1px dashed var(--rule)',
+              borderRadius: 6,
+              padding: '8px 12px',
+              fontSize: 12,
+              color: 'var(--ink-3)',
+              fontFamily: 'var(--body)',
+            }}
+          >
+            Loading…
+          </div>
+        )}
+        {customersError && !customersLoading && (
+          <div
+            style={{
+              border: '1px dashed var(--rule)',
+              borderRadius: 6,
+              padding: '8px 12px',
+              fontSize: 12,
+              color: 'var(--ink-3)',
+              fontFamily: 'var(--body)',
+            }}
+          >
+            Couldn't load orgs ·{' '}
+            <button
+              type="button"
+              onClick={() => void refetchCustomers()}
+              style={{
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                color: 'var(--ink-2)',
+                fontFamily: 'var(--body)',
+                fontSize: 12,
+                padding: 0,
+                textDecoration: 'underline',
+              }}
+            >
+              Retry
+            </button>
+          </div>
+        )}
+        {!customersLoading && !customersError && (customers ?? []).map((c) => (
           <NavLink
             key={c.id}
             to={`/customers/${c.id}`}

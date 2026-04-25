@@ -83,6 +83,11 @@ export function useStreamChat(orgId: number, threadId?: number): UseStreamChat {
       setStreaming(true);
       setFailed(null);
 
+      // Capture in a local so the .catch closure checks THIS call's signal,
+      // not abortControllerRef.current (which may already point to a newer ctrl
+      // if send() is called again before this stream finishes — ST-02).
+      const myCtrl = ctrl;
+
       streamChat({
         orgId,
         threadId,
@@ -92,12 +97,10 @@ export function useStreamChat(orgId: number, threadId?: number): UseStreamChat {
           setPartialText((prev) => prev + delta);
         },
         onDone: () => {
-          const assembled = accumulatedRef.current;
-          // Append assembled assistant message to optimistic list
-          setOptimisticPending((prev) => [
-            ...prev,
-            { role: 'assistant' as const, content: assembled },
-          ]);
+          // B-12: clear optimisticPending entirely on done and rely on the
+          // persisted query refetch. The brief loading flicker is acceptable
+          // per DESIGN.md "render after 200 ms" rule.
+          setOptimisticPending([]);
           // Reset stream UI
           setStreaming(false);
           setPartialText('');
@@ -107,9 +110,11 @@ export function useStreamChat(orgId: number, threadId?: number): UseStreamChat {
           }
           void qc.invalidateQueries({ queryKey: noteKeys.all(orgId) });
         },
-        signal: ctrl.signal,
+        signal: myCtrl.signal,
       }).catch((err: unknown) => {
-        if (ctrl.signal.aborted) {
+        // ST-02: check myCtrl (this stream's controller), not the ref
+        // (which may now point to a newer controller).
+        if (myCtrl.signal.aborted) {
           // User-initiated stop: keep partial visible, no error banner
           setFailed(null);
         } else {

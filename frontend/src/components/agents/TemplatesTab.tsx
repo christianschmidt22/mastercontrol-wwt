@@ -287,7 +287,6 @@ function TemplateCard({ section, config }: SectionCardProps) {
             border: '1px solid var(--rule)',
             borderRadius: 6,
             padding: '12px 14px',
-            outline: 'none',
             transition: 'border-color 200ms var(--ease)',
           }}
           aria-describedby={`${promptId}-hint`}
