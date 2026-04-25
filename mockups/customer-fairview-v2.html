@@ -1,0 +1,609 @@
+<!doctype html>
+<html lang="en" color-scheme="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="theme-color" content="#0E1116" />
+<title>MasterControl — Fairview · Mockup v2 (dark, tile dashboard)</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="preconnect" href="https://api.fontshare.com" crossorigin />
+<link rel="stylesheet"
+  href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=JetBrains+Mono:wght@400;500&display=swap" />
+<link rel="stylesheet"
+  href="https://api.fontshare.com/v2/css?f[]=switzer@200,300,400,500,600,700&display=swap" />
+
+<style>
+  :root {
+    --bg: #0E1116;
+    --bg-2: #161A21;
+    --ink-1: #EDE7DA;
+    --ink-2: #9A958A;
+    --ink-3: #5C564E;
+    --rule: #2A2F38;
+    --accent: #E66B4D;
+    --accent-soft: #2C1A14;
+    --display: 'Fraunces', ui-serif, Georgia, serif;
+    --body: 'Switzer', ui-sans-serif, system-ui, sans-serif;
+    --mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+    --ease: cubic-bezier(0.2, 0, 0, 1);
+  }
+
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--bg); color: var(--ink-1);
+    font-family: var(--body); font-size: 14px; line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  h1, h2, h3 { text-wrap: balance; margin: 0; font-family: var(--display); }
+  p { text-wrap: pretty; margin: 0; }
+  .tnum { font-variant-numeric: tabular-nums; }
+
+  /* shell ─────────────────────────────────────────── */
+  .shell { display: grid; grid-template-columns: 220px 1fr; min-height: 100vh; }
+
+  .sidebar {
+    border-right: 1px solid var(--rule);
+    padding: 20px 14px;
+    display: flex; flex-direction: column; gap: 24px;
+  }
+  .sidebar-brand {
+    font-family: var(--display); font-weight: 600; font-size: 18px;
+    letter-spacing: -0.01em; padding: 4px 8px 12px;
+    border-bottom: 1px solid var(--rule); color: var(--ink-1);
+  }
+  .sidebar-brand-sub {
+    display: block; font-family: var(--body); font-weight: 500;
+    font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--ink-3); margin-top: 2px;
+  }
+  .sb-section { display: flex; flex-direction: column; gap: 2px; }
+  .sb-heading {
+    font-size: 11px; font-weight: 600; letter-spacing: 0.08em;
+    text-transform: uppercase; color: var(--ink-3); padding: 0 8px 6px;
+  }
+  .sb-link {
+    display: flex; align-items: center; gap: 10px;
+    padding: 7px 10px; border-radius: 6px;
+    color: var(--ink-1); text-decoration: none;
+    font-size: 14px; font-weight: 400;
+    border-left: 2px solid transparent;
+    transition: background 200ms var(--ease);
+    position: relative;
+  }
+  .sb-link:hover { background: var(--bg-2); }
+  .sb-link[aria-current="page"] {
+    background: var(--accent-soft); border-left-color: var(--accent);
+    border-radius: 0 6px 6px 0; margin-left: -2px; padding-left: 10px;
+  }
+  .sb-link svg { stroke: var(--ink-2); }
+  .sb-add {
+    margin: 6px 8px 0; padding: 6px 10px;
+    font-size: 12px; color: var(--ink-2);
+    background: transparent; border: 1px dashed var(--rule);
+    border-radius: 6px; text-align: left; cursor: pointer;
+    font-family: var(--body);
+  }
+  .sb-add:hover { color: var(--ink-1); border-color: var(--ink-2); }
+
+  /* main page header ──────────────────────────────── */
+  .main { padding: 28px 36px 80px; }
+  .page-header {
+    display: flex; align-items: end; justify-content: space-between;
+    gap: 24px; margin-bottom: 28px; max-width: 1500px;
+  }
+  .breadcrumb {
+    font-size: 11px; letter-spacing: 0.08em;
+    text-transform: uppercase; color: var(--ink-3);
+    font-weight: 500; margin-bottom: 8px;
+  }
+  .org-title {
+    font-family: var(--display); font-weight: 500;
+    font-size: 56px; line-height: 1.02; letter-spacing: -0.02em;
+    margin-left: -3px;
+  }
+  .header-actions {
+    display: flex; gap: 8px; align-items: center;
+  }
+  .btn {
+    font-family: var(--body); font-size: 12px;
+    font-weight: 500; letter-spacing: 0.02em;
+    padding: 7px 14px; border-radius: 6px; cursor: pointer;
+    border: 1px solid var(--rule); background: var(--bg);
+    color: var(--ink-2); transition: all 200ms var(--ease);
+    display: flex; align-items: center; gap: 6px;
+  }
+  .btn:hover { color: var(--ink-1); border-color: var(--ink-2); background: var(--bg-2); }
+  .btn-primary { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
+  .btn-primary:hover { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+
+  /* dashboard grid ────────────────────────────────── */
+  .dashboard {
+    display: grid;
+    grid-template-columns: repeat(12, 1fr);
+    grid-auto-rows: 80px;
+    gap: 14px;
+    max-width: 1500px;
+  }
+
+  /* tile (card) ───────────────────────────────────── */
+  .tile {
+    border: 1px solid var(--rule);
+    border-radius: 8px;
+    background: var(--bg);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    position: relative;
+    transition: border-color 200ms var(--ease);
+  }
+  .tile:hover { border-color: var(--ink-3); }
+  .tile-head {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 12px; padding: 14px 18px 10px;
+    border-bottom: 1px solid var(--rule);
+  }
+  .tile-title {
+    font-size: 13px; font-weight: 600; color: var(--ink-1);
+    letter-spacing: 0.01em;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .tile-count { color: var(--ink-3); font-weight: 400; font-size: 12px; }
+  .tile-head-actions { display: flex; gap: 4px; align-items: center; color: var(--ink-3); }
+  .icon-btn {
+    width: 26px; height: 26px;
+    display: inline-flex; align-items: center; justify-content: center;
+    border: none; background: transparent; border-radius: 4px;
+    color: var(--ink-3); cursor: pointer;
+    transition: all 150ms var(--ease);
+  }
+  .icon-btn:hover { background: var(--bg-2); color: var(--ink-1); }
+  .icon-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+  /* drag handle (visible on hover when not in edit mode; always in edit mode) */
+  .drag-grip {
+    position: absolute; top: 6px; left: 50%; transform: translateX(-50%);
+    width: 24px; height: 4px;
+    background: var(--rule); border-radius: 2px;
+    opacity: 0; transition: opacity 150ms var(--ease);
+    cursor: grab;
+  }
+  .tile:hover .drag-grip { opacity: 0.6; }
+
+  /* edit-mode tile treatment */
+  .tile.is-editing {
+    border: 1.5px dashed var(--accent);
+    background: var(--accent-soft);
+  }
+  .tile.is-editing .drag-grip { opacity: 1; background: var(--accent); cursor: grabbing; }
+  .tile.is-editing .resize-handle {
+    position: absolute; right: 4px; bottom: 4px;
+    width: 14px; height: 14px;
+    border-right: 2px solid var(--accent);
+    border-bottom: 2px solid var(--accent);
+    cursor: nwse-resize;
+  }
+
+  .tile-body { padding: 16px 18px 18px; flex: 1; overflow: auto; }
+
+  /* tile placement — mock layout for Fairview ─────── */
+  .t-chat        { grid-column: 1 / span 7; grid-row: 1 / span 5; }
+  .t-projects    { grid-column: 8 / span 5; grid-row: 1 / span 3; }
+  .t-tasks       { grid-column: 8 / span 5; grid-row: 4 / span 2; }
+  .t-notes       { grid-column: 1 / span 7; grid-row: 6 / span 3; }
+  .t-quickref    { grid-column: 8 / span 5; grid-row: 6 / span 2; }
+  .t-documents   { grid-column: 8 / span 5; grid-row: 8 / span 1; }
+
+  /* chat tile content ─────────────────────────────── */
+  .chat-feed {
+    display: flex; flex-direction: column; gap: 14px;
+    overflow: auto; padding-right: 4px;
+  }
+  .msg-row {
+    display: grid; grid-template-columns: 60px 1fr; gap: 14px;
+    align-items: baseline;
+  }
+  .msg-time { font-size: 10px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+  .msg-content { color: var(--ink-1); font-size: 14px; line-height: 1.55; }
+  .msg-row[data-role="assistant"] .msg-content { color: var(--ink-2); }
+  .msg-row[data-role="agent_insight"] .msg-content { color: var(--ink-2); }
+  .msg-row[data-role="agent_insight"] .msg-content::before {
+    content: ""; display: inline-block;
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--accent); margin-right: 6px;
+    transform: translateY(-2px);
+  }
+  .composer {
+    margin-top: auto; padding-top: 14px;
+    border-top: 1px solid var(--rule);
+    display: flex; flex-direction: column; gap: 10px;
+  }
+  .composer-input {
+    width: 100%; border: none; outline: none; background: transparent;
+    font-family: var(--body); font-weight: 300; font-size: 18px;
+    line-height: 1.4; color: var(--ink-1); resize: none; padding: 0;
+  }
+  .composer-input::placeholder { color: var(--ink-3); }
+  .stream-line { display: flex; align-items: baseline; }
+  .stream-text { color: var(--ink-1); font-size: 18px; font-weight: 300; line-height: 1.4; }
+  .stream-caret {
+    display: inline-block; width: 1px; height: 1.05em;
+    background: var(--accent); margin-left: 1px;
+    transform: translateY(3px);
+    animation: blink 1s steps(2, start) infinite;
+  }
+  @keyframes blink { to { background: transparent; } }
+  .composer-foot {
+    display: flex; justify-content: space-between; align-items: center;
+    font-family: var(--mono); font-size: 10px; color: var(--ink-3);
+  }
+  kbd {
+    font-family: var(--mono); font-size: 10px;
+    background: var(--bg-2); border: 1px solid var(--rule);
+    border-radius: 4px; padding: 1px 5px; color: var(--ink-2);
+  }
+
+  /* projects tile ─────────────────────────────────── */
+  .project-list { display: flex; flex-direction: column; gap: 12px; }
+  .proj-row {
+    display: grid; grid-template-columns: 1fr auto;
+    align-items: baseline; gap: 12px;
+    padding-bottom: 10px; border-bottom: 1px solid var(--rule);
+  }
+  .proj-row:last-child { border-bottom: none; padding-bottom: 0; }
+  .proj-name { font-size: 14px; color: var(--ink-1); font-weight: 500; }
+  .proj-meta { font-size: 11px; color: var(--ink-3); margin-top: 2px; }
+  .status-pill {
+    font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase;
+    font-weight: 600; padding: 2px 8px; border-radius: 10px;
+    background: var(--bg-2); color: var(--ink-2);
+  }
+  .status-pill[data-status="active"] { color: var(--accent); background: var(--accent-soft); }
+
+  /* tasks tile ────────────────────────────────────── */
+  .task-list { display: flex; flex-direction: column; gap: 10px; }
+  .task-row {
+    display: flex; align-items: baseline; gap: 10px;
+    padding: 6px 0;
+    border-bottom: 1px dotted var(--rule);
+  }
+  .task-row:last-child { border-bottom: none; }
+  .task-check {
+    width: 14px; height: 14px;
+    border: 1.5px solid var(--ink-3); border-radius: 3px;
+    flex: none; transform: translateY(2px);
+  }
+  .task-title { flex: 1; font-size: 13px; color: var(--ink-1); }
+  .task-due { font-size: 11px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+  .task-row[data-overdue="true"] .task-due { color: var(--accent); }
+
+  /* notes tile ────────────────────────────────────── */
+  .note-list { display: flex; flex-direction: column; gap: 14px; max-width: 70ch; }
+  .note-row { display: grid; grid-template-columns: 80px 1fr; gap: 12px; align-items: baseline; }
+  .note-time { font-size: 11px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+  .note-content { color: var(--ink-1); font-size: 14px; line-height: 1.55; }
+
+  /* quick reference tile ──────────────────────────── */
+  .qref-grid {
+    display: grid; grid-template-columns: repeat(4, 1fr);
+    gap: 8px; height: 100%;
+  }
+  .qref-btn {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 6px; padding: 12px 6px;
+    background: transparent; border: 1px solid var(--rule); border-radius: 6px;
+    color: var(--ink-1); font-family: var(--body);
+    cursor: pointer; transition: all 200ms var(--ease);
+  }
+  .qref-btn:hover { background: var(--bg-2); border-color: var(--ink-2); }
+  .qref-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .qref-icon { color: var(--ink-2); }
+  .qref-btn:hover .qref-icon { color: var(--ink-1); }
+  .qref-label {
+    font-size: 10px; letter-spacing: 0.06em;
+    text-transform: uppercase; color: var(--ink-3); font-weight: 600;
+  }
+
+  /* documents tile (compact) ──────────────────────── */
+  .doc-row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 4px 0;
+    font-size: 13px;
+  }
+  .doc-row:not(:last-child) { border-bottom: 1px solid var(--rule); padding-bottom: 8px; margin-bottom: 8px; }
+  .doc-icon { color: var(--ink-3); flex: none; }
+  .doc-label { color: var(--ink-1); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* paper grain — light mode only; disabled in dark per DESIGN.md */
+
+  /* tile load stagger */
+  .tile { animation: rise 280ms var(--ease) backwards; }
+  .tile:nth-child(1) { animation-delay: 0ms; }
+  .tile:nth-child(2) { animation-delay: 50ms; }
+  .tile:nth-child(3) { animation-delay: 100ms; }
+  .tile:nth-child(4) { animation-delay: 150ms; }
+  .tile:nth-child(5) { animation-delay: 200ms; }
+  .tile:nth-child(6) { animation-delay: 250ms; }
+  @keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+</style>
+</head>
+<body>
+
+<div class="shell">
+  <!-- ─────────── SIDEBAR ─────────── -->
+  <nav class="sidebar" aria-label="Primary">
+    <div class="sidebar-brand">
+      MasterControl
+      <span class="sidebar-brand-sub">Field Notes</span>
+    </div>
+
+    <div class="sb-section">
+      <a class="sb-link" href="#">Home</a>
+      <a class="sb-link" href="#">Tasks</a>
+      <a class="sb-link" href="#">Reports</a>
+    </div>
+
+    <div class="sb-section">
+      <div class="sb-heading">Customers</div>
+      <a class="sb-link" href="#" aria-current="page">Fairview Health</a>
+      <a class="sb-link" href="#">CHR Health</a>
+      <a class="sb-link" href="#">Memorial Hermann</a>
+      <a class="sb-link" href="#">Allina Health</a>
+      <button class="sb-add">+ Add customer</button>
+    </div>
+
+    <div class="sb-section">
+      <a class="sb-link" href="#">OEM</a>
+      <a class="sb-link" href="#">Agents</a>
+    </div>
+
+    <div class="sb-section" style="margin-top:auto">
+      <a class="sb-link" href="#">Settings</a>
+    </div>
+  </nav>
+
+  <!-- ─────────── MAIN ─────────── -->
+  <main class="main">
+    <div class="page-header">
+      <div>
+        <div class="breadcrumb">Customers</div>
+        <h1 class="org-title">Fairview Health</h1>
+      </div>
+      <div class="header-actions">
+        <button class="btn">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 12h.01M12 12h.01M21 12h.01"/></svg>
+          Customize layout
+        </button>
+        <button class="btn">+ Add tile</button>
+      </div>
+    </div>
+
+    <div class="dashboard">
+
+      <!-- CHAT TILE ─────────── (large, dominant) -->
+      <section class="tile t-chat" aria-labelledby="t-chat">
+        <span class="drag-grip" aria-hidden="true"></span>
+        <header class="tile-head">
+          <div class="tile-title" id="t-chat">Fairview Agent</div>
+          <div class="tile-head-actions">
+            <button class="icon-btn" title="Thread history" aria-label="Thread history">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 12a9 9 0 1 0 9-9"/><path d="M3 4v5h5"/></svg>
+            </button>
+            <button class="icon-btn" title="More" aria-label="More">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>
+            </button>
+          </div>
+        </header>
+        <div class="tile-body" style="display:flex; flex-direction:column;">
+          <div class="chat-feed">
+            <div class="msg-row" data-role="user">
+              <div class="msg-time tnum">9:14 AM</div>
+              <div class="msg-content">Where are we on the EHR migration ask from Sarah?</div>
+            </div>
+            <div class="msg-row" data-role="assistant">
+              <div class="msg-time tnum">9:14 AM</div>
+              <div class="msg-content">
+                Active project, status <em>active</em>. Last note was Mon — Sarah asked for pricing on two paths:
+                Cisco-led refresh vs. NetApp-anchored hybrid. Pricing was due Friday; the latest note doesn't show a pricing draft attached. Want me to draft a comparison table?
+              </div>
+            </div>
+            <div class="msg-row" data-role="user">
+              <div class="msg-time tnum">9:15 AM</div>
+              <div class="msg-content">Yes, side by side, focus on TCO at 5 years.</div>
+            </div>
+          </div>
+
+          <div class="composer">
+            <div class="stream-line">
+              <span class="stream-text">Pulling 5-year TCO from the Cisco quote and the NetApp BOM, formatting</span><span class="stream-caret" aria-hidden="true"></span>
+            </div>
+            <textarea class="composer-input" placeholder="Ask the Fairview agent…" rows="1"></textarea>
+            <div class="composer-foot">
+              <span>Streaming · <kbd>Esc</kbd> to stop</span>
+              <span><kbd>⌘</kbd> + <kbd>↵</kbd> send</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- PRIORITY PROJECTS ─────────── (in edit-mode treatment to show the pattern) -->
+      <section class="tile t-projects is-editing" aria-labelledby="t-proj">
+        <span class="drag-grip" aria-hidden="true"></span>
+        <header class="tile-head">
+          <div class="tile-title" id="t-proj">Priority Projects <span class="tile-count">· 3</span></div>
+          <div class="tile-head-actions">
+            <button class="icon-btn" title="Settings" aria-label="Settings">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="3"/><path d="M19 12c0 .5-.06 1-.16 1.5l2 1.5-2 3.5-2.4-.9c-.7.5-1.4 1-2.2 1.2L14 21h-4l-.2-2.2c-.8-.2-1.5-.7-2.2-1.2l-2.4.9-2-3.5 2-1.5C5.06 13 5 12.5 5 12s.06-1 .16-1.5l-2-1.5 2-3.5 2.4.9c.7-.5 1.4-1 2.2-1.2L10 3h4l.2 2.2c.8.2 1.5.7 2.2 1.2l2.4-.9 2 3.5-2 1.5c.1.5.16 1 .16 1.5z"/></svg>
+            </button>
+          </div>
+        </header>
+        <div class="tile-body">
+          <div class="project-list">
+            <div class="proj-row">
+              <div>
+                <div class="proj-name">EHR Migration — Phase 2</div>
+                <div class="proj-meta">Cisco · NetApp · pricing decision Fri</div>
+              </div>
+              <span class="status-pill" data-status="active">Active</span>
+            </div>
+            <div class="proj-row">
+              <div>
+                <div class="proj-name">Network Refresh</div>
+                <div class="proj-meta">Cisco · 14 sites · scope review Mon</div>
+              </div>
+              <span class="status-pill" data-status="active">Active</span>
+            </div>
+            <div class="proj-row">
+              <div>
+                <div class="proj-name">Clinical Analytics POC</div>
+                <div class="proj-meta">Microsoft · scoping</div>
+              </div>
+              <span class="status-pill">Scoping</span>
+            </div>
+          </div>
+        </div>
+        <span class="resize-handle" aria-hidden="true"></span>
+      </section>
+
+      <!-- TASKS ─────────── -->
+      <section class="tile t-tasks" aria-labelledby="t-tasks">
+        <span class="drag-grip" aria-hidden="true"></span>
+        <header class="tile-head">
+          <div class="tile-title" id="t-tasks">Tasks <span class="tile-count">· 5 open</span></div>
+          <div class="tile-head-actions">
+            <button class="icon-btn" title="Filter" aria-label="Filter">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M22 3H2l8 9.46V19l4 2v-8.54z"/></svg>
+            </button>
+          </div>
+        </header>
+        <div class="tile-body">
+          <div class="task-list">
+            <div class="task-row" data-overdue="true">
+              <div class="task-check"></div>
+              <div class="task-title">Email Sarah re: TCO comparison</div>
+              <div class="task-due tnum">Today</div>
+            </div>
+            <div class="task-row">
+              <div class="task-check"></div>
+              <div class="task-title">Schedule Q2 QBR</div>
+              <div class="task-due tnum">Thu</div>
+            </div>
+            <div class="task-row">
+              <div class="task-check"></div>
+              <div class="task-title">Send NetApp tech sheet</div>
+              <div class="task-due tnum">Fri</div>
+            </div>
+            <div class="task-row">
+              <div class="task-check"></div>
+              <div class="task-title">Loop Marcus on partner program tier change</div>
+              <div class="task-due tnum">Apr 14</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- RECENT NOTES ─────────── -->
+      <section class="tile t-notes" aria-labelledby="t-notes">
+        <span class="drag-grip" aria-hidden="true"></span>
+        <header class="tile-head">
+          <div class="tile-title" id="t-notes">Recent Notes</div>
+          <div class="tile-head-actions">
+            <button class="icon-btn" title="Search notes" aria-label="Search notes">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+            </button>
+            <button class="icon-btn" title="Open all notes" aria-label="Open all notes">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M7 17L17 7M7 7h10v10"/></svg>
+            </button>
+          </div>
+        </header>
+        <div class="tile-body">
+          <div class="note-list">
+            <div class="note-row">
+              <div class="note-time tnum">9:14 AM</div>
+              <div class="note-content">Quick call w/ Sarah — they're firming up the budget for the EHR migration this quarter, deciding between a Cisco-led refresh and a NetApp-anchored hybrid. Wants pricing by Friday.</div>
+            </div>
+            <div class="note-row">
+              <div class="note-time tnum">Yesterday</div>
+              <div class="note-content"><span style="color:var(--accent)">●</span>&nbsp;Cisco's new Partner Program tiers (Gold/Black/White) close Mar&nbsp;31 — Fairview's existing Silver expires Apr&nbsp;14. Worth flagging to the channel team.</div>
+            </div>
+            <div class="note-row">
+              <div class="note-time tnum">Mon</div>
+              <div class="note-content">Drafted a pricing comparison table contrasting the Cisco refresh against the hybrid path. Saved to the EHR project notes.</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- QUICK REFERENCE ─────────── (the buried info pattern) -->
+      <section class="tile t-quickref" aria-labelledby="t-qref">
+        <span class="drag-grip" aria-hidden="true"></span>
+        <header class="tile-head">
+          <div class="tile-title" id="t-qref">Quick Reference</div>
+          <div class="tile-head-actions">
+            <button class="icon-btn" title="More" aria-label="More">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>
+            </button>
+          </div>
+        </header>
+        <div class="tile-body">
+          <div class="qref-grid">
+            <button class="qref-btn" title="View contacts">
+              <svg class="qref-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="9" cy="8" r="3"/><path d="M2 21v-2a4 4 0 0 1 4-4h6a4 4 0 0 1 4 4v2"/><circle cx="17" cy="8" r="3"/><path d="M22 21v-2a4 4 0 0 0-3-3.85"/></svg>
+              <span class="qref-label">Contacts</span>
+            </button>
+            <button class="qref-btn" title="Profile & company info">
+              <svg class="qref-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 21h18M5 21V7l7-4 7 4v14M9 21V11h6v10"/></svg>
+              <span class="qref-label">Profile</span>
+            </button>
+            <button class="qref-btn" title="Address & locations">
+              <svg class="qref-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+              <span class="qref-label">Locations</span>
+            </button>
+            <button class="qref-btn" title="Web & portals">
+              <svg class="qref-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15 15 0 0 1 4 10 15 15 0 0 1-4 10 15 15 0 0 1-4-10 15 15 0 0 1 4-10z"/></svg>
+              <span class="qref-label">Web</span>
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- DOCUMENTS ─────────── (compact list) -->
+      <section class="tile t-documents" aria-labelledby="t-docs">
+        <span class="drag-grip" aria-hidden="true"></span>
+        <header class="tile-head">
+          <div class="tile-title" id="t-docs">Documents <span class="tile-count">· 12</span></div>
+          <div class="tile-head-actions">
+            <button class="icon-btn" title="Add link" aria-label="Add link">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 5v14M5 12h14"/></svg>
+            </button>
+          </div>
+        </header>
+        <div class="tile-body" style="padding-top:10px;">
+          <div class="doc-row">
+            <svg class="doc-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.71 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+            <span class="doc-label">EHR Migration — Master SOW</span>
+          </div>
+          <div class="doc-row">
+            <svg class="doc-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.71 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+            <span class="doc-label">Cisco Partner Portal — Fairview account</span>
+          </div>
+        </div>
+      </section>
+
+    </div>
+  </main>
+</div>
+
+</body>
+</html>

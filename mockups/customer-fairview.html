@@ -1,0 +1,573 @@
+<!doctype html>
+<html lang="en" color-scheme="light">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="theme-color" content="#FAF7F2" />
+<title>MasterControl — Fairview · Mockup</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="preconnect" href="https://api.fontshare.com" crossorigin />
+<link
+  rel="stylesheet"
+  href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=JetBrains+Mono:wght@400;500&display=swap"
+/>
+<link
+  rel="stylesheet"
+  href="https://api.fontshare.com/v2/css?f[]=switzer@200,300,400,500,600,700&display=swap"
+/>
+
+<style>
+  :root {
+    --bg: #FAF7F2;
+    --bg-2: #F2EDE3;
+    --ink-1: #1A1815;
+    --ink-2: #5C564E;
+    --ink-3: #A39A8C;
+    --rule: #E0D8C9;
+    --accent: #C8482E;
+    --accent-soft: #FCE8DF;
+    --display: 'Fraunces', ui-serif, Georgia, serif;
+    --body: 'Switzer', ui-sans-serif, system-ui, sans-serif;
+    --mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+    --ease: cubic-bezier(0.2, 0, 0, 1);
+  }
+
+  *, *::before, *::after { box-sizing: border-box; }
+
+  html, body { height: 100%; margin: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--ink-1);
+    font-family: var(--body);
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  h1, h2, h3 { text-wrap: balance; margin: 0; font-family: var(--display); }
+  p { text-wrap: pretty; margin: 0; }
+  .tnum { font-variant-numeric: tabular-nums; }
+
+  /* ───────────────────────── layout shell ───────────────────────── */
+  .shell {
+    display: grid;
+    grid-template-columns: 220px 1fr;
+    min-height: 100vh;
+  }
+
+  .sidebar {
+    border-right: 1px solid var(--rule);
+    padding: 20px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+  }
+
+  .sidebar-brand {
+    font-family: var(--display);
+    font-weight: 600;
+    font-size: 18px;
+    letter-spacing: -0.01em;
+    padding: 4px 8px 12px;
+    border-bottom: 1px solid var(--rule);
+    color: var(--ink-1);
+  }
+  .sidebar-brand-sub {
+    display: block;
+    font-family: var(--body);
+    font-weight: 500;
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    margin-top: 2px;
+  }
+
+  .sb-section {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .sb-heading {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    padding: 0 8px 6px;
+  }
+
+  .sb-link {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 7px 10px;
+    border-radius: 6px;
+    color: var(--ink-1);
+    text-decoration: none;
+    font-size: 14px;
+    font-weight: 400;
+    border-left: 2px solid transparent;
+    transition: background 200ms var(--ease), border-color 200ms var(--ease);
+    position: relative;
+  }
+  .sb-link:hover { background: var(--bg-2); }
+  .sb-link[aria-current="page"] {
+    background: var(--accent-soft);
+    border-left-color: var(--accent);
+    color: var(--ink-1);
+    border-radius: 0 6px 6px 0;
+    margin-left: -2px;
+    padding-left: 10px;
+  }
+  .sb-link svg { stroke: var(--ink-2); }
+
+  .sb-add {
+    margin: 6px 8px 0;
+    padding: 6px 10px;
+    font-size: 12px;
+    color: var(--ink-2);
+    background: transparent;
+    border: 1px dashed var(--rule);
+    border-radius: 6px;
+    text-align: left;
+    cursor: pointer;
+    font-family: var(--body);
+    transition: color 200ms var(--ease), border-color 200ms var(--ease);
+  }
+  .sb-add:hover { color: var(--ink-1); border-color: var(--ink-2); }
+
+  /* ───────────────────────── main column ───────────────────────── */
+  .main {
+    padding: 40px 56px 80px;
+    max-width: 1100px;
+  }
+
+  .breadcrumb {
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    font-weight: 500;
+    margin-bottom: 8px;
+  }
+
+  .org-title {
+    font-family: var(--display);
+    font-weight: 500;
+    font-size: 64px;
+    line-height: 1.02;
+    letter-spacing: -0.02em;
+    margin-left: -3px; /* slight optical hang into the gutter */
+  }
+  .org-meta {
+    margin-top: 10px;
+    color: var(--ink-2);
+    font-size: 14px;
+  }
+  .org-meta-sep { color: var(--ink-3); margin: 0 8px; }
+
+  .tiles {
+    margin-top: 40px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  /* ───────────────────────── tile ───────────────────────── */
+  .tile {
+    border: 1px solid var(--rule);
+    border-radius: 8px;
+    background: var(--bg);
+  }
+  .tile-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 18px 28px;
+    cursor: pointer;
+    user-select: none;
+    border-radius: 8px;
+    transition: background 200ms var(--ease);
+  }
+  .tile[data-collapsed="true"] .tile-body { display: none; }
+  .tile[data-collapsed="true"] .tile-header { border-radius: 8px; }
+  .tile[data-collapsed="false"] .tile-header { border-bottom: 1px solid var(--rule); border-radius: 8px 8px 0 0; }
+  .tile[data-collapsed="true"] .tile-header:hover { background: var(--bg-2); }
+  .tile-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--ink-1);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .tile-count {
+    color: var(--ink-3);
+    font-weight: 400;
+    font-size: 13px;
+  }
+  .tile-chevron {
+    color: var(--ink-2);
+    transition: transform 200ms var(--ease);
+  }
+  .tile[data-collapsed="false"] .tile-chevron { transform: rotate(90deg); }
+
+  .tile-body { padding: 24px 28px 28px; }
+
+  /* profile tile content */
+  .pairs {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    column-gap: 32px;
+    row-gap: 14px;
+    font-size: 14px;
+  }
+  .pairs dt {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--ink-3);
+    font-weight: 600;
+    align-self: center;
+  }
+  .pairs dd { margin: 0; color: var(--ink-1); }
+  .pairs dd a { color: var(--ink-1); text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 3px; }
+  .pairs dd a:hover { text-decoration-color: var(--accent); color: var(--accent); }
+
+  /* notes feed */
+  .notes-feed {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    max-width: 70ch;
+  }
+  .note-row {
+    display: grid;
+    grid-template-columns: 16px 80px 1fr;
+    gap: 12px;
+    align-items: baseline;
+  }
+  .note-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: transparent;
+    transform: translateY(8px);
+    justify-self: center;
+  }
+  .note-row[data-role="agent_insight"] .note-dot { background: var(--accent); }
+  .note-time {
+    font-size: 11px;
+    color: var(--ink-3);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.02em;
+  }
+  .note-content {
+    color: var(--ink-1);
+    font-size: 15px;
+    line-height: 1.55;
+  }
+  .note-row[data-role="agent_insight"] .note-content {
+    color: var(--ink-2);
+  }
+  .note-tag {
+    display: inline-block;
+    margin-left: 8px;
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--accent);
+    font-weight: 600;
+    transform: translateY(-2px);
+  }
+
+  /* composer */
+  .composer {
+    margin-top: 32px;
+    border-top: 1px solid var(--rule);
+    padding-top: 28px;
+  }
+  .composer-input {
+    width: 100%;
+    border: none;
+    background: transparent;
+    outline: none;
+    font-family: var(--body);
+    font-weight: 300;
+    font-size: 24px;
+    line-height: 1.4;
+    color: var(--ink-1);
+    resize: none;
+    padding: 0;
+    min-height: 1.4em;
+  }
+  .composer-input::placeholder { color: var(--ink-3); font-weight: 300; }
+
+  .composer-streaming {
+    display: flex;
+    align-items: baseline;
+    gap: 0;
+    font-size: 24px;
+    line-height: 1.4;
+    font-weight: 300;
+  }
+  .composer-streaming .stream-text { color: var(--ink-1); }
+  .composer-streaming .stream-caret {
+    display: inline-block;
+    width: 1px;
+    height: 1.05em;
+    background: var(--accent);
+    margin-left: 1px;
+    transform: translateY(3px);
+    animation: blink 1s steps(2, start) infinite;
+  }
+  @keyframes blink { to { background: transparent; } }
+
+  .composer-foot {
+    margin-top: 18px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .composer-hint {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--ink-3);
+    letter-spacing: 0.02em;
+  }
+  .composer-hint kbd {
+    font-family: var(--mono);
+    font-size: 10px;
+    background: var(--bg-2);
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    padding: 1px 5px;
+    color: var(--ink-2);
+  }
+  .btn-stop {
+    font-family: var(--body);
+    font-size: 12px;
+    color: var(--ink-2);
+    background: var(--bg-2);
+    border: 1px solid var(--rule);
+    padding: 6px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    letter-spacing: 0.04em;
+  }
+  .btn-stop:hover { color: var(--accent); border-color: var(--accent); }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+
+  /* very subtle paper grain — barely visible, optional */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)' opacity='0.5'/></svg>");
+    opacity: 0.04;
+    pointer-events: none;
+    z-index: 999;
+    mix-blend-mode: multiply;
+  }
+
+  /* tile load stagger */
+  .tile { animation: rise 280ms var(--ease) backwards; }
+  .tile:nth-child(1) { animation-delay: 0ms; }
+  .tile:nth-child(2) { animation-delay: 50ms; }
+  .tile:nth-child(3) { animation-delay: 100ms; }
+  .tile:nth-child(4) { animation-delay: 150ms; }
+  .tile:nth-child(5) { animation-delay: 200ms; }
+  @keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+</style>
+</head>
+<body>
+
+<div class="shell">
+  <!-- ───────────── SIDEBAR ───────────── -->
+  <nav class="sidebar" aria-label="Primary">
+    <div class="sidebar-brand">
+      MasterControl
+      <span class="sidebar-brand-sub">Field Notes</span>
+    </div>
+
+    <div class="sb-section">
+      <a class="sb-link" href="#"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9.5L12 3l9 6.5"/><path d="M5 10v10h14V10"/></svg>Home</a>
+      <a class="sb-link" href="#"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>Tasks</a>
+      <a class="sb-link" href="#"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>Reports</a>
+    </div>
+
+    <div class="sb-section">
+      <div class="sb-heading">Customers</div>
+      <a class="sb-link" href="#" aria-current="page">Fairview Health</a>
+      <a class="sb-link" href="#">CHR Health</a>
+      <a class="sb-link" href="#">Memorial Hermann</a>
+      <a class="sb-link" href="#">Allina Health</a>
+      <button class="sb-add">+ Add customer</button>
+    </div>
+
+    <div class="sb-section">
+      <a class="sb-link" href="#"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>OEM</a>
+      <a class="sb-link" href="#"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3"/><path d="M5 21v-2a4 4 0 0 1 4-4h6a4 4 0 0 1 4 4v2"/></svg>Agents</a>
+    </div>
+
+    <div class="sb-section" style="margin-top:auto">
+      <a class="sb-link" href="#"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>Settings</a>
+    </div>
+  </nav>
+
+  <!-- ───────────── MAIN ───────────── -->
+  <main class="main">
+    <div class="breadcrumb">Customers</div>
+    <h1 class="org-title">Fairview Health</h1>
+    <div class="org-meta">
+      <span>Healthcare</span>
+      <span class="org-meta-sep">·</span>
+      <span>Twin&nbsp;Cities, MN</span>
+      <span class="org-meta-sep">·</span>
+      <span>34,000 employees</span>
+    </div>
+
+    <div class="tiles">
+      <!-- Profile -->
+      <section class="tile" data-collapsed="false" aria-labelledby="t1">
+        <div class="tile-header">
+          <div class="tile-title">
+            <svg class="tile-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+            <span id="t1">Profile</span>
+          </div>
+        </div>
+        <div class="tile-body">
+          <dl class="pairs">
+            <dt>Industry</dt><dd>Healthcare</dd>
+            <dt>Region</dt><dd>Twin Cities, MN</dd>
+            <dt>Headquarters</dt><dd>2450&nbsp;Riverside Ave, Minneapolis</dd>
+            <dt>Size</dt><dd>34,000 employees · 14 hospitals</dd>
+            <dt>Website</dt><dd><a href="#" translate="no">fairview.org</a></dd>
+            <dt>Account&nbsp;exec</dt><dd>You · since Jan&nbsp;2024</dd>
+          </dl>
+        </div>
+      </section>
+
+      <!-- Contacts (collapsed) -->
+      <section class="tile" data-collapsed="true" aria-labelledby="t2">
+        <div class="tile-header">
+          <div class="tile-title">
+            <svg class="tile-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+            <span id="t2">Contacts <span class="tile-count">· 8</span></span>
+          </div>
+        </div>
+      </section>
+
+      <!-- Projects (collapsed) -->
+      <section class="tile" data-collapsed="true" aria-labelledby="t3">
+        <div class="tile-header">
+          <div class="tile-title">
+            <svg class="tile-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+            <span id="t3">Projects <span class="tile-count">· 3 active</span></span>
+          </div>
+        </div>
+      </section>
+
+      <!-- Documents (collapsed) -->
+      <section class="tile" data-collapsed="true" aria-labelledby="t4">
+        <div class="tile-header">
+          <div class="tile-title">
+            <svg class="tile-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+            <span id="t4">Documents <span class="tile-count">· 12</span></span>
+          </div>
+        </div>
+      </section>
+
+      <!-- Notes & Chat -->
+      <section class="tile" data-collapsed="false" aria-labelledby="t5">
+        <div class="tile-header">
+          <div class="tile-title">
+            <svg class="tile-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+            <span id="t5">Notes &amp; Chat</span>
+          </div>
+        </div>
+        <div class="tile-body">
+          <div class="notes-feed">
+
+            <div class="note-row" data-role="user">
+              <div class="note-dot"></div>
+              <div class="note-time tnum">9:14 AM</div>
+              <div class="note-content">
+                Quick call w/ Sarah — they're firming up the budget for the
+                EHR migration this quarter, deciding between a Cisco-led
+                refresh and a NetApp-anchored hybrid. Wants pricing by
+                Friday.
+              </div>
+            </div>
+
+            <div class="note-row" data-role="agent_insight">
+              <div class="note-dot" aria-label="agent insight"></div>
+              <div class="note-time tnum">Yesterday</div>
+              <div class="note-content">
+                Cisco's new Partner Program tiers (Gold/Black/White) close
+                Mar&nbsp;31&nbsp;— Fairview's existing Silver expires
+                Apr&nbsp;14. Worth flagging to the channel team.
+                <span class="note-tag">Insight</span>
+              </div>
+            </div>
+
+            <div class="note-row" data-role="user">
+              <div class="note-dot"></div>
+              <div class="note-time tnum">Yesterday</div>
+              <div class="note-content">
+                Meeting notes: weekly sync, attendance Sarah&nbsp;K, Marcus,
+                Priya. Action items captured to Tasks.
+              </div>
+            </div>
+
+            <div class="note-row" data-role="assistant">
+              <div class="note-dot"></div>
+              <div class="note-time tnum">Mon</div>
+              <div class="note-content">
+                Drafted a pricing comparison table contrasting the Cisco
+                refresh against the hybrid path. Saved as a project note.
+              </div>
+            </div>
+
+          </div>
+
+          <div class="composer">
+            <!-- streaming preview state -->
+            <div class="composer-streaming" aria-live="polite">
+              <span class="stream-text">Looking at last quarter's projects, Fairview's biggest near-term decision is the EHR refresh path</span><span class="stream-caret" aria-hidden="true"></span>
+            </div>
+            <div class="composer-foot">
+              <div class="composer-hint">Streaming · <kbd>Esc</kbd> to stop</div>
+              <button class="btn-stop">STOP</button>
+            </div>
+          </div>
+
+        </div>
+      </section>
+
+    </div>
+  </main>
+</div>
+
+</body>
+</html>
