@@ -1,0 +1,561 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="theme-color" content="#0E1116" />
+<title>MasterControl — Empty States Mockup</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="preconnect" href="https://api.fontshare.com" crossorigin />
+<link rel="stylesheet"
+  href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&display=swap" />
+<link rel="stylesheet"
+  href="https://api.fontshare.com/v2/css?f[]=switzer@300,400,500,600,700&display=swap" />
+
+<style>
+  /* ── DESIGN TOKENS ───────────────────────────────────── */
+  :root {
+    color-scheme: dark;
+    --bg:          #0E1116;
+    --bg-2:        #161A21;
+    --ink-1:       #EDE7DA;
+    --ink-2:       #9A958A;
+    --ink-3:       #5C564E;
+    --rule:        #2A2F38;
+    --accent:      #E66B4D;
+    --accent-soft: #2C1A14;
+    --display: 'Fraunces', ui-serif, Georgia, serif;
+    --body:    'Switzer', ui-sans-serif, system-ui, sans-serif;
+    --mono:    ui-monospace, Menlo, Consolas, monospace;
+    --ease:    cubic-bezier(0.2, 0, 0, 1);
+  }
+
+  /* ── RESET ───────────────────────────────────────────── */
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--bg);
+    color: var(--ink-1);
+    font-family: var(--body);
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  h1, h2, h3 { text-wrap: balance; margin: 0; font-family: var(--display); }
+  p { text-wrap: pretty; margin: 0; }
+
+  /* ── SKIP LINK ───────────────────────────────────────── */
+  .skip-link {
+    position: absolute;
+    left: -9999px;
+    top: 8px;
+    z-index: 100;
+    background: var(--bg-2);
+    color: var(--ink-1);
+    padding: 8px 16px;
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    font-family: var(--body);
+    font-size: 14px;
+    text-decoration: none;
+  }
+  .skip-link:focus { left: 8px; outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* ── LAYOUT ──────────────────────────────────────────── */
+  .page { max-width: 960px; margin: 0 auto; padding: 48px 32px 96px; }
+
+  /* Two-column grid for main content + sidebar column */
+  .two-col {
+    display: grid;
+    grid-template-columns: 1fr 320px;
+    gap: 32px;
+    align-items: start;
+  }
+
+  /* ── PAGE HEADER ─────────────────────────────────────── */
+  .eyebrow {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    margin-bottom: 8px;
+  }
+  .page-title {
+    font-family: var(--display);
+    font-weight: 500;
+    font-size: 56px;
+    line-height: 1.02;
+    letter-spacing: -0.02em;
+    margin-left: -3px;
+    color: var(--ink-1);
+    margin-bottom: 8px;
+  }
+  .page-subtitle {
+    font-size: 14px;
+    color: var(--ink-2);
+    margin-bottom: 48px;
+  }
+
+  /* ── SECTION LABEL ───────────────────────────────────── */
+  .section-label {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    margin-bottom: 16px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--rule);
+  }
+
+  /* ── EMPTY STATE FRAME ───────────────────────────────── */
+  /* Per DESIGN.md § Empty states: dashed --rule border,
+     32px padding, centered 14px --ink-2 copy, no illustrations */
+  .empty-frame {
+    border: 1px dashed var(--rule);
+    border-radius: 8px;
+    padding: 32px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    gap: 12px;
+    margin-bottom: 12px;
+    min-height: 120px;
+  }
+
+  .empty-copy {
+    font-size: 14px;
+    color: var(--ink-2);
+    max-width: 40ch;
+    line-height: 1.5;
+  }
+
+  .empty-label {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    margin-bottom: 4px;
+  }
+
+  /* Caption beneath each frame */
+  .frame-caption {
+    font-size: 12px;
+    color: var(--ink-3);
+    margin-bottom: 24px;
+    line-height: 1.5;
+  }
+
+  /* ── CTA BUTTONS ─────────────────────────────────────── */
+  .btn-outline {
+    font-family: var(--body);
+    font-size: 13px;
+    font-weight: 500;
+    padding: 7px 14px;
+    border-radius: 6px;
+    cursor: pointer;
+    border: 1px dashed var(--rule);
+    background: transparent;
+    color: var(--ink-2);
+    transition: color 200ms var(--ease),
+                border-color 200ms var(--ease),
+                background-color 200ms var(--ease);
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    line-height: 1;
+  }
+  .btn-outline:hover { color: var(--ink-1); border-color: var(--ink-2); background: var(--bg-2); }
+  .btn-outline:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* Primary (solid border) */
+  .btn-primary {
+    font-family: var(--body);
+    font-size: 13px;
+    font-weight: 500;
+    padding: 7px 14px;
+    border-radius: 6px;
+    cursor: pointer;
+    border: 1px solid var(--accent);
+    background: var(--bg-2);
+    color: var(--ink-1);
+    transition: color 200ms var(--ease),
+                border-color 200ms var(--ease),
+                background-color 200ms var(--ease);
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    line-height: 1;
+  }
+  .btn-primary:hover { background: var(--accent-soft); }
+  .btn-primary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* ── STREAM FAILURE CARD ─────────────────────────────── */
+  .stream-failure {
+    border: 1px solid var(--rule);
+    border-top: 3px solid var(--accent);   /* vermilion top-rule — transient signal */
+    border-radius: 0 0 8px 8px;
+    background: var(--bg-2);
+    padding: 16px 20px;
+    margin-bottom: 12px;
+  }
+
+  .stream-failure-partial {
+    font-size: 14px;
+    color: var(--ink-2);
+    line-height: 1.6;
+    margin-bottom: 12px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--rule);
+  }
+
+  .stream-failure-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .stream-failure-msg {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: var(--accent);
+    font-weight: 500;
+  }
+
+  .btn-retry {
+    font-family: var(--body);
+    font-size: 12px;
+    font-weight: 500;
+    padding: 5px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    border: 1px solid var(--accent);
+    background: transparent;
+    color: var(--accent);
+    transition: color 200ms var(--ease),
+                background-color 200ms var(--ease);
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    line-height: 1;
+  }
+  .btn-retry:hover { background: var(--accent-soft); color: var(--ink-1); border-color: var(--accent); }
+  .btn-retry:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* ── SKELETON ────────────────────────────────────────── */
+  /* Per DESIGN.md § States: three hairline bars at --rule.
+     NO shimmer. Render only after 200 ms — under that, blank. */
+  .skeleton-frame {
+    border: 1px solid var(--rule);
+    border-radius: 8px;
+    padding: 20px 24px;
+    background: var(--bg-2);
+    margin-bottom: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .skeleton-bar {
+    height: 1px;
+    background: var(--rule);
+    border-radius: 1px;
+  }
+
+  .skeleton-bar-wide  { width: 72%; }
+  .skeleton-bar-mid   { width: 54%; }
+  .skeleton-bar-short { width: 38%; }
+
+  /* ── CHAT EMPTY — COMPOSER FLOATING ALONE ────────────── */
+  .chat-empty-frame {
+    border: 1px dashed var(--rule);
+    border-radius: 8px;
+    padding: 32px 32px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .chat-empty-copy {
+    font-size: 14px;
+    color: var(--ink-2);
+    line-height: 1.5;
+    text-align: center;
+    margin-bottom: 12px;
+  }
+
+  .composer-stub {
+    border-top: 1px solid var(--rule);
+    padding-top: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .composer-stub-input {
+    font-family: var(--body);
+    font-weight: 300;
+    font-size: 18px;
+    color: var(--ink-3);
+    border: none;
+    background: transparent;
+    outline: none;
+    width: 100%;
+    resize: none;
+    padding: 0;
+  }
+
+  .composer-stub-foot {
+    display: flex;
+    justify-content: space-between;
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--ink-3);
+  }
+  kbd {
+    font-family: var(--mono);
+    font-size: 10px;
+    background: var(--bg);
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    padding: 1px 5px;
+    color: var(--ink-2);
+  }
+
+  /* ── SIDEBAR EMPTY — small compact style ────────────── */
+  .sidebar-empty {
+    border: 1px dashed var(--rule);
+    border-radius: 6px;
+    padding: 12px 14px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .sidebar-empty-copy {
+    font-size: 13px;
+    color: var(--ink-3);
+  }
+
+  /* ── FOCUS-VISIBLE GLOBAL ────────────────────────────── */
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+
+  /* ── FOOTER ──────────────────────────────────────────── */
+  .page-footer {
+    margin-top: 64px;
+    padding-top: 24px;
+    border-top: 1px solid var(--rule);
+    font-size: 12px;
+    color: var(--ink-3);
+    line-height: 1.6;
+  }
+
+  /* ── REDUCED MOTION ──────────────────────────────────── */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+</style>
+</head>
+<body>
+
+<a class="skip-link" href="#main">Skip to main content</a>
+
+<main id="main" class="page">
+
+  <!-- PAGE HEADER -->
+  <div class="eyebrow">Mockups</div>
+  <h1 class="page-title">Empty States</h1>
+  <p class="page-subtitle">Per-tile empty-state catalog from DESIGN.md&nbsp;§&nbsp;States.</p>
+
+  <div class="two-col">
+
+    <!-- ── LEFT COLUMN: TILE EMPTY STATES ────────────── -->
+    <div>
+      <div class="section-label">Per-tile catalog</div>
+
+      <!-- 1. Empty chat (no thread) -->
+      <div class="empty-label">Chat tile</div>
+      <div class="chat-empty-frame">
+        <p class="chat-empty-copy">
+          Start a conversation with the Fairview Health agent.
+          It has access to this customer's contacts, projects, and recent notes.
+        </p>
+        <div class="composer-stub">
+          <textarea
+            class="composer-stub-input"
+            placeholder="Ask the Fairview Health agent…"
+            rows="2"
+            aria-label="Ask the Fairview Health agent"
+          ></textarea>
+          <div class="composer-stub-foot">
+            <span>No active thread</span>
+            <span><kbd>⌘</kbd>&nbsp;<kbd>↵</kbd> send</span>
+          </div>
+        </div>
+      </div>
+      <p class="frame-caption">Composer floats alone. Helper copy explains what the agent can see.</p>
+
+      <!-- 2. Empty projects -->
+      <div class="empty-label">Projects tile</div>
+      <div class="empty-frame">
+        <p class="empty-copy">No projects on record. Add one when an engagement starts.</p>
+        <button class="btn-outline" type="button">
+          <!-- Lucide Plus 14px -->
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+          Add project
+        </button>
+      </div>
+      <p class="frame-caption">Outline button; dashed border matches the frame.</p>
+
+      <!-- 3. Empty notes -->
+      <div class="empty-label">Notes tile</div>
+      <div class="empty-frame">
+        <p class="empty-copy">Take your first note. The agent will see anything you save here.</p>
+        <button class="btn-outline" type="button">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+          Add note
+        </button>
+      </div>
+      <p class="frame-caption">Copy explains the AI-visibility implication up front.</p>
+
+      <!-- 4. Empty contacts -->
+      <div class="empty-label">Contacts tile</div>
+      <div class="empty-frame">
+        <p class="empty-copy">No contacts yet. Add the account team.</p>
+        <button class="btn-outline" type="button">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+          Add contact
+        </button>
+      </div>
+      <p class="frame-caption">First-class tile per R-012 — highest-frequency reference.</p>
+
+      <!-- 5. Empty quick reference -->
+      <div class="empty-label">Quick Reference tile</div>
+      <div class="empty-frame">
+        <p class="empty-copy">No reference data yet. Profile fills in as you add contacts, locations, and portals.</p>
+      </div>
+      <p class="frame-caption">No CTA — populated implicitly as other tiles fill in.</p>
+
+      <!-- 6. Empty tasks (today) -->
+      <div class="empty-label">Tasks tile — today view</div>
+      <div class="empty-frame">
+        <p class="empty-copy">Nothing due today.</p>
+      </div>
+      <p class="frame-caption">Short and specific. No CTA needed — tasks flow from other contexts.</p>
+
+      <!-- 7. Empty insights queue -->
+      <div class="empty-label">Agent Insights queue</div>
+      <div class="empty-frame">
+        <p class="empty-copy">No agent insights waiting for review.</p>
+      </div>
+      <p class="frame-caption">Insights are unconfirmed <code style="font-family:var(--mono);color:var(--ink-2)">agent_insight</code> notes per R-002. Queue is cross-org on the Agents page.</p>
+
+      <!-- 8. Empty audit log -->
+      <div class="empty-label">Agent tool audit log</div>
+      <div class="empty-frame">
+        <p class="empty-copy">No tool calls yet. The agent&#8217;s actions will appear here.</p>
+      </div>
+      <p class="frame-caption">
+        <code style="font-family:var(--mono);color:var(--ink-2)">agent_tool_audit</code> table per R-022.
+        Curly apostrophe: &#8217;.
+      </p>
+    </div>
+
+    <!-- ── RIGHT COLUMN: SIDEBAR EMPTY + STREAM FAILURE + SKELETON ─ -->
+    <div>
+
+      <!-- SIDEBAR EMPTY CUSTOMERS -->
+      <div class="section-label">Sidebar — empty customers</div>
+      <div class="sidebar-empty" style="margin-bottom:8px">
+        <span class="sidebar-empty-copy">No customers yet.</span>
+        <button class="btn-outline" type="button" style="font-size:12px; padding:5px 10px">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+          Add customer
+        </button>
+      </div>
+      <p class="frame-caption" style="margin-bottom:32px">
+        Matches sidebar's 13px Switzer, dashed outline per DESIGN.md&nbsp;§&nbsp;Sidebar.
+      </p>
+
+      <!-- STREAM FAILURE -->
+      <div class="section-label">Stream failure — inline pattern</div>
+      <div
+        class="stream-failure"
+        role="alert"
+        aria-live="assertive"
+        aria-atomic="false"
+      >
+        <div class="stream-failure-partial">
+          Pulling 5-year TCO from the Cisco quote and the NetApp BOM. The Cisco-led
+          path carries a higher upfront infrastructure cost but NetApp&#8217;s hybrid
+          model introduces ongoing licensing complexity that&nbsp;…
+        </div>
+        <div class="stream-failure-bar">
+          <div class="stream-failure-msg">
+            <!-- Lucide AlertTriangle 14px -->
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+            Stream interrupted&#8202;—&#8202;try again
+          </div>
+          <button class="btn-retry" type="button" aria-label="Retry streaming the response">
+            <!-- Lucide RefreshCw 12px -->
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg>
+            Retry
+          </button>
+        </div>
+      </div>
+      <p class="frame-caption" style="margin-bottom:32px">
+        <strong style="color:var(--ink-2)">Pattern:</strong> partial assistant text is retained and visible.
+        Vermilion 3px top-rule signals interruption (transient signal per Q-1).
+        Container carries <code style="font-family:var(--mono);color:var(--ink-2)">role="alert"</code> +
+        <code style="font-family:var(--mono);color:var(--ink-2)">aria-live="assertive"</code> so screen
+        readers announce the failure immediately. Retry re-sends the last user message.
+      </p>
+
+      <!-- LOADING SKELETON -->
+      <div class="section-label">Loading skeleton</div>
+      <div class="skeleton-frame" aria-busy="true" aria-label="Loading content">
+        <div class="skeleton-bar skeleton-bar-wide" aria-hidden="true"></div>
+        <div class="skeleton-bar skeleton-bar-mid" aria-hidden="true"></div>
+        <div class="skeleton-bar skeleton-bar-short" aria-hidden="true"></div>
+      </div>
+      <p class="frame-caption">
+        Three hairline <code style="font-family:var(--mono);color:var(--ink-2)">--rule</code>
+        bars. <strong style="color:var(--ink-2)">No shimmer</strong> — shimmer contradicts the calm aesthetic and
+        is superfluous animation per DESIGN.md&nbsp;§&nbsp;Motion.
+        Container has <code style="font-family:var(--mono);color:var(--ink-2)">aria-busy="true"</code>.
+        <br /><br />
+        <strong style="color:var(--ink-2)">Render rule:</strong> show only after 200&nbsp;ms. Under that
+        threshold, render nothing (blank). Prevents skeleton flash on fast connections.
+        Implement via <code style="font-family:var(--mono);color:var(--ink-2)">setTimeout</code> in the
+        query loading hook.
+      </p>
+
+    </div>
+  </div>
+
+  <!-- ── FOOTER ────────────────────────────────────────── -->
+  <footer class="page-footer">
+    Implements: DESIGN.md&nbsp;§&nbsp;States (per-tile empty-state catalog, stream-failure inline
+    pattern, loading skeleton spec), §&nbsp;Empty states, §&nbsp;Motion (no shimmer), §&nbsp;Accessibility
+    floor (<code style="font-family:var(--mono)">aria-live</code>, <code style="font-family:var(--mono)">aria-busy</code>,
+    <code style="font-family:var(--mono)">role="alert"</code>) —
+    and REVIEW.md item R-010 (stream-failure UI, empty-state catalog, loading skeleton) &amp; R-011 (a11y).
+  </footer>
+
+</main>
+</body>
+</html>

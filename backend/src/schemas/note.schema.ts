@@ -1,0 +1,45 @@
+import { z } from 'zod';
+
+export const NoteRoleSchema = z.enum([
+  'user',
+  'assistant',
+  'agent_insight',
+  'imported',
+]);
+
+// Provenance JSON shape — captured as a typed object then stored as JSON in the DB
+export const NoteProvenanceSchema = z
+  .object({
+    tool: z.string().optional(),
+    source_thread_id: z.number().int().optional(),
+    source_org_id: z.number().int().optional(),
+    web_citations: z.array(z.string()).optional(),
+  })
+  .nullable();
+
+export const NoteSchema = z.object({
+  id: z.number().int(),
+  organization_id: z.number().int(),
+  content: z.string(),
+  ai_response: z.string().nullable(),
+  source_path: z.string().nullable(),
+  file_mtime: z.string().nullable(),
+  role: NoteRoleSchema,
+  thread_id: z.number().int().nullable(),
+  provenance: NoteProvenanceSchema,
+  confirmed: z.boolean(),
+  created_at: z.string(),
+});
+
+export const NoteCreateSchema = z.object({
+  organization_id: z.number().int(),
+  content: z.string().min(1),
+  role: NoteRoleSchema.optional(),
+  thread_id: z.number().int().optional().nullable(),
+  provenance: NoteProvenanceSchema.optional(),
+});
+
+export type NoteRole = z.infer<typeof NoteRoleSchema>;
+export type NoteProvenance = z.infer<typeof NoteProvenanceSchema>;
+export type Note = z.infer<typeof NoteSchema>;
+export type NoteCreate = z.infer<typeof NoteCreateSchema>;

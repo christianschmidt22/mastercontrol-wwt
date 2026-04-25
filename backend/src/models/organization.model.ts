@@ -1,6 +1,6 @@
 import { db } from '../db/database.js';
 
-export type OrgType = 'customer' | 'agent' | 'oem';
+export type OrgType = 'customer' | 'oem';
 
 interface OrgRow {
   id: number;
