@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <!-- theme-color for browser chrome; dark default per user preference -->
+  <meta name="theme-color" content="#0E1116" />
+  <title>MasterControl</title>
+
+  <!--
+    Self-hosted font preloads — one critical weight per family only (R-017).
+    Full @font-face declarations live in src/index.css.
+    Files must be placed in public/fonts/ — see public/fonts/README.md.
+    No JetBrains Mono (R-006); no third-party CDN preconnects (R-017).
+  -->
+  <link
+    rel="preload"
+    as="font"
+    type="font/woff2"
+    crossorigin
+    href="/fonts/Switzer-Regular.woff2"
+  />
+  <link
+    rel="preload"
+    as="font"
+    type="font/woff2"
+    crossorigin
+    href="/fonts/Fraunces-VariableFont.woff2"
+  />
+
+  <script type="module" src="/src/main.tsx"></script>
+</head>
+<body>
+  <div id="root"></div>
+</body>
+</html>

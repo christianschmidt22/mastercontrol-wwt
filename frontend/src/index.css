@@ -1,0 +1,218 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Self-hosted font declarations (R-017)
+   Files must exist at /public/fonts/ — see public/fonts/README.md
+   font-display: swap keeps text visible while fonts load.
+   unicode-range restricts download to the Latin subset (U+0000-00FF).
+   No JetBrains Mono — system mono stack handles code/cron/JSON (R-006).
+───────────────────────────────────────────────────────────────────────────── */
+
+@font-face {
+  font-family: 'Fraunces';
+  src: url('/fonts/Fraunces-VariableFont.woff2') format('woff2');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0000-00FF;
+}
+
+@font-face {
+  font-family: 'Switzer';
+  src: url('/fonts/Switzer-Regular.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0000-00FF;
+}
+
+@font-face {
+  font-family: 'Switzer';
+  src: url('/fonts/Switzer-Medium.woff2') format('woff2');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0000-00FF;
+}
+
+@font-face {
+  font-family: 'Switzer';
+  src: url('/fonts/Switzer-Semibold.woff2') format('woff2');
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0000-00FF;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Palette — CSS variables (R-011 § f: use CSS color-scheme, not HTML attr)
+   Default: dark ("ink and ivory") per user preference.
+   Light ("warm paper") applied when:
+     (a) class="light" is on <html> (manual override via ThemeToggle), OR
+     (b) no class override AND OS reports prefers-color-scheme: light.
+───────────────────────────────────────────────────────────────────────────── */
+
+/* Dark palette — applied first; this is the default */
+:root {
+  color-scheme: dark;
+
+  --bg:          #0E1116;
+  --bg-2:        #161A21;
+  --ink-1:       #EDE7DA;
+  --ink-2:       #9A958A;
+  --ink-3:       #5C564E;
+  --rule:        #2A2F38;
+  --accent:      #E66B4D;
+  --accent-soft: #2C1A14;
+
+  --display: 'Fraunces', ui-serif, Georgia, serif;
+  --body:    'Switzer', ui-sans-serif, system-ui, sans-serif;
+  --mono:    ui-monospace, Menlo, Consolas, monospace;
+
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+}
+
+/* Light palette — explicit class override (user chose "light") */
+:root.light {
+  color-scheme: light;
+
+  --bg:          #FAF7F2;
+  --bg-2:        #F2EDE3;
+  --ink-1:       #1A1815;
+  --ink-2:       #5C564E;
+  --ink-3:       #A39A8C;
+  --rule:        #E0D8C9;
+  --accent:      #C8482E;
+  --accent-soft: #FCE8DF;
+}
+
+/* Light palette — system preference, no manual override */
+@media (prefers-color-scheme: light) {
+  :root:not(.dark):not(.light) {
+    color-scheme: light;
+
+    --bg:          #FAF7F2;
+    --bg-2:        #F2EDE3;
+    --ink-1:       #1A1815;
+    --ink-2:       #5C564E;
+    --ink-3:       #A39A8C;
+    --rule:        #E0D8C9;
+    --accent:      #C8482E;
+    --accent-soft: #FCE8DF;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Base typography
+───────────────────────────────────────────────────────────────────────────── */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background-color: var(--bg);
+  color: var(--ink-1);
+  font-family: var(--body);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--display);
+  text-wrap: balance;
+  margin: 0;
+}
+
+p {
+  text-wrap: pretty;
+  margin: 0;
+}
+
+/* Utility: tabular numbers for timestamps, counts, currency */
+.tnum {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Utility: system mono stack for cron, JSON, file paths (R-006) */
+.mono {
+  font-family: var(--mono);
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Skip-link (R-011 § b)
+   Visually hidden until focused; jumps keyboard users past the sidebar.
+───────────────────────────────────────────────────────────────────────────── */
+
+.skip-link {
+  position: absolute;
+  top: -9999px;
+  left: 0;
+  z-index: 9999;
+  padding: 8px 16px;
+  background: var(--bg);
+  color: var(--ink-1);
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  font-family: var(--body);
+  font-size: 14px;
+  text-decoration: none;
+}
+
+.skip-link:focus-visible {
+  top: 8px;
+  left: 8px;
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Focus rings (R-011 § a, c)
+   2px vermilion ring, 2px offset. Applied globally via :focus-visible
+   so every interactive element gets a ring without per-component boilerplate.
+   Note: .tile uses overflow: visible at the outer card level so rings aren't
+   clipped (R-011 § c). Inner scrollable regions use overflow: auto/hidden.
+───────────────────────────────────────────────────────────────────────────── */
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Reduced-motion override (R-011 § d, DESIGN.md)
+   Explicit rule ensures the streaming caret and stagger animations are
+   suppressed even if the component doesn't check the media query.
+───────────────────────────────────────────────────────────────────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  /* Streaming caret — static block instead of blink (R-011 § d) */
+  .stream-caret {
+    animation: none !important;
+    background: var(--accent);
+  }
+}
