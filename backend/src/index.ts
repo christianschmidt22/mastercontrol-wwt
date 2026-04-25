@@ -2,6 +2,14 @@ import express from 'express';
 import cors from 'cors';
 import { initSchema } from './db/database.js';
 import { errorHandler } from './middleware/errorHandler.js';
+import { organizationsRouter } from './routes/organizations.route.js';
+import { contactsRouter } from './routes/contacts.route.js';
+import { projectsRouter } from './routes/projects.route.js';
+import { documentsRouter } from './routes/documents.route.js';
+import { notesRouter } from './routes/notes.route.js';
+import { tasksRouter } from './routes/tasks.route.js';
+import { agentsRouter } from './routes/agents.route.js';
+import { settingsRouter } from './routes/settings.route.js';
 
 initSchema();
 
@@ -50,15 +58,14 @@ app.use((req, _res, next) => {
 
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
 
-// Routes mounted as Phase 1 lands them:
-//   /api/organizations
-//   /api/contacts
-//   /api/projects
-//   /api/documents
-//   /api/notes        (includes /:id/confirm and /:id/reject for R-002)
-//   /api/tasks
-//   /api/agents       (includes /:org_id/chat SSE endpoint)
-//   /api/settings
+app.use('/api/organizations', organizationsRouter);
+app.use('/api/contacts', contactsRouter);
+app.use('/api/projects', projectsRouter);
+app.use('/api/documents', documentsRouter);
+app.use('/api/notes', notesRouter);
+app.use('/api/tasks', tasksRouter);
+app.use('/api/agents', agentsRouter);
+app.use('/api/settings', settingsRouter);
 
 app.use(errorHandler);
 

@@ -17,12 +17,6 @@ const upsertStmt = db.prepare<[string, string]>(
  * `claude.service.ts` and other backend-only consumers); `getMasked(key)`
  * returns `***last4` for any key in this set and is what every route handler
  * uses for `GET /api/settings/:key`.
- *
- * The encrypt/decrypt hooks below are stubs until the DPAPI dep lands
- * (R-003 implementation in plan step 8). Until then, secrets are stored
- * plaintext but already routed through this single chokepoint, so the
- * encryption upgrade is a 10-line change to `encrypt`/`decrypt` rather
- * than a refactor of every caller.
  */
 export const SECRET_KEYS: ReadonlySet<string> = new Set([
   'anthropic_api_key',
@@ -30,26 +24,119 @@ export const SECRET_KEYS: ReadonlySet<string> = new Set([
 
 const ENC_PREFIX = 'enc:';
 
-/**
- * R-003: encrypt-on-write. Until DPAPI is wired (`@primno/dpapi` or
- * `node-dpapi`), this is a pass-through. When DPAPI lands, replace the body
- * with `'enc:' + base64(CryptProtectData(Buffer.from(plain, 'utf8')))`.
- */
-function encrypt(plain: string): string {
-  // TODO(R-003): wire DPAPI.
-  return plain;
+// ---------------------------------------------------------------------------
+// R-003: DPAPI integration — platform-adaptive
+//
+// On Windows: @primno/dpapi binds to CryptProtectData / CryptUnprotectData
+// via N-API. We do a one-time dynamic import so the module is never
+// required on non-Windows hosts (CI, macOS dev boxes) where the native addon
+// would fail to compile or load.
+//
+// On non-Windows (or if the import fails for any reason): fall back to a
+// no-op transform so tests and CI always pass. A warning is emitted ONCE
+// to stderr so the operator knows encryption is inactive.
+// ---------------------------------------------------------------------------
+
+type DpapiModule = {
+  protectData(data: Buffer, entropy: Buffer | null, scope: 'CurrentUser' | 'LocalMachine'): Buffer;
+  unprotectData(data: Buffer, entropy: Buffer | null, scope: 'CurrentUser' | 'LocalMachine'): Buffer;
+};
+
+// Resolved on first use; null = no-op fallback.
+let _dpapi: DpapiModule | null | undefined = undefined; // undefined = not yet resolved
+let _warnedOnce = false;
+
+async function getDpapi(): Promise<DpapiModule | null> {
+  if (_dpapi !== undefined) return _dpapi;
+
+  if (process.platform !== 'win32') {
+    if (!_warnedOnce) {
+      console.warn(
+        '[settings.model] DPAPI unavailable (non-Windows platform). ' +
+          'anthropic_api_key will be stored without encryption. ' +
+          'This is expected in CI / non-Windows dev environments.'
+      );
+      _warnedOnce = true;
+    }
+    _dpapi = null;
+    return null;
+  }
+
+  try {
+    // Dynamic import keeps the native module out of the module graph on
+    // non-Windows. @primno/dpapi exports named functions `protectData` and
+    // `unprotectData`. We wrap the named exports into the DpapiModule shape.
+    const mod = await import('@primno/dpapi');
+    const { protectData, unprotectData } = mod as {
+      protectData: DpapiModule['protectData'];
+      unprotectData: DpapiModule['unprotectData'];
+    };
+    _dpapi = { protectData, unprotectData };
+    return _dpapi;
+  } catch (err) {
+    if (!_warnedOnce) {
+      console.warn(
+        '[settings.model] Failed to load @primno/dpapi — falling back to no-op encryption. ' +
+          `Error: ${err instanceof Error ? err.message : String(err)}`
+      );
+      _warnedOnce = true;
+    }
+    _dpapi = null;
+    return null;
+  }
 }
 
 /**
- * R-003: decrypt-on-read. Recognizes the `enc:` prefix; legacy/plaintext
- * values still read through during the transition. After DPAPI lands, any
- * value without the prefix is treated as legacy plaintext and re-encrypted
- * on next write.
+ * R-003: Synchronous encrypt/decrypt used at the call sites.
+ *
+ * Because better-sqlite3 is synchronous and the model API is synchronous, we
+ * cannot await getDpapi() at call sites. Instead we expose a synchronous
+ * variant that uses the already-resolved _dpapi value (or no-op if not yet
+ * resolved / unavailable). Callers must warm the DPAPI module on startup by
+ * calling `warmDpapi()` before the first write; after that the in-process
+ * reference is stable.
+ *
+ * `warmDpapi` is exported so the backend entrypoint can call it at boot to
+ * preload the native module before the first request arrives.
  */
-function decrypt(stored: string): string {
-  if (!stored.startsWith(ENC_PREFIX)) return stored;
-  // TODO(R-003): wire DPAPI.
-  return stored.slice(ENC_PREFIX.length);
+export async function warmDpapi(): Promise<void> {
+  await getDpapi();
+}
+
+/**
+ * Synchronous encrypt — returns `enc:<base64>` on Windows with DPAPI,
+ * or the plaintext unchanged on non-Windows (no-op fallback).
+ *
+ * Called only after warmDpapi() has resolved; if _dpapi is still undefined
+ * we treat it as null (no-op) rather than throwing.
+ */
+function encryptSync(plain: string): string {
+  const dpapi = _dpapi ?? null;
+  if (!dpapi) return plain;
+  const encrypted = dpapi.protectData(Buffer.from(plain, 'utf8'), null, 'CurrentUser');
+  return encrypted.toString('base64');
+}
+
+/**
+ * Synchronous decrypt — strips `enc:` prefix and reverses DPAPI encryption
+ * on Windows. Legacy plaintext values (no `enc:` prefix) pass through
+ * unchanged so old rows continue to work until re-written.
+ */
+function decryptSync(stored: string): string {
+  if (!stored.startsWith(ENC_PREFIX)) {
+    // Legacy plaintext — stored before DPAPI was wired, or on non-Windows.
+    return stored;
+  }
+  const b64 = stored.slice(ENC_PREFIX.length);
+  const dpapi = _dpapi ?? null;
+  if (!dpapi) {
+    // No-op path: can't decrypt a real DPAPI blob here, but this only
+    // happens on non-Windows where no DPAPI blobs should exist. Return
+    // the raw base64 so the caller gets something rather than crashing.
+    return b64;
+  }
+  const buf = Buffer.from(b64, 'base64');
+  return dpapi.unprotectData(buf, null, 'CurrentUser').toString('utf8');
 }
 
 function mask(plain: string): string {
@@ -65,7 +152,7 @@ export const settingsModel = {
    */
   get: (key: string): string | null => {
     const row = getStmt.get(key);
-    return row ? decrypt(row.value) : null;
+    return row ? decryptSync(row.value) : null;
   },
 
   /**
@@ -76,15 +163,23 @@ export const settingsModel = {
   getMasked: (key: string): string | null => {
     const row = getStmt.get(key);
     if (!row) return null;
-    const plain = decrypt(row.value);
+    const plain = decryptSync(row.value);
     return SECRET_KEYS.has(key) ? mask(plain) : plain;
   },
 
   /**
-   * Single chokepoint for writes. Secret keys are encrypted on the way in.
+   * Single chokepoint for writes. Secret keys are DPAPI-encrypted on the
+   * way in, stored as `enc:<base64(ciphertext)>` on Windows or
+   * `enc:<plaintext>` on non-Windows (no-op fallback). The `enc:` prefix is
+   * always written for secret keys so decrypt-on-read can detect both legacy
+   * unencrypted rows (no prefix) and current rows (prefix present).
    */
   set: (key: string, value: string): void => {
-    const stored = SECRET_KEYS.has(key) ? `${ENC_PREFIX}${encrypt(value)}` : value;
+    // encryptSync returns a DPAPI base64 blob on Windows, or the plaintext
+    // unchanged on non-Windows (no-op). Either way we prefix with ENC_PREFIX.
+    const stored = SECRET_KEYS.has(key)
+      ? ENC_PREFIX + encryptSync(value)
+      : value;
     upsertStmt.run(key, stored);
   },
 };

@@ -80,14 +80,76 @@ claude.service.streamChat()
   ├─ persist user message → agent_messages
   ├─ open Anthropic stream with tools: [web_search, record_insight]
   ├─ stream tokens → res as SSE `data: {delta}` events
-  │     • on tool_use(record_insight): noteModel.create with role='agent_insight'
-  │     • on tool_use(web_search): SDK handles, results stream back
-  ├─ on completion: persist assistant message → agent_messages + mirror to notes
-  └─ send `data: [DONE]`, end response
+  │     • on tool_use(record_insight): allowlist check → noteModel.createInsight (role='agent_insight', confirmed=0) + audit row
+  │     • on tool_use(web_search): SDK handles, results stream back; audit row written
+  ├─ on completion: persist assistant message → agent_messages ONLY (R-005: no mirror to notes)
+  └─ send `data: {type:'done'}`, then `data: [DONE]`, end response
   ▼
 Client reader appends deltas to a transient assistant bubble until [DONE].
+Notes feed reads from notes_unified VIEW (UNION ALL of notes + agent_messages assistant rows).
 TanStack Query invalidation refreshes the notes list.
 ```
+
+## Prompt cache (R-016)
+
+`claude.service.ts` splits the system prompt into two blocks to maximise
+Anthropic prompt-cache hit rates on multi-turn conversations.
+
+### Block A — stable (cached)
+
+Contains: tool-safety rules + section playbook + org name/type/metadata +
+contacts + projects + documents inventory.
+
+Sent with `cache_control: { type: 'ephemeral' }`. Anthropic caches this
+block across turns so subsequent messages in the same thread pay only the
+volatile-block token cost for input processing.
+
+Rebuilt when: org data changes (see `bumpOrgVersion` below) or after 1 hour.
+
+### Block B — volatile (not cached)
+
+Contains: the last 20 confirmed notes + agent insights for the current org.
+
+Not given `cache_control`. This block changes on every turn (new notes,
+new insights) so caching it would serve stale context and waste the cache
+slot.
+
+### Per-thread cache map
+
+```ts
+// In-process singleton in claude.service.ts:
+const threadCache = new Map<threadId, {
+  stable: string;   // the rendered stable block text
+  version: number;  // orgVersions value at build time
+  builtAt: number;  // Date.now() at build time
+}>();
+// TTL: 1 hour (3_600_000 ms)
+```
+
+The map is keyed on `threadId` rather than `orgId` so that two concurrent
+threads on the same org each hold their own cached stable block. This keeps
+the cache coherent under concurrent usage without locking.
+
+### `bumpOrgVersion(orgId)` invalidation hook
+
+Model writes that change org-level data (contacts, projects, documents,
+org metadata) call `bumpOrgVersion(orgId)` after committing. This
+increments an in-process `Map<orgId, number>` counter. On the next
+`streamChat` call for any thread of that org, `cached.version !== currentVersion`
+evaluates true and the stable block is rebuilt.
+
+```
+noteModel.createInsight()  ─┐
+contactModel.create/update  ├─ call bumpOrgVersion(orgId)
+projectModel.create/update  │
+organizationModel.update   ─┘
+    │
+    ▼
+threadCache entries for that org are treated as stale on next streamChat
+```
+
+**Expected cache-hit rate**: >60 % on repeat turns of the same thread with
+stable org data (vs. <20 % when the entire prompt is sent uncached each turn).
 
 ## Data flow — note save (Phase 2)
 
