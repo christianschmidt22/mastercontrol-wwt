@@ -200,6 +200,31 @@ p {
    suppressed even if the component doesn't check the media query.
 ───────────────────────────────────────────────────────────────────────────── */
 
+/* ─────────────────────────────────────────────────────────────────────────────
+   Spinner keyframe — used by save/loading buttons across the app.
+───────────────────────────────────────────────────────────────────────────── */
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Home page widget grid — collapses to single-column below 900px
+───────────────────────────────────────────────────────────────────────────── */
+
+.home-grid {
+  grid-template-columns: repeat(2, 1fr);
+}
+
+@media (max-width: 900px) {
+  .home-grid {
+    grid-template-columns: 1fr;
+  }
+  .home-grid > div {
+    grid-column: 1 !important;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
