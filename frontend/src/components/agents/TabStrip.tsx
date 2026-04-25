@@ -33,7 +33,8 @@ export function TabStrip({ active, onChange, insightCount }: TabStripProps) {
 
       if (next !== null) {
         e.preventDefault();
-        onChange(TAB_ORDER[next]);
+        const nextTab = TAB_ORDER[next];
+        if (nextTab) onChange(nextTab);
         tabRefs.current[next]?.focus();
       }
     },

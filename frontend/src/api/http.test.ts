@@ -64,7 +64,9 @@ describe('request() — happy path', () => {
     await request('POST', '/api/organizations', { type: 'customer', name: 'New Org' });
 
     expect(fetch).toHaveBeenCalledOnce();
-    const [url, init] = vi.mocked(fetch).mock.calls[0];
+    const firstCall = vi.mocked(fetch).mock.calls[0];
+    if (!firstCall) throw new Error('expected fetch to have been called');
+    const [url, init] = firstCall;
     expect(url).toBe('/api/organizations');
     expect(init?.method).toBe('POST');
     expect((init?.headers as Record<string, string>)['Content-Type']).toBe('application/json');
@@ -84,7 +86,9 @@ describe('request() — happy path', () => {
 
     await request('GET', '/api/organizations');
 
-    const [, init] = vi.mocked(fetch).mock.calls[0];
+    const firstInitCall = vi.mocked(fetch).mock.calls[0];
+    if (!firstInitCall) throw new Error('expected fetch to have been called');
+    const [, init] = firstInitCall;
     expect(init?.body).toBeUndefined();
   });
 });

@@ -15,7 +15,6 @@ import {
   rectSortingStrategy,
   useSortable,
   arrayMove,
-  // CSS is re-exported from @dnd-kit/utilities via @dnd-kit/sortable
 } from '@dnd-kit/sortable';
 import type { TileLayout } from './useTileLayout';
 import { TileEditChrome } from './TileEditChrome';
@@ -117,7 +116,9 @@ export function TileGrid({ items, layout, editMode, onLayoutChange }: TileGridPr
       const newItems = arrayMove(items, oldIndex, newIndex);
       const newLayout = newItems.map((item, idx) => {
         const orig = getLayoutEntry(item.id);
-        const displaced = getLayoutEntry(items[idx].id);
+        const displacedItem = items[idx];
+        if (!displacedItem) return orig; // shouldn't happen — array lengths match
+        const displaced = getLayoutEntry(displacedItem.id);
         return { ...orig, x: displaced.x, y: displaced.y };
       });
       onLayoutChange(newLayout);

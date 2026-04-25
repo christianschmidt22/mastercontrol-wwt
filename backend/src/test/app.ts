@@ -22,11 +22,14 @@ import { errorHandler } from '../middleware/errorHandler.js';
 
 function isRouter(value: unknown): value is Router {
   // A Router is a function with `stack` array and Express router-specific props.
+  if (typeof value !== 'function') return false;
+  // `as unknown as` first because TS can narrow `value` to `Function` after
+  // typeof === 'function', and Function is not directly index-signature-compatible.
+  const fn = value as unknown as Record<string, unknown>;
   return (
-    typeof value === 'function' &&
-    typeof (value as Record<string, unknown>)['use'] === 'function' &&
-    typeof (value as Record<string, unknown>)['get'] === 'function' &&
-    typeof (value as Record<string, unknown>)['post'] === 'function'
+    typeof fn['use'] === 'function' &&
+    typeof fn['get'] === 'function' &&
+    typeof fn['post'] === 'function'
   );
 }
 

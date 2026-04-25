@@ -67,7 +67,10 @@ async function getDpapi(): Promise<DpapiModule | null> {
     // non-Windows. @primno/dpapi exports named functions `protectData` and
     // `unprotectData`. We wrap the named exports into the DpapiModule shape.
     const mod = await import('@primno/dpapi');
-    const { protectData, unprotectData } = mod as {
+    // Cast through unknown — the SDK's Buffer<ArrayBufferLike> generic shape
+    // doesn't match our nominally-typed DpapiModule literally, but the runtime
+    // call shape is identical (protectData/unprotectData with the same args).
+    const { protectData, unprotectData } = mod as unknown as {
       protectData: DpapiModule['protectData'];
       unprotectData: DpapiModule['unprotectData'];
     };

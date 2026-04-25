@@ -140,16 +140,19 @@ async function models() {
     import('../models/project.model.js'),
     import('../models/document.model.js'),
   ]);
+  // Type-erase via `unknown` first — the actual model surfaces are richer than
+  // the slim subset the service uses, and the model's row hydration normalizes
+  // boolean/string fields. We pin only the methods we call here.
   return {
-    noteModel: noteModel as {
+    noteModel: noteModel as unknown as {
       createInsight: (orgId: number, content: string, provenance: NoteProvenance) => NoteRow;
       listRecent: (orgId: number, limit: number, opts?: NoteListOpts) => NoteRow[];
     },
-    agentMessageModel: agentMessageModel as {
+    agentMessageModel: agentMessageModel as unknown as {
       append: (threadId: number, role: string, content: string, toolCalls?: unknown) => AgentMessage;
       listByThread: (threadId: number) => AgentMessage[];
     },
-    agentConfigModel: agentConfigModel as {
+    agentConfigModel: agentConfigModel as unknown as {
       getEffective: (section: OrgSection, orgId: number) => AgentConfig | undefined;
     },
     agentThreadModel: agentThreadModel as {
@@ -627,7 +630,12 @@ export async function streamChat({
       // though the SDK type omits it. Safe to remove cast when SDK types catch up.
       system: systemBlocks as Anthropic.TextBlockParam[],
       messages: messagesPayload,
-      tools: [webSearchTool, RECORD_INSIGHT_TOOL],
+      // Cast to ToolUnion — `webSearchTool` carries the native
+      // web_search_20250305 shape via an `as unknown as Anthropic.Tool`
+      // upstream; the array literal trips the same SDK-type-lag that
+      // motivated the original cast. Safe to drop when SDK ships
+      // a discriminated `web_search_20250305` member.
+      tools: [webSearchTool, RECORD_INSIGHT_TOOL] as Anthropic.ToolUnion[],
     });
 
     // Race the stream against client disconnect so we don't hold the Anthropic

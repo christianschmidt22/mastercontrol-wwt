@@ -78,8 +78,8 @@ const mockNoteCreateInsight = vi.fn();
 const mockNoteListRecent = vi.fn(() => []);
 vi.mock('../models/note.model.js', () => ({
   noteModel: {
-    createInsight: (...args: unknown[]) => mockNoteCreateInsight(...args),
-    listRecent: (...args: unknown[]) => mockNoteListRecent(...args),
+    createInsight: mockNoteCreateInsight,
+    listRecent: mockNoteListRecent,
     create: vi.fn(),
     listFor: vi.fn(() => []),
   },
@@ -90,8 +90,8 @@ const mockAgentMessageAppend = vi.fn();
 const mockAgentMessageListByThread = vi.fn(() => []);
 vi.mock('../models/agentMessage.model.js', () => ({
   agentMessageModel: {
-    append: (...args: unknown[]) => mockAgentMessageAppend(...args),
-    listByThread: (...args: unknown[]) => mockAgentMessageListByThread(...args),
+    append: mockAgentMessageAppend,
+    listByThread: mockAgentMessageListByThread,
     listForThread: vi.fn(() => []),
   },
 }));
@@ -100,7 +100,7 @@ vi.mock('../models/agentMessage.model.js', () => ({
 const mockAgentConfigGetEffective = vi.fn();
 vi.mock('../models/agentConfig.model.js', () => ({
   agentConfigModel: {
-    getEffective: (...args: unknown[]) => mockAgentConfigGetEffective(...args),
+    getEffective: mockAgentConfigGetEffective,
   },
 }));
 
@@ -108,7 +108,7 @@ vi.mock('../models/agentConfig.model.js', () => ({
 const mockAgentThreadTouch = vi.fn();
 vi.mock('../models/agentThread.model.js', () => ({
   agentThreadModel: {
-    touchLastMessage: (...args: unknown[]) => mockAgentThreadTouch(...args),
+    touchLastMessage: mockAgentThreadTouch,
     create: vi.fn(),
     listFor: vi.fn(() => []),
     get: vi.fn(),
@@ -120,7 +120,7 @@ vi.mock('../models/agentThread.model.js', () => ({
 const mockOrgGet = vi.fn();
 vi.mock('../models/organization.model.js', () => ({
   organizationModel: {
-    get: (...args: unknown[]) => mockOrgGet(...args),
+    get: mockOrgGet,
     create: vi.fn(),
     listByType: vi.fn(() => []),
     update: vi.fn(),
@@ -132,7 +132,7 @@ vi.mock('../models/organization.model.js', () => ({
 const mockContactListFor = vi.fn(() => []);
 vi.mock('../models/contact.model.js', () => ({
   contactModel: {
-    listFor: (...args: unknown[]) => mockContactListFor(...args),
+    listFor: mockContactListFor,
     create: vi.fn(),
     update: vi.fn(),
     remove: vi.fn(),
@@ -143,7 +143,7 @@ vi.mock('../models/contact.model.js', () => ({
 const mockProjectListFor = vi.fn(() => []);
 vi.mock('../models/project.model.js', () => ({
   projectModel: {
-    listFor: (...args: unknown[]) => mockProjectListFor(...args),
+    listFor: mockProjectListFor,
   },
 }));
 
@@ -151,7 +151,7 @@ vi.mock('../models/project.model.js', () => ({
 const mockDocumentListFor = vi.fn(() => []);
 vi.mock('../models/document.model.js', () => ({
   documentModel: {
-    listFor: (...args: unknown[]) => mockDocumentListFor(...args),
+    listFor: mockDocumentListFor,
   },
 }));
 
@@ -246,7 +246,7 @@ function makeMockReqRes(): { req: Request; res: Response; sse: SseCapture } {
 function wireStream(stream: ReturnType<typeof makeFakeStream>) {
   const mockStream = vi.fn().mockReturnValue(stream);
   const mockInstance = { messages: { stream: mockStream } };
-  (Anthropic as Mock).mockReturnValueOnce(mockInstance);
+  (Anthropic as unknown as Mock).mockReturnValueOnce(mockInstance);
   return mockInstance;
 }
 
@@ -371,13 +371,15 @@ describe('record_insight allowlist resolution (R-002)', () => {
     });
 
     // Stream completed normally (done event sent).
-    const doneCalls = sse.send.mock.calls.filter(
-      (c: Array<Record<string, unknown>>) => c[0]?.type === 'done'
+    const sseDoneCalls = sse.send.mock.calls as unknown as Array<[Record<string, unknown>]>;
+    const doneCalls = sseDoneCalls.filter(
+      (c) => c[0]?.['type'] === 'done'
     );
     expect(doneCalls.length).toBe(1);
     // No rejection audit rows for record_insight (no tool calls in this stream).
-    const rejections = mockAuditAppend.mock.calls.filter(
-      (c: Array<Record<string, unknown>>) => c[0]?.status === 'rejected'
+    const auditCalls2 = mockAuditAppend.mock.calls as unknown as Array<[Record<string, unknown>]>;
+    const rejections = auditCalls2.filter(
+      (c) => c[0]?.['status'] === 'rejected'
     );
     expect(rejections.length).toBe(0);
   });
@@ -441,17 +443,18 @@ describe('record_insight allowlist resolution (R-002)', () => {
     expect(mockNoteCreateInsight).not.toHaveBeenCalled();
 
     // Audit row with status='rejected' for record_insight.
-    const rejections = mockAuditAppend.mock.calls.filter(
-      (c: Array<Record<string, unknown>>) =>
-        c[0]?.tool_name === 'record_insight' && c[0]?.status === 'rejected'
+    const auditCalls = mockAuditAppend.mock.calls as unknown as Array<[Record<string, unknown>]>;
+    const rejections = auditCalls.filter(
+      (c) => c[0]?.['tool_name'] === 'record_insight' && c[0]?.['status'] === 'rejected'
     );
     expect(rejections.length).toBe(1);
 
     // SSE tool_result with is_error: true.
-    const errorResults = sse.send.mock.calls.filter(
-      (c: Array<Record<string, unknown>>) =>
-        c[0]?.type === 'tool_result' &&
-        (c[0]?.payload as Record<string, unknown>)?.is_error === true
+    const sseCalls = sse.send.mock.calls as unknown as Array<[Record<string, unknown>]>;
+    const errorResults = sseCalls.filter(
+      (c) =>
+        c[0]?.['type'] === 'tool_result' &&
+        (c[0]?.['payload'] as Record<string, unknown> | undefined)?.['is_error'] === true
     );
     expect(errorResults.length).toBe(1);
   });
@@ -566,9 +569,9 @@ describe('agent tool audit (R-022)', () => {
     expect(noteContent).toContain('Renewal went well.');
 
     // Audit row with status='ok' for record_insight.
-    const okAudits = mockAuditAppend.mock.calls.filter(
-      (c: Array<Record<string, unknown>>) =>
-        c[0]?.tool_name === 'record_insight' && c[0]?.status === 'ok'
+    const okAuditCalls = mockAuditAppend.mock.calls as unknown as Array<[Record<string, unknown>]>;
+    const okAudits = okAuditCalls.filter(
+      (c) => c[0]?.['tool_name'] === 'record_insight' && c[0]?.['status'] === 'ok'
     );
     expect(okAudits.length).toBe(1);
   });
@@ -594,11 +597,12 @@ describe('agent tool audit (R-022)', () => {
     await streamChat({ orgId: 1, threadId: 301, content: 'search cisco', req, res });
 
     expect(mockNoteCreateInsight).not.toHaveBeenCalled();
-    const wsAudits = mockAuditAppend.mock.calls.filter(
-      (c: Array<Record<string, unknown>>) => c[0]?.tool_name === 'web_search'
+    const wsAuditCalls = mockAuditAppend.mock.calls as unknown as Array<[Record<string, unknown>]>;
+    const wsAudits = wsAuditCalls.filter(
+      (c) => c[0]?.['tool_name'] === 'web_search'
     );
     expect(wsAudits.length).toBe(1);
-    expect(wsAudits[0][0].status).toBe('ok');
+    expect(wsAudits[0]?.[0]?.['status']).toBe('ok');
   });
 });
 

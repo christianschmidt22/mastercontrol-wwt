@@ -117,7 +117,7 @@ describe('useStreamChat — happy path', () => {
     // After done: assembled assistant message in messages
     const assistantMsgs = result.current.messages.filter((m) => m.role === 'assistant');
     expect(assistantMsgs).toHaveLength(1);
-    expect(assistantMsgs[0].content).toBe('Hello world');
+    expect(assistantMsgs[0]?.content).toBe('Hello world');
 
     expect(result.current.stream.failed).toBeNull();
     expect(result.current.stream.partial).toBe('');
@@ -167,7 +167,7 @@ describe('useStreamChat — stop()', () => {
     // fetch resolves with a hanging stream — it never sends [DONE].
     // When the signal is aborted, fetch itself throws AbortError (jsdom behaviour).
     vi.mocked(fetch).mockImplementation((_url: unknown, init?: RequestInit) => {
-      capturedSignal = init?.signal;
+      capturedSignal = init?.signal ?? undefined;
       // Return a promise that rejects with AbortError when the signal fires.
       return new Promise<Response>((_resolve, reject) => {
         if (capturedSignal?.aborted) {
