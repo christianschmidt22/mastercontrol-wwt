@@ -56,8 +56,13 @@ function Section({ heading, children }: SectionProps) {
 }
 
 export function Sidebar() {
-  const { data: customers, isLoading: customersLoading, isError: customersError, refetch: refetchCustomers } =
-    useOrganizations('customer');
+  const {
+    data: customers,
+    isLoading: customersLoading,
+    isError: customersError,
+    refetch: refetchCustomers,
+  } = useOrganizations('customer');
+
   return (
     <nav
       aria-label="Primary"
