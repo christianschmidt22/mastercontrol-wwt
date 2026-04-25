@@ -230,7 +230,51 @@ the sandboxed shell that produced these commits.
 
 ---
 
-## Phase 1 — Verified (TODO — see [`VERIFICATION.md`](VERIFICATION.md))
+## Phase 1 — Verified ✓ (2026-04-25)
+
+`80f1b74` `chore(deps): bump better-sqlite3 to ^12.9.0 for Node 24 prebuild support`
+`2addc30` `fix: typecheck-clean on Node 24 + better-sqlite3 12 (both workspaces)`
+`2a6c0cd` `fix: real bugs surfaced by running npm test on Node 24 + better-sqlite3 12`
+`f8cdbba` `fix(db): auto-init schema at module-load to dodge ESM import-order race`
+
+Verification on Windows + Node 24.15.0 LTS (winget user-scope install):
+- `npm install` — 509 packages installed clean (`better-sqlite3` 12.9 ships
+  prebuilds for Node 24.x, no Python/MSVC compile needed).
+- `npm run typecheck` — both workspaces clean, 0 errors.
+- `npm run test` — **256 backend tests + 22 frontend tests = 278/278 green.**
+  Backend suite runs in ~8s with the `:memory:` + savepoint pattern (R-018).
+  Frontend suite uses jsdom + React Testing Library + jest-dom/vitest.
+- `npm run dev` — backend listens on `http://127.0.0.1:3001` (R-001),
+  Vite dev server on `http://127.0.0.1:5173`. Both bind loopback only.
+
+Real bugs caught and fixed during verification (in `2a6c0cd`):
+- ESM import-order race: model files' top-level `db.prepare('SELECT ...')`
+  ran before `initSchema()` because static imports are hoisted. Fix
+  landed twice — once for the test setup, once for production startup
+  via auto-init in `database.ts` (`f8cdbba`).
+- Node 24 + supertest changed `req.on('close')` semantics — fired when
+  the request body was consumed (NOT on actual client disconnect),
+  causing SSE writes to no-op mid-stream. Switched to
+  `res.on('close')` gated by `!res.writableEnded` — the right signal
+  for "client aborted before we ended."
+- `sse.end()` bailed without calling `res.end()` when `closed` was
+  already true, so the response body never finished and supertest
+  hung forever. Fix: `end()` always finalizes (idempotent on
+  `writableEnded`).
+- `claude.service.streamChat` gated assistant-message persistence on
+  a `streamCompleted` flag that the `Promise.race` against disconnect
+  could short-circuit. Fix: persist if any content was actually
+  produced — the user already saw the partial.
+- `OrganizationUpdateSchema` accepted unknown fields silently; an
+  invalid `type: 'foo'` payload reached the model and tripped the
+  NOT NULL constraint as a 500 instead of a 400. Fix: `.strict()`.
+- `useStreamChat` cleared `optimisticPending` entirely on `onDone`;
+  in tests the assistant message vanished until persisted refetch
+  caught up (which the mock never did). Fix: append the assembled
+  assistant message to optimistic state on done, dedupe via
+  `useEffect` when persisted catches up.
+
+Phase 1 is **shippable**.
 
 - [ ] `npm install` — both workspaces install clean
 - [ ] `npm run typecheck` — both workspaces clean
