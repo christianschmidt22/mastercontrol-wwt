@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { streamChat } from './streamChat';
 import { useAgentMessages, threadKeys } from './useAgentThreads';
@@ -97,10 +97,16 @@ export function useStreamChat(orgId: number, threadId?: number): UseStreamChat {
           setPartialText((prev) => prev + delta);
         },
         onDone: () => {
-          // B-12: clear optimisticPending entirely on done and rely on the
-          // persisted query refetch. The brief loading flicker is acceptable
-          // per DESIGN.md "render after 200 ms" rule.
-          setOptimisticPending([]);
+          // B-12: append the assembled assistant message to optimisticPending
+          // so the UI shows the completed turn immediately (the persisted
+          // refetch can take 100–500ms to round-trip the DB). The dedupe
+          // useEffect below removes optimistic entries once persisted
+          // catches up, preventing duplicates.
+          const assembled = accumulatedRef.current;
+          setOptimisticPending((prev) => {
+            if (!assembled) return prev;
+            return [...prev, { role: 'assistant' as const, content: assembled }];
+          });
           // Reset stream UI
           setStreaming(false);
           setPartialText('');
@@ -153,6 +159,26 @@ export function useStreamChat(orgId: number, threadId?: number): UseStreamChat {
     role: m.role,
     content: m.content,
   }));
+
+  // B-12: when persisted catches up, drop optimistic entries that already
+  // appear in persisted (matching by role + content). Prevents the
+  // "assistant message appears twice" duplicate the audit flagged.
+  useEffect(() => {
+    if (optimisticPending.length === 0) return;
+    const filtered = optimisticPending.filter(
+      (opt) =>
+        !persistedAsMessages.some(
+          (p) => p.role === opt.role && p.content === opt.content,
+        ),
+    );
+    if (filtered.length !== optimisticPending.length) {
+      setOptimisticPending(filtered);
+    }
+    // We intentionally depend on the persisted snapshot length + last id only
+    // to avoid the deep-equality cost on every render. Either change indicates
+    // a refetch landed.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [persistedMessages.length, persistedMessages[persistedMessages.length - 1]?.id]);
 
   const messages: StreamChatMessage[] = [...persistedAsMessages, ...optimisticPending];
 

@@ -18,6 +18,10 @@ interface MockRes {
   flushHeaders: ReturnType<typeof vi.fn>;
   write: ReturnType<typeof vi.fn>;
   end: ReturnType<typeof vi.fn>;
+  on: ReturnType<typeof vi.fn>;
+  emit: (event: string) => void;
+  writableEnded: boolean;
+  _listeners: Map<string, Array<() => void>>;
 }
 
 interface MockReq {
@@ -27,12 +31,26 @@ interface MockReq {
 }
 
 function makeMockRes(): MockRes {
-  return {
+  const listeners = new Map<string, Array<() => void>>();
+  const res: MockRes = {
     setHeader: vi.fn(),
     flushHeaders: vi.fn(),
     write: vi.fn(),
-    end: vi.fn(),
+    end: vi.fn(() => {
+      res.writableEnded = true;
+    }),
+    on: vi.fn((event: string, cb: () => void) => {
+      const arr = listeners.get(event) ?? [];
+      arr.push(cb);
+      listeners.set(event, arr);
+    }),
+    emit(event: string) {
+      for (const cb of listeners.get(event) ?? []) cb();
+    },
+    writableEnded: false,
+    _listeners: listeners,
   };
+  return res;
 }
 
 function makeMockReq(): MockReq {
@@ -157,7 +175,7 @@ describe('openSse — end()', () => {
 // ---------------------------------------------------------------------------
 
 describe('openSse — disconnected promise', () => {
-  it('resolves when req emits close event', async () => {
+  it('resolves when res emits close before writableEnded (real client abort)', async () => {
     const req = makeMockReq();
     const res = makeMockRes();
     const sse = openSse(req as unknown as Request, res as unknown as Response);
@@ -167,16 +185,17 @@ describe('openSse — disconnected promise', () => {
 
     expect(resolved).toBe(false);
 
-    // Emit close — the promise should resolve
-    req.emit('close');
-
-    // Flush microtask queue
+    // Simulate a client-side abort: socket closes while res is still
+    // "writable" (writableEnded is still false because we never called end()).
+    res.emit('close');
     await Promise.resolve();
 
     expect(resolved).toBe(true);
   });
 
-  it('resolves disconnected when end() is called before client closes', async () => {
+  it('does NOT resolve disconnected when end() is called normally', async () => {
+    // The `disconnected` promise signals client aborts only — a normal end()
+    // doesn't fire it. This is the contract claude.service.streamChat races on.
     const req = makeMockReq();
     const res = makeMockRes();
     const sse = openSse(req as unknown as Request, res as unknown as Response);
@@ -185,17 +204,22 @@ describe('openSse — disconnected promise', () => {
     sse.disconnected.then(() => { resolved = true; }).catch(() => {});
 
     sse.end();
-
     await Promise.resolve();
 
-    expect(resolved).toBe(true);
+    expect(resolved).toBe(false);
+
+    // Emitting close after end() (normal post-end socket cleanup) also
+    // does NOT resolve disconnected — writableEnded is true by then.
+    res.emit('close');
+    await Promise.resolve();
+    expect(resolved).toBe(false);
   });
 
-  it('registers req.on("close") listener exactly once', () => {
+  it('registers res.on("close") listener exactly once', () => {
     const req = makeMockReq();
     const res = makeMockRes();
     openSse(req as unknown as Request, res as unknown as Response);
-    expect(req.on).toHaveBeenCalledWith('close', expect.any(Function));
-    expect(req.on).toHaveBeenCalledOnce();
+    expect(res.on).toHaveBeenCalledWith('close', expect.any(Function));
+    expect(res.on).toHaveBeenCalledOnce();
   });
 });

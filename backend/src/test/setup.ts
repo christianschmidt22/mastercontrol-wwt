@@ -3,19 +3,19 @@
 // '??=' lets an explicit CI override win over the default.
 process.env['DB_PATH'] ??= ':memory:';
 
-import { beforeAll, beforeEach, afterEach } from 'vitest';
+import { beforeEach, afterEach } from 'vitest';
 
-// Dynamic imports guarantee that database.ts module evaluation (which opens
-// the SQLite connection at import time) happens only after the env var above
-// is in place. This is the correct pattern for ESM singletons that read
-// process.env at module load time.
+// Dynamic import + IMMEDIATE initSchema() — has to run BEFORE the test files
+// import their models. Each model file does `db.prepare('SELECT * FROM …')`
+// at module load time; if the schema isn't already in place by then, the
+// prepare throws "no such table: …".
+//
+// `beforeAll(initSchema)` would run too late: vitest evaluates this setup
+// file synchronously, then loads the test file, and the test file's static
+// imports of model files run BEFORE any beforeAll callback fires. So the
+// schema must exist by the time this top-level await returns.
 const { db, initSchema } = await import('../db/database.js');
-
-// Run schema DDL once per test-process (each file in pool:forks gets its own
-// process). CREATE IF NOT EXISTS makes this idempotent.
-beforeAll(() => {
-  initSchema();
-});
+initSchema();
 
 // Wrap every test in a savepoint so any writes are rolled back automatically.
 // This is faster than recreating the DB per test and keeps tests independent.

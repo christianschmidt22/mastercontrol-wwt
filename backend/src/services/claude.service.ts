@@ -687,6 +687,8 @@ export async function streamChat({
       streamCompleted = true;
     })();
 
+    // Race the stream against client disconnect so we don't hold the
+    // Anthropic connection open after the browser navigates away.
     await Promise.race([streamDone, sse.disconnected]);
   } catch (err) {
     // Log and surface the error without leaking the API key (R-003 / R-013).
@@ -698,11 +700,11 @@ export async function streamChat({
 
   // ------------------------------------------------------------------
   // 7. Persist assistant message (R-005: do NOT mirror to notes)
-  // Only persist if the stream completed normally (not if the client
-  // disconnected first — in that case we have a partial text and saving
-  // it would produce a truncated ghost message in the thread history).
+  // We persist if any content was produced — the user saw the partial
+  // (it was streamed), so saving it preserves history continuity. If
+  // nothing was produced (disconnect before first token), skip.
   // ------------------------------------------------------------------
-  if (streamCompleted && (fullText || toolCallsAccumulated.length > 0)) {
+  if (fullText || toolCallsAccumulated.length > 0) {
     await m.agentMessageModel.append(
       threadId,
       'assistant',

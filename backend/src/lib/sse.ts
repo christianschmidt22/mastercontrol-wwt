@@ -38,17 +38,40 @@ export function openSse(req: Request, res: Response): SseHandle {
     resolveDisconnect = resolve;
   });
 
-  req.on('close', resolveDisconnect);
+  // `closed` flips true only on a genuine client disconnect — we listen on
+  // `res.on('close')` and gate on `!res.writableEnded`. In Node 18+ the
+  // IncomingMessage's 'close' event fires when the request body finishes
+  // even if the response is still streaming, which is too eager and was
+  // causing SSE writes to no-op mid-stream under supertest. The Response
+  // 'close' event is the right signal: it fires when the underlying
+  // socket closes, and combined with the writableEnded check we can tell
+  // a true abort apart from an end() we just did ourselves.
+  let closed = false;
+  res.on('close', () => {
+    if (!res.writableEnded) {
+      closed = true;
+      resolveDisconnect();
+    }
+  });
 
   return {
     send(payload: unknown): void {
+      if (closed || res.writableEnded) return;
       res.write('data: ' + JSON.stringify(payload) + '\n\n');
     },
     end(): void {
-      res.write('data: [DONE]\n\n');
+      // Always finalize the response; otherwise supertest (and real clients)
+      // hang waiting for the body to end.
+      // - If the client disconnected (closed=true via req.close), skip the
+      //   [DONE] write but still call res.end() to release server-side
+      //   stream resources. res.end() is idempotent.
+      // - Normal completion: write [DONE], then res.end().
+      if (res.writableEnded) return;
+      if (!closed) {
+        res.write('data: [DONE]\n\n');
+      }
+      closed = true;
       res.end();
-      // Ensure disconnected resolves even when we ended before the client closed.
-      resolveDisconnect();
     },
     disconnected,
   };
