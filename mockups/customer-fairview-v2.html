@@ -112,12 +112,16 @@
     font-weight: 500; letter-spacing: 0.02em;
     padding: 7px 14px; border-radius: 6px; cursor: pointer;
     border: 1px solid var(--rule); background: var(--bg);
-    color: var(--ink-2); transition: all 200ms var(--ease);
+    color: var(--ink-2);
+    transition: color 200ms var(--ease), border-color 200ms var(--ease), background-color 200ms var(--ease);
     display: flex; align-items: center; gap: 6px;
   }
   .btn:hover { color: var(--ink-1); border-color: var(--ink-2); background: var(--bg-2); }
-  .btn-primary { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
-  .btn-primary:hover { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+  /* Q-1 / R-011: previous .btn-primary used color: var(--accent) on
+     accent-soft, which fails AA at 12px. Demote text to --ink-1; the
+     vermilion border still pulls the eye without a contrast issue. */
+  .btn-primary { color: var(--ink-1); border-color: var(--accent); background: var(--bg-2); }
+  .btn-primary:hover { background: var(--accent-soft); border-color: var(--accent); color: var(--ink-1); }
 
   /* dashboard grid ────────────────────────────────── */
   .dashboard {
@@ -157,7 +161,7 @@
     display: inline-flex; align-items: center; justify-content: center;
     border: none; background: transparent; border-radius: 4px;
     color: var(--ink-3); cursor: pointer;
-    transition: all 150ms var(--ease);
+    transition: color 150ms var(--ease), background-color 150ms var(--ease);
   }
   .icon-btn:hover { background: var(--bg-2); color: var(--ink-1); }
   .icon-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
@@ -260,7 +264,9 @@
     font-weight: 600; padding: 2px 8px; border-radius: 10px;
     background: var(--bg-2); color: var(--ink-2);
   }
-  .status-pill[data-status="active"] { color: var(--accent); background: var(--accent-soft); }
+  /* Q-1: status pills do NOT carry vermilion at rest. Active state
+     reads as primary text on a slightly-elevated chip. */
+  .status-pill[data-status="active"] { color: var(--ink-1); background: var(--bg-2); }
 
   /* tasks tile ────────────────────────────────────── */
   .task-list { display: flex; flex-direction: column; gap: 10px; }
@@ -295,7 +301,8 @@
     gap: 6px; padding: 12px 6px;
     background: transparent; border: 1px solid var(--rule); border-radius: 6px;
     color: var(--ink-1); font-family: var(--body);
-    cursor: pointer; transition: all 200ms var(--ease);
+    cursor: pointer;
+    transition: color 200ms var(--ease), background-color 200ms var(--ease), border-color 200ms var(--ease);
   }
   .qref-btn:hover { background: var(--bg-2); border-color: var(--ink-2); }
   .qref-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
