@@ -185,25 +185,34 @@ today (Phase 2), recent agent insights.
   `C:\mastercontrol\reports\<report-id>\<run-id>.md` and indexed in DB.
 
 ### Scheduler design (Windows + suspend-prone laptop)
+
+**Q-3 RESOLVED 2026-04-25 — Task Scheduler only. See
+`docs/adr/0004-task-scheduler-not-windows-service.md`.**
+
 **Constraint:** laptop suspends when closed; in-process timers won't fire,
 and the OS may not wake on schedule.
 
-**Architecture:**
-1. Backend runs as a **Windows Service** (installed via `node-windows` or
-   `nssm`). Starts on user login, runs in background while OS is awake.
-2. On every backend startup, scheduler calls `runMissedJobs()`:
-   - For each schedule, compute the most recent fire-time before `now`;
-     if `last_run` is earlier than that, fire it now. Idempotent per
-     `run_id`.
-3. While running, in-process `node-cron` fires jobs at their normal cron
+**Architecture (Task Scheduler only):**
+1. A Windows Task Scheduler entry (registered once via PowerShell,
+   `docs/ops/scheduler-install.md`) starts the backend at user logon.
+   The backend is a long-lived Express process for the duration of the
+   session.
+2. A second Task Scheduler entry fires `npm run scheduler:tick` every hour
+   as a safety net in case the backend restarts between ticks.
+3. On every backend startup, `runMissedJobs()` computes the most recent
+   fire-time for each enabled schedule. If `last_run_at` is earlier than
+   that fire-time, the job runs immediately. Idempotency is keyed on
+   `UNIQUE(schedule_id, fire_time)` in `report_runs` — second call is a
+   no-op.
+4. While running, in-process `node-cron` fires jobs at their normal cron
    times.
-4. A small Windows Task Scheduler entry (set up once via PowerShell) starts
-   the service at logon and watchdog-restarts it if it dies.
 
 **Guarantees:**
-- Close laptop → wake → service starts → catch-up runs missed jobs.
+- Close laptop → wake → backend starts (logon trigger) → catch-up runs
+  missed jobs.
 - Job's fire-time passes while closed → next wake catches it up.
 - No dependence on the OS waking the machine.
+- No Windows Service, no elevated install, no third-party service manager.
 
 ## Data Model
 
@@ -284,14 +293,29 @@ request after schema rewrite)*
 - Type-checks clean, lint passes.
 
 **Phase 2 — Knowledge graph + ingestion**
-- WorkVault note ingestion (markdown + frontmatter, AI-tagged primary
-  org + mentions, mtime-wins sync).
-- OneDrive directory listing for OEM Project Documentation tile.
-- Cross-org mention auto-extraction on every note save.
-- Reports CRUD + Daily Task Review report.
-- Scheduler: in-process `node-cron` + `runMissedJobs()` startup catch-up
-  + Windows Service install + Task Scheduler watchdog.
-- Tools: `search_notes`, `list_documents`, `read_document`, `create_task`.
+- Migration framework first: `_migrations` table + numbered SQL files in
+  `backend/src/db/migrations/`, `runMigrations()` replaces `initSchema()`.
+- Schema additions: ingest columns on `notes` (`file_id`, `content_sha256`,
+  `last_seen_at`, `deleted_at`, `conflict_of_note_id`); `note_mentions` gains
+  `source` + `confidence`; `contacts` and `documents` gain `updated_at`;
+  tasks cross-org FK trigger; new tables `reports`, `report_schedules`,
+  `report_runs`, `ingest_sources`, `ingest_errors`.
+- WorkVault note ingestion: walk markdown files, parse frontmatter `file_id`,
+  reconcile via mtime-wins (5-case matrix), AI-tag primary org + mentions
+  (`source='ai_auto'`). Untrusted content wrapped in
+  `<untrusted_document>` tags; extraction call uses `tools: []`.
+- Cross-org mention auto-extraction on every live note save.
+- OneDrive directory listing for OEM Project Documentation tile (shallow
+  walk via `safePath` + new `/api/oem/:id/documents/scan` endpoint).
+- Reports CRUD + Daily Task Review report (default schedule `0 7 * * *`,
+  output to `C:\mastercontrol\reports\`).
+- Scheduler: Task Scheduler only (ADR-0004). In-process `node-cron` +
+  `runMissedJobs()` catch-up on startup + `scheduler:tick` CLI for the
+  hourly Task Scheduler safety-net entry. No Windows Service.
+- Tools: `search_notes`, `list_documents`, `read_document` (via
+  `resolveSafePath`, R-024), `create_task`. All logged to
+  `agent_tool_audit`.
+- ReportsPage real implementation (replaces Phase 1 placeholder).
 
 **Phase 3 — Polish**
 - Email / Outlook integration.
@@ -305,7 +329,7 @@ request after schema rewrite)*
 | 1 | Sidebar "Agents" entry meaning | (b) AI-agent management page — prompts, tools, history. Drop `agent` org type. |
 | 2 | WorkVault layout for ingest | Currently organized by note type, not by org. User will restructure. AI extraction tags primary org + mentions. |
 | 3 | WorkVault writes after ingest | Files stay externally editable on OneDrive. MasterControl writes new notes there too. mtime wins on conflict. |
-| 4 | Windows Service install | Yes. One-time admin install. Service starts on logon. |
+| 4 | Windows Service install | **SUPERSEDED** — Phase 2 uses Task Scheduler only (Q-3 resolved; see ADR-0004). |
 | 5 | Project ↔ OEM links | Use `note_mentions` (knowledge graph) rather than a `project_orgs` join table. Cross-OEM info propagates via auto-tagged mentions. |
 | 6 | Agent voice | Per-section archetypes (`customer`, `oem`) with per-org overrides via `agent_configs(section, org_id)`. |
 | 7 | External research scope | Web access enabled — `web_search` ships in Phase 1. |
@@ -319,18 +343,47 @@ request after schema rewrite)*
 1. **Customer scaling in the sidebar** — flat list works at 5 customers;
    what's the rule at 30? Cap with overflow? Pin / unpin? Group into a
    collapsible sub-section?
+   **RESOLVED 2026-04-25**: Phase 1 ships the flat list with no cap. The
+   question is deferred to Phase 2; if the list grows beyond ~15 before
+   Phase 2 lands, add a collapsible sub-section at that point.
+
 2. **Project tile schema beyond name/status/description** — keep it minimal
    (doc_url, notes_url) or add value, close-date, OEMs-involved?
+   **RESOLVED 2026-04-25**: Stay minimal for Phase 1 — `name`, `status`,
+   `description`, `doc_url`, `notes_url`. Promote additional fields in
+   Phase 2 only if query patterns demand them.
+
 3. **OEM document root paths on OneDrive** — per-OEM folder location.
    Needed before Phase 2 directory walker can be built. Likely
    `OneDrive\WWT\OEMs\<oem-name>\` — confirm the convention.
+   **OPEN** — gated on Phase 2 work beginning. Confirm the OneDrive folder
+   convention before building the directory walker (R-025 area). Default
+   assumption: `OneDrive\WWT\OEMs\<oem-name>\`.
+
 4. **Theme default on first load** — light, dark, or `prefers-color-scheme`?
    Default plan: respect system setting.
+   **RESOLVED 2026-04-25**: Default dark (`color-scheme: dark` on `:root`).
+   Light available via `<ThemeToggle>`; preference persists in `localStorage`
+   via Zustand. See DESIGN.md § Color.
+
 5. **Empty Customers list UX** — when no customers exist yet, the Customers
    area shows a `+ Add customer` CTA inline. Confirm.
+   **RESOLVED 2026-04-25**: Confirmed. Sidebar Customers section shows an
+   inline outline button `+ Add customer` when the list is empty. See
+   DESIGN.md § Component patterns / Sidebar.
+
 6. **Agents page editor UX** — textarea with `{{variable}}` placeholder
    reference card alongside, vs. a structured form. Default plan: textarea
    for v1.
+
 7. **Type sharing between backend zod and frontend** — hand-mirror in
    `frontend/src/types/` (per CLAUDE.md spec) or expose backend types via a
    shared workspace. Default plan: hand-mirror — simpler tsconfig.
+
+8. **(Q-3) Phase 2 scheduler architecture** — Windows Service via
+   `node-windows` / `nssm`, or Windows Task Scheduler only?
+   **RESOLVED 2026-04-25**: Task Scheduler only. In-process `node-cron` for
+   live ticks; `runMissedJobs()` on startup for catch-up; a logon Task
+   Scheduler entry starts the backend; a separate hourly entry runs
+   `scheduler:tick` as a safety net. No Windows Service, no admin UAC
+   required at install. See `docs/adr/0004-task-scheduler-not-windows-service.md`.
