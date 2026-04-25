@@ -18,6 +18,24 @@
 - `CLAUDE.md` trimmed to ~110 lines and reorganized as operational guide
   + glossary + pointers, per official Anthropic memory best practices.
 
+### Product decisions locked (2026-04-25)
+- **Q-1 vermilion budget**: one zone at rest + enumerated transients
+  (focus rings, streaming caret, agent-insight dot, overdue indicator,
+  edit-mode chrome). Status pills and at-rest action buttons drop their
+  vermilion. DESIGN.md § Color rewritten; contrast token table added.
+- **Q-2 tile reordering**: drag with keyboard parity. `@dnd-kit/core` +
+  `@dnd-kit/sortable` planned. Per-tile "Move tile" button accepts
+  arrow keys for keyboard reorder. DESIGN.md § Tile dashboard authored
+  with default Customer-page layout, persistence model, and responsive
+  breakpoints.
+- **Q-4 insights queue UX**: both inline (per-insight accept/dismiss
+  bar in the org's notes feed) and an Agents-page bulk-review tab.
+  PRD § Agents Page updated.
+- **Q-5 record_insight allowlist scope**: `{currentOrgId} ∪ {orgs in
+  latest user message} ∪ {orgs in current org's note_mentions}`.
+- Q-3 (Phase 2 scheduler architecture) remains open — not blocking
+  Phase 1 work.
+
 ### P0 review-driven foundation (2026-04-25)
 - **R-001** Backend binds `127.0.0.1` only (was implicit `0.0.0.0`).
   CORS allowlist replaces env-overridable origin; explicit Origin check

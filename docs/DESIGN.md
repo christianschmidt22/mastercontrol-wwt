@@ -65,8 +65,23 @@ Two palettes, swappable via Tailwind's `darkMode: 'class'`. All colors are CSS v
 **Rules:**
 - No purple. No neon. No multi-stop gradients.
 - The only "gradient" is an optional 0.04-opacity paper-grain SVG overlay on `--bg` in light mode — barely visible, not a chrome effect.
-- Vermilion is used **sparingly** — never on more than one element per screen at rest. It signals user attention zones (active nav item, focus ring) and the agent-insight dot.
-- Default theme on first load: respect `prefers-color-scheme`. User toggle persists in `localStorage` via Zustand.
+- **Vermilion budget** (Q-1 resolved 2026-04-25): vermilion appears in exactly two contexts —
+  1. **One zone at rest**: the active sidebar entry's `--accent-soft` background plus its 2px left bar. That's it for the resting state.
+  2. **An enumerated set of transient signals**: focus rings (`focus-visible`), the streaming caret in the chat composer, the 4px agent-insight dot in the notes feed, the overdue-task indicator (`Today` / `Yesterday` due-text), and edit-mode chrome (the dashed border + drag-grip + resize handle on the active tile).
+
+  **Status pills, project-status badges, and at-rest action buttons do NOT carry vermilion.** Active project status uses `--ink-1` text on a chip background. The `Customize layout` button uses the standard secondary-button treatment until pressed.
+- Default theme on first load: dark (`color-scheme: dark` on `:root`) — user preference. Light is available via the `<ThemeToggle>`; pick persists in `localStorage` via Zustand.
+
+### Contrast token table (verified pairs)
+| Pair | Ratio | Min text size for AA |
+|---|---|---|
+| `--ink-1` on `--bg` (dark) | 13.6:1 | any |
+| `--ink-2` on `--bg` (dark) | 5.7:1 | 14px+ body |
+| `--accent` on `--bg` (dark) | 5.1:1 | 14px+ body |
+| `--ink-1` on `--accent-soft` (dark) | 12.4:1 | any |
+| `--accent` on `--accent-soft` (dark) | 4.1:1 | **fails AA — never use as button text fill** |
+
+The accent-on-accent-soft pair fails AA at body size. Buttons in the active sidebar use `--ink-1` text on `--accent-soft` background; the 2px left bar carries the vermilion. Primary action buttons elsewhere use `--ink-1` text on `--bg-2` with a vermilion border.
 
 ## Layout
 
@@ -102,6 +117,43 @@ Two palettes, swappable via Tailwind's `darkMode: 'class'`. All colors are CSS v
   }
 }
 ```
+
+## Tile dashboard (Q-2 resolved 2026-04-25)
+
+The customer and OEM pages render their tiles in a **customizable grid**. The user rearranges and resizes tiles per-org-type — all customers share the customer-page layout; all OEMs share the OEM-page layout. (Per-org overrides are P2 if ever desired.)
+
+### Edit mode
+- Tiles do **not** drag-rearrange in the resting state. The page header has a `Customize layout` button that flips the page into edit mode.
+- In edit mode the header gains three buttons: `Reset to default`, `Save`, `Cancel`. Each tile gains its edit-mode chrome (dashed `--accent` border, vermilion drag-grip top-center, vermilion resize handle bottom-right).
+- A one-time toast on first visit announces the affordance: "Drag tiles or press Customize layout to rearrange." Dismissal persists in `settings(key='ui.tile_hint_dismissed')`.
+
+### Drag + keyboard parity
+- **Mouse**: pick up the drag-grip (only visible in edit mode), drop into a snap target. Powered by `@dnd-kit/core` + `@dnd-kit/sortable`.
+- **Keyboard**: each tile in edit mode exposes a focusable "Move tile" button — `role="button"`, `aria-label="Move {Tile name}, currently row N column M"`. <kbd>Enter</kbd> activates move mode; <kbd>↑↓←→</kbd> reorder; <kbd>Esc</kbd> cancels; <kbd>Enter</kbd> commits. Position changes announce via `aria-live="polite"`.
+- Resize: drag the corner handle. Keyboard parity = a discrete "Resize" button per tile that opens a small popover with W/H steppers (cell counts 1–12 wide × 1–8 tall).
+
+### Persistence model
+- Layout state is `settings(key='layout.customer')` and `settings(key='layout.oem')`, JSON: `{ tiles: [{ id, x, y, w, h, hidden }] }`.
+- `Save` writes the JSON; `Cancel` reverts to last-saved; `Reset to default` clears the row so the default DESIGN.md layout takes over.
+- Layout fetch hooks into TanStack Query so changes are optimistic and round-trip without re-render churn.
+
+### Responsive
+- ≥1440px: 12-col grid as designed.
+- 1100–1440px: 8-col grid; tiles' `w` clamps to `min(w, 8)`.
+- <1100px: single-column scroll, edit mode disabled, tiles render in saved order.
+
+### Default Customer page layout
+| Tile | Position |
+|---|---|
+| Fairview Agent (chat) | cols 1–7, rows 1–5 |
+| Priority Projects | cols 8–12, rows 1–3 |
+| Tasks | cols 8–12, rows 4–5 |
+| Recent Notes | cols 1–7, rows 6–8 |
+| Contacts | cols 8–12, rows 6–7 |
+| Reference (Profile · Locations · Portals) | cols 8–12, row 8 |
+| Documents | cols 1–7, row 9 |
+
+Contacts is its own first-class tile (Q-4 / R-012) — call-time reference frequency demands it. Reference holds Profile, Locations, Portals (icon + label visible at rest, click expands a popover with the rarely-needed reference data).
 
 ## Component patterns
 

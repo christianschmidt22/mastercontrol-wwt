@@ -113,8 +113,15 @@ today (Phase 2), recent agent insights.
 - Per-org override list (which orgs have a custom prompt vs. inheriting the
   archetype).
 - Recent thread list with token-usage and tool-call summary.
-- Insights queue — every `agent_insight` note across all orgs in one list,
-  newest first, with the source thread.
+- **Insights queue tab** (Q-4 resolved 2026-04-25): every unconfirmed
+  `agent_insight` note across all orgs in one list, newest first, with the
+  source thread, the target org, and the proposed content. Bulk
+  accept/reject actions. **Inline review also available**: each
+  unconfirmed insight renders directly in its target org's notes feed
+  with an `Accept` / `Dismiss` bar attached, so you don't have to leave
+  the org to act on a single insight. The Agents-page tab is the bulk
+  surface; the inline treatment is the per-org one. Both write to the
+  same `notes.confirmed` column.
 
 ## Notes & AI
 
