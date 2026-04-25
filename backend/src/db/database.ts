@@ -27,3 +27,15 @@ export function initSchema(): void {
   // is safe to call multiple times (idempotent on a fresh in-memory db too).
   db.exec(schema);
 }
+
+// IMPORTANT: ESM static imports are hoisted, so any model file imported
+// alongside this one will run its `db.prepare(...)` calls before any other
+// top-level code in the consuming module gets a chance to call initSchema().
+// To guarantee the schema exists by the time the model files prepare their
+// statements, we run initSchema() right here at module-load — making the
+// singleton "ready to use" the moment any consumer touches `db`.
+//
+// Tests opt out via DB_PATH=':memory:' + a fresh Database per process; the
+// test setup file calls initSchema() explicitly after assigning DB_PATH so
+// this auto-init is harmless (idempotent CREATE IF NOT EXISTS).
+initSchema();
