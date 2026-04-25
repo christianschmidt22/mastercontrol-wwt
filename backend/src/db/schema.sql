@@ -145,6 +145,25 @@ CREATE TABLE IF NOT EXISTS agent_messages (
 );
 CREATE INDEX IF NOT EXISTS idx_messages_thread ON agent_messages(thread_id, created_at);
 
+-- R-022: agent_tool_audit — every tool call (web_search, record_insight, and
+-- future Phase 2 tools) writes a row here so the user can review what the
+-- agent did. `input_json` is the tool input object; `output_json` is either
+-- the tool result or the rejection reason. `status` is one of:
+--   'ok'       — tool executed successfully
+--   'rejected' — server-side allowlist or safety check blocked the call
+--   'error'    — tool execution threw / returned an error
+-- Rows cascade-delete when their thread is deleted.
+CREATE TABLE IF NOT EXISTS agent_tool_audit (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  thread_id INTEGER NOT NULL REFERENCES agent_threads(id) ON DELETE CASCADE,
+  tool_name TEXT NOT NULL,
+  input_json TEXT,
+  output_json TEXT,
+  status TEXT NOT NULL CHECK(status IN ('ok','rejected','error')),
+  occurred_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_audit_thread ON agent_tool_audit(thread_id, occurred_at);
+
 -- R-005: notes_unified VIEW. The org's notes feed reads from this view so that
 -- assistant chat messages appear in the timeline without being duplicated as
 -- rows in `notes`. `agent_messages` is the canonical store for assistant
