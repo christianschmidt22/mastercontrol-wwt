@@ -1,0 +1,703 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="theme-color" content="#0E1116" />
+<title>MasterControl — Forms Mockup</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="preconnect" href="https://api.fontshare.com" crossorigin />
+<link rel="stylesheet"
+  href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&display=swap" />
+<link rel="stylesheet"
+  href="https://api.fontshare.com/v2/css?f[]=switzer@300,400,500,600,700&display=swap" />
+
+<style>
+  /* ── DESIGN TOKENS ───────────────────────────────────── */
+  :root {
+    color-scheme: dark;
+    --bg:          #0E1116;
+    --bg-2:        #161A21;
+    --ink-1:       #EDE7DA;
+    --ink-2:       #9A958A;
+    --ink-3:       #5C564E;
+    --rule:        #2A2F38;
+    --accent:      #E66B4D;
+    --accent-soft: #2C1A14;
+    --display: 'Fraunces', ui-serif, Georgia, serif;
+    --body:    'Switzer', ui-sans-serif, system-ui, sans-serif;
+    --mono:    ui-monospace, Menlo, Consolas, monospace;
+    --ease:    cubic-bezier(0.2, 0, 0, 1);
+  }
+
+  /* ── RESET ───────────────────────────────────────────── */
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--bg);
+    color: var(--ink-1);
+    font-family: var(--body);
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  h1, h2, h3 { text-wrap: balance; margin: 0; font-family: var(--display); }
+  p { text-wrap: pretty; margin: 0; }
+
+  /* ── SKIP LINK ───────────────────────────────────────── */
+  .skip-link {
+    position: absolute;
+    left: -9999px;
+    top: 8px;
+    z-index: 100;
+    background: var(--bg-2);
+    color: var(--ink-1);
+    padding: 8px 16px;
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    font-family: var(--body);
+    font-size: 14px;
+    text-decoration: none;
+  }
+  .skip-link:focus { left: 8px; outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* ── LAYOUT ──────────────────────────────────────────── */
+  .page { max-width: 640px; margin: 0 auto; padding: 48px 32px 96px; }
+
+  /* ── PAGE HEADER ─────────────────────────────────────── */
+  .eyebrow {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    margin-bottom: 8px;
+  }
+  .page-title {
+    font-family: var(--display);
+    font-weight: 500;
+    font-size: 56px;
+    line-height: 1.02;
+    letter-spacing: -0.02em;
+    margin-left: -3px;
+    color: var(--ink-1);
+    margin-bottom: 8px;
+  }
+  .page-subtitle {
+    font-size: 14px;
+    color: var(--ink-2);
+    margin-bottom: 48px;
+  }
+
+  /* ── SECTION DIVIDERS ────────────────────────────────── */
+  .section-label {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    margin-bottom: 16px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--rule);
+  }
+  .form-section { margin-bottom: 48px; }
+
+  /* ── FORM PRIMITIVES ─────────────────────────────────── */
+  .field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 24px; }
+  .field:last-child { margin-bottom: 0; }
+
+  label {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--ink-2);
+    letter-spacing: 0.01em;
+  }
+
+  .helper {
+    font-size: 12px;
+    color: var(--ink-3);
+    margin-top: -2px;
+  }
+
+  input[type="text"],
+  input[type="password"],
+  input[type="date"],
+  select,
+  textarea {
+    font-family: var(--body);
+    font-size: 14px;
+    color: var(--ink-1);
+    background-color: var(--bg-2);
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    padding: 9px 12px;
+    width: 100%;
+    outline: none;
+    transition: border-color 150ms var(--ease), background-color 150ms var(--ease);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  input[type="text"]:hover,
+  input[type="password"]:hover,
+  input[type="date"]:hover,
+  select:hover,
+  textarea:hover {
+    border-color: var(--ink-3);
+  }
+
+  input[type="text"]:focus,
+  input[type="password"]:focus,
+  input[type="date"]:focus,
+  select:focus,
+  textarea:focus {
+    border-color: var(--accent);
+    outline: 2px solid var(--accent);
+    outline-offset: 0px;
+  }
+
+  input::placeholder,
+  textarea::placeholder { color: var(--ink-3); }
+
+  /* Select: explicit bg + color for dark mode (Vercel rule) */
+  select {
+    background-color: var(--bg-2);
+    color: var(--ink-1);
+    cursor: pointer;
+    appearance: none;
+    -webkit-appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%235C564E' stroke-width='1.5'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 10px center;
+    padding-right: 32px;
+  }
+  select option {
+    background-color: var(--bg-2);
+    color: var(--ink-1);
+  }
+
+  /* Textarea: chat-composer pattern */
+  .textarea-composer {
+    font-weight: 300;
+    font-size: 24px;
+    line-height: 1.4;
+    resize: none;
+    padding: 12px 14px;
+  }
+
+  /* ── ERROR STATE ─────────────────────────────────────── */
+  .field.has-error input,
+  .field.has-error textarea,
+  .field.has-error select {
+    border-color: var(--accent);
+  }
+  .field.has-error input:focus,
+  .field.has-error textarea:focus,
+  .field.has-error select:focus {
+    outline-color: var(--accent);
+  }
+
+  .error-msg {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--accent);
+    font-weight: 500;
+    margin-top: 2px;
+  }
+  .error-msg svg { flex: none; }
+
+  /* ── CHECKBOX & RADIO ────────────────────────────────── */
+  .check-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+  .check-row:last-child { margin-bottom: 0; }
+
+  input[type="checkbox"],
+  input[type="radio"] {
+    width: 16px;
+    height: 16px;
+    flex: none;
+    cursor: pointer;
+    border: 1.5px solid var(--ink-3);
+    background-color: var(--bg-2);
+    border-radius: 3px;
+    appearance: none;
+    -webkit-appearance: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: border-color 150ms var(--ease), background-color 150ms var(--ease);
+    margin: 0;
+  }
+
+  input[type="radio"] { border-radius: 50%; }
+
+  input[type="checkbox"]:checked,
+  input[type="radio"]:checked {
+    background-color: var(--accent);
+    border-color: var(--accent);
+  }
+
+  input[type="checkbox"]:checked::after {
+    content: "";
+    display: block;
+    width: 8px;
+    height: 5px;
+    border-left: 1.5px solid #fff;
+    border-bottom: 1.5px solid #fff;
+    transform: rotate(-45deg) translate(0px, -1px);
+  }
+
+  input[type="radio"]:checked::after {
+    content: "";
+    display: block;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #fff;
+  }
+
+  input[type="checkbox"]:focus-visible,
+  input[type="radio"]:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  input[type="checkbox"]:hover,
+  input[type="radio"]:hover {
+    border-color: var(--ink-2);
+  }
+
+  .check-label {
+    font-size: 14px;
+    color: var(--ink-1);
+    cursor: pointer;
+  }
+
+  /* Fieldset + legend for radio group */
+  fieldset {
+    border: none;
+    padding: 0;
+    margin: 0;
+  }
+  legend {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--ink-2);
+    letter-spacing: 0.01em;
+    padding: 0;
+    margin-bottom: 10px;
+  }
+
+  /* ── BUTTONS ─────────────────────────────────────────── */
+  .btn {
+    font-family: var(--body);
+    font-size: 14px;
+    font-weight: 500;
+    letter-spacing: 0.01em;
+    padding: 9px 18px;
+    border-radius: 6px;
+    cursor: pointer;
+    border: 1px solid var(--rule);
+    background: var(--bg);
+    color: var(--ink-2);
+    transition: color 200ms var(--ease),
+                border-color 200ms var(--ease),
+                background-color 200ms var(--ease);
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    line-height: 1;
+  }
+  .btn:hover { color: var(--ink-1); border-color: var(--ink-2); background: var(--bg-2); }
+  .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .btn:active { background: var(--bg-2); }
+
+  /* Primary: vermilion border, --ink-1 text — per Q-1 / R-011 AA rule */
+  .btn-primary {
+    color: var(--ink-1);
+    border-color: var(--accent);
+    background: var(--bg-2);
+  }
+  .btn-primary:hover {
+    background: var(--accent-soft);
+    border-color: var(--accent);
+    color: var(--ink-1);
+  }
+
+  /* Loading state */
+  .btn-loading {
+    color: var(--ink-3);
+    pointer-events: none;
+    cursor: default;
+  }
+
+  /* Disabled state */
+  .btn:disabled,
+  .btn[aria-disabled="true"] {
+    opacity: 0.4;
+    cursor: not-allowed;
+    pointer-events: none;
+  }
+
+  /* Submit row */
+  .submit-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-top: 8px;
+  }
+
+  /* Dirty / unsaved changes pill */
+  .dirty-pill {
+    font-size: 12px;
+    color: var(--ink-3);
+    background: var(--bg-2);
+    border: 1px solid var(--rule);
+    border-radius: 10px;
+    padding: 3px 10px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .dirty-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--ink-3);
+    flex: none;
+  }
+
+  /* Spinner (12px, Lucide-style SVG animation) */
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .spinner {
+    width: 12px;
+    height: 12px;
+    flex: none;
+    animation: spin 700ms linear infinite;
+  }
+
+  /* ── CARD WRAPPER ────────────────────────────────────── */
+  .card {
+    border: 1px solid var(--rule);
+    border-radius: 8px;
+    padding: 28px 32px;
+    background: var(--bg-2);
+    margin-bottom: 16px;
+  }
+  .card-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--ink-1);
+    margin-bottom: 20px;
+  }
+
+  /* ── FOOTER ──────────────────────────────────────────── */
+  .page-footer {
+    margin-top: 64px;
+    padding-top: 24px;
+    border-top: 1px solid var(--rule);
+    font-size: 12px;
+    color: var(--ink-3);
+    line-height: 1.6;
+  }
+
+  /* ── FOCUS-VISIBLE GLOBAL ────────────────────────────── */
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+
+  /* ── REDUCED MOTION ──────────────────────────────────── */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+</style>
+</head>
+<body>
+
+<a class="skip-link" href="#main">Skip to main content</a>
+
+<main id="main" class="page">
+
+  <!-- PAGE HEADER -->
+  <div class="eyebrow">Mockups</div>
+  <h1 class="page-title">Forms</h1>
+  <p class="page-subtitle">Field-level patterns implemented in DESIGN.md&nbsp;§&nbsp;Forms.</p>
+
+  <!-- ── SECTION 1: TEXT INPUTS ───────────────────────── -->
+  <div class="form-section">
+    <div class="section-label">Text input</div>
+
+    <div class="card">
+      <div class="card-title">Standard field with helper</div>
+
+      <div class="field">
+        <label for="org-name">Organization name</label>
+        <input
+          type="text"
+          id="org-name"
+          name="org_name"
+          placeholder="e.g.&nbsp;Fairview Health"
+          autocomplete="organization"
+        />
+        <p class="helper">Used as the primary display name throughout the app.</p>
+      </div>
+
+      <div class="field">
+        <label for="contact-email">Email address</label>
+        <input
+          type="text"
+          id="contact-email"
+          name="email"
+          inputmode="email"
+          placeholder="sarah@fairviewhealth.org"
+          autocomplete="email"
+        />
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Inline error state — focus jumps here on submit</div>
+
+      <div class="field has-error">
+        <label for="org-name-err">Organization name</label>
+        <input
+          type="text"
+          id="org-name-err"
+          name="org_name"
+          value=""
+          aria-invalid="true"
+          aria-describedby="org-name-err-msg"
+          autocomplete="organization"
+        />
+        <p class="error-msg" id="org-name-err-msg" role="alert">
+          <!-- Lucide AlertCircle 14px -->
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          This field is required.
+        </p>
+      </div>
+
+      <div class="field has-error">
+        <label for="region-err">Region</label>
+        <input
+          type="text"
+          id="region-err"
+          name="region"
+          value="Midwest"
+          aria-invalid="true"
+          aria-describedby="region-err-msg"
+          autocomplete="off"
+        />
+        <p class="error-msg" id="region-err-msg" role="alert">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          Unrecognized region — choose from the list below.
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── SECTION 2: TEXTAREA ──────────────────────────── -->
+  <div class="form-section">
+    <div class="section-label">Textarea — chat composer pattern</div>
+
+    <div class="card">
+      <div class="field">
+        <label for="composer" class="visually-hidden" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)">
+          Ask the Fairview agent
+        </label>
+        <textarea
+          id="composer"
+          name="message"
+          class="textarea-composer"
+          rows="3"
+          placeholder="Ask the Fairview agent…"
+          spellcheck="true"
+          autocomplete="off"
+        ></textarea>
+        <p class="helper">24px Switzer Light. Auto-grows to 12 lines. <kbd style="font-family:var(--mono);font-size:11px;background:var(--bg);border:1px solid var(--rule);border-radius:3px;padding:1px 5px;color:var(--ink-2)">⌘</kbd>&nbsp;<kbd style="font-family:var(--mono);font-size:11px;background:var(--bg);border:1px solid var(--rule);border-radius:3px;padding:1px 5px;color:var(--ink-2)">↵</kbd> sends; Enter alone inserts newline.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── SECTION 3: SELECT ────────────────────────────── -->
+  <div class="form-section">
+    <div class="section-label">Select — explicit bg + color (dark-mode rule)</div>
+
+    <div class="card">
+      <div class="field">
+        <label for="org-type">Organization type</label>
+        <select id="org-type" name="org_type">
+          <option value="" disabled selected>Choose a type…</option>
+          <option value="customer">Customer</option>
+          <option value="oem">OEM</option>
+        </select>
+        <p class="helper">Determines which agent archetype and tile layout apply.</p>
+      </div>
+
+      <div class="field">
+        <label for="project-status">Project status</label>
+        <select id="project-status" name="status">
+          <option value="scoping">Scoping</option>
+          <option value="active" selected>Active</option>
+          <option value="on_hold">On hold</option>
+          <option value="closed">Closed</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── SECTION 4: CHECKBOX ──────────────────────────── -->
+  <div class="form-section">
+    <div class="section-label">Checkbox — real &lt;input type="checkbox"&gt;</div>
+
+    <div class="card">
+      <div class="check-row">
+        <input type="checkbox" id="chk-1" name="notify_me" checked />
+        <label class="check-label" for="chk-1">Notify me when the agent saves an insight</label>
+      </div>
+      <div class="check-row">
+        <input type="checkbox" id="chk-2" name="auto_confirm" />
+        <label class="check-label" for="chk-2">Auto-confirm agent insights (not recommended)</label>
+      </div>
+      <div class="check-row">
+        <input type="checkbox" id="chk-3" name="reduced_motion" />
+        <label class="check-label" for="chk-3">Reduce motion (overrides OS preference)</label>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── SECTION 5: RADIO GROUP ───────────────────────── -->
+  <div class="form-section">
+    <div class="section-label">Radio group — fieldset + legend</div>
+
+    <div class="card">
+      <fieldset>
+        <legend>Chat streaming behavior</legend>
+        <div class="check-row">
+          <input type="radio" id="stream-auto" name="stream_mode" value="auto" checked />
+          <label class="check-label" for="stream-auto">Automatic — stream when available</label>
+        </div>
+        <div class="check-row">
+          <input type="radio" id="stream-always" name="stream_mode" value="always" />
+          <label class="check-label" for="stream-always">Always stream</label>
+        </div>
+        <div class="check-row">
+          <input type="radio" id="stream-never" name="stream_mode" value="never" />
+          <label class="check-label" for="stream-never">Never stream — wait for full response</label>
+        </div>
+      </fieldset>
+    </div>
+  </div>
+
+  <!-- ── SECTION 6: PASSWORD / API KEY ────────────────── -->
+  <div class="form-section">
+    <div class="section-label">Password input — API key shape</div>
+
+    <div class="card">
+      <div class="field">
+        <label for="api-key">Anthropic API key</label>
+        <input
+          type="password"
+          id="api-key"
+          name="anthropic_api_key"
+          autocomplete="off"
+          spellcheck="false"
+          placeholder="sk-ant-…"
+          aria-describedby="api-key-hint"
+        />
+        <p class="helper" id="api-key-hint">Stored DPAPI-encrypted. Never logged. After save, displayed as <span style="font-family:var(--mono);color:var(--ink-2)">sk-ant-…xyz1</span>.</p>
+      </div>
+
+      <div class="field" style="margin-bottom:0">
+        <label for="api-key-saved">API key (saved, masked)</label>
+        <input
+          type="password"
+          id="api-key-saved"
+          name="anthropic_api_key_display"
+          autocomplete="off"
+          spellcheck="false"
+          value="sk-ant-…last4"
+          readonly
+          aria-label="Saved API key, masked"
+        />
+      </div>
+    </div>
+  </div>
+
+  <!-- ── SECTION 7: DATE INPUT ────────────────────────── -->
+  <div class="form-section">
+    <div class="section-label">Date input</div>
+
+    <div class="card">
+      <div class="field" style="margin-bottom:0">
+        <label for="due-date">Due date</label>
+        <input
+          type="date"
+          id="due-date"
+          name="due_date"
+          value="2026-05-01"
+          autocomplete="off"
+        />
+        <p class="helper">Displayed via <code style="font-family:var(--mono);font-size:12px;color:var(--ink-2)">Intl.DateTimeFormat</code> — no hard-coded locale strings.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── SECTION 8: SUBMIT ROW ────────────────────────── -->
+  <div class="form-section">
+    <div class="section-label">Submit row — primary + secondary, loading, disabled, dirty pill</div>
+
+    <div class="card">
+      <div class="card-title">Resting state</div>
+      <div class="submit-row">
+        <button class="btn btn-primary" type="submit">Save API Key</button>
+        <button class="btn" type="button">Cancel</button>
+        <span class="dirty-pill">
+          <span class="dirty-dot" aria-hidden="true"></span>
+          Unsaved changes
+        </span>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Loading state — leading 12px spinner + "Saving…"</div>
+      <div class="submit-row">
+        <button class="btn btn-primary btn-loading" type="submit" aria-disabled="true" aria-label="Saving API key, please wait">
+          <!-- Lucide Loader2, 12px, animated -->
+          <svg class="spinner" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 12a9 9 0 1 1-6.22-8.56"/></svg>
+          Saving…
+        </button>
+        <button class="btn" type="button" disabled aria-disabled="true">Cancel</button>
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom:0">
+      <div class="card-title">Disabled state — greyed out, cursor: not-allowed</div>
+      <div class="submit-row">
+        <button class="btn btn-primary" type="submit" disabled aria-disabled="true">Save API Key</button>
+        <button class="btn" type="button" disabled aria-disabled="true">Cancel</button>
+      </div>
+      <p class="helper" style="margin-top:12px">Both buttons have <code style="font-family:var(--mono);font-size:12px;color:var(--ink-2)">disabled</code> + <code style="font-family:var(--mono);font-size:12px;color:var(--ink-2)">aria-disabled="true"</code>. Opacity 0.4, pointer-events none, cursor not-allowed via CSS.</p>
+    </div>
+  </div>
+
+  <!-- ── FOOTER ────────────────────────────────────────── -->
+  <footer class="page-footer">
+    Implements: DESIGN.md&nbsp;§&nbsp;Forms, §&nbsp;Buttons, §&nbsp;Color (contrast token table),
+    §&nbsp;Accessibility floor — and REVIEW.md items R-007 (spacing scale, button variants, form
+    specs) &amp; R-011 (focus rings, semantic tags, AA contrast, curly&nbsp;quotes, anti-patterns).
+  </footer>
+
+</main>
+</body>
+</html>

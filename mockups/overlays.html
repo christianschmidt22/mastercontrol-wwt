@@ -1,0 +1,786 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="theme-color" content="#0E1116" />
+<title>MasterControl — Overlays Mockup</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="preconnect" href="https://api.fontshare.com" crossorigin />
+<link rel="stylesheet"
+  href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&display=swap" />
+<link rel="stylesheet"
+  href="https://api.fontshare.com/v2/css?f[]=switzer@300,400,500,600,700&display=swap" />
+
+<style>
+  /* ── DESIGN TOKENS ───────────────────────────────────── */
+  :root {
+    color-scheme: dark;
+    --bg:          #0E1116;
+    --bg-2:        #161A21;
+    --ink-1:       #EDE7DA;
+    --ink-2:       #9A958A;
+    --ink-3:       #5C564E;
+    --rule:        #2A2F38;
+    --accent:      #E66B4D;
+    --accent-soft: #2C1A14;
+    --display: 'Fraunces', ui-serif, Georgia, serif;
+    --body:    'Switzer', ui-sans-serif, system-ui, sans-serif;
+    --mono:    ui-monospace, Menlo, Consolas, monospace;
+    --ease:    cubic-bezier(0.2, 0, 0, 1);
+  }
+
+  /* ── RESET ───────────────────────────────────────────── */
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--bg);
+    color: var(--ink-1);
+    font-family: var(--body);
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  h1, h2, h3 { text-wrap: balance; margin: 0; font-family: var(--display); }
+  p { text-wrap: pretty; margin: 0; }
+
+  /* ── SKIP LINK ───────────────────────────────────────── */
+  .skip-link {
+    position: absolute;
+    left: -9999px;
+    top: 8px;
+    z-index: 200;
+    background: var(--bg-2);
+    color: var(--ink-1);
+    padding: 8px 16px;
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    font-family: var(--body);
+    font-size: 14px;
+    text-decoration: none;
+  }
+  .skip-link:focus { left: 8px; outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* ── LAYOUT ──────────────────────────────────────────── */
+  .page { max-width: 900px; margin: 0 auto; padding: 48px 32px 96px; }
+
+  /* ── PAGE HEADER ─────────────────────────────────────── */
+  .eyebrow {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    margin-bottom: 8px;
+  }
+  .page-title {
+    font-family: var(--display);
+    font-weight: 500;
+    font-size: 56px;
+    line-height: 1.02;
+    letter-spacing: -0.02em;
+    margin-left: -3px;
+    color: var(--ink-1);
+    margin-bottom: 8px;
+  }
+  .page-subtitle {
+    font-size: 14px;
+    color: var(--ink-2);
+    margin-bottom: 48px;
+  }
+
+  /* ── SECTION LABEL ───────────────────────────────────── */
+  .section-label {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    margin-bottom: 16px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--rule);
+  }
+  .overlay-section { margin-bottom: 56px; }
+
+  /* ── CAPTION ─────────────────────────────────────────── */
+  .caption {
+    font-size: 12px;
+    color: var(--ink-3);
+    margin-top: 12px;
+    line-height: 1.6;
+  }
+  .caption strong { color: var(--ink-2); font-weight: 500; }
+
+  /* ── SHARED BUTTON ───────────────────────────────────── */
+  .btn {
+    font-family: var(--body);
+    font-size: 14px;
+    font-weight: 500;
+    padding: 9px 18px;
+    border-radius: 6px;
+    cursor: pointer;
+    border: 1px solid var(--rule);
+    background: var(--bg);
+    color: var(--ink-2);
+    transition: color 200ms var(--ease),
+                border-color 200ms var(--ease),
+                background-color 200ms var(--ease);
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    line-height: 1;
+  }
+  .btn:hover { color: var(--ink-1); border-color: var(--ink-2); background: var(--bg-2); }
+  .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* Primary */
+  .btn-primary {
+    color: var(--ink-1);
+    border-color: var(--accent);
+    background: var(--bg-2);
+  }
+  .btn-primary:hover { background: var(--accent-soft); border-color: var(--accent); color: var(--ink-1); }
+  /* Focus ring on primary = vermilion outline (transient) */
+  .btn-primary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* Destructive: vermilion border + --ink-1 text, NOT vermilion fill — per Q-1 */
+  .btn-destructive {
+    color: var(--ink-1);
+    border-color: var(--accent);
+    background: var(--bg-2);
+  }
+  .btn-destructive:hover { background: var(--accent-soft); }
+  .btn-destructive:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* Ghost / small */
+  .btn-ghost {
+    border-color: transparent;
+    background: transparent;
+    color: var(--ink-3);
+    padding: 4px 8px;
+    font-size: 13px;
+  }
+  .btn-ghost:hover { color: var(--ink-1); background: var(--bg-2); border-color: var(--rule); }
+
+  /* Icon-only */
+  .icon-btn {
+    width: 28px;
+    height: 28px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    background: transparent;
+    border-radius: 4px;
+    color: var(--ink-3);
+    cursor: pointer;
+    transition: color 150ms var(--ease), background-color 150ms var(--ease);
+  }
+  .icon-btn:hover { background: var(--bg-2); color: var(--ink-1); }
+  .icon-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+  /* ══════════════════════════════════════════════════════
+     1. MODAL
+  ══════════════════════════════════════════════════════ */
+
+  /* Backdrop */
+  .modal-backdrop {
+    position: relative;
+    background: rgba(14, 17, 22, 0.72);
+    border: 1px solid var(--rule);
+    border-radius: 12px;
+    padding: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 280px;
+  }
+
+  /* Modal dialog */
+  .modal {
+    background: var(--bg-2);
+    border: 1px solid var(--rule);
+    border-radius: 8px;
+    max-width: 480px;
+    width: 100%;
+    padding: 0;
+    /* No drop-shadow — hierarchy via hairline */
+  }
+
+  .modal-header {
+    padding: 24px 24px 0;
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+  }
+
+  .modal-title {
+    font-family: var(--display);
+    font-size: 20px;
+    font-weight: 500;
+    color: var(--ink-1);
+    line-height: 1.2;
+  }
+
+  .modal-body {
+    padding: 12px 24px 20px;
+    color: var(--ink-2);
+    font-size: 14px;
+    line-height: 1.6;
+  }
+
+  .modal-footer {
+    padding: 16px 24px 20px;
+    border-top: 1px solid var(--rule);
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+
+  .modal-esc-hint {
+    font-size: 11px;
+    color: var(--ink-3);
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-right: auto;
+  }
+  kbd {
+    font-family: var(--mono);
+    font-size: 10px;
+    background: var(--bg);
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    padding: 1px 5px;
+    color: var(--ink-2);
+  }
+
+  /* ══════════════════════════════════════════════════════
+     2. TOAST
+  ══════════════════════════════════════════════════════ */
+
+  .toast-container {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    align-items: flex-end;
+  }
+
+  .toast {
+    width: 280px;
+    background: var(--bg-2);
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    padding: 12px 14px 12px 16px;
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    border-left-width: 3px;
+  }
+
+  .toast-confirm { border-left-color: var(--accent); }
+  .toast-info    { border-left-color: var(--ink-3); }
+
+  .toast-content { flex: 1; }
+  .toast-message { font-size: 13px; color: var(--ink-1); line-height: 1.4; }
+  .toast-meta    { font-size: 11px; color: var(--ink-3); margin-top: 2px; }
+
+  .toast-dismiss {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--ink-3);
+    font-family: var(--body);
+    font-size: 16px;
+    line-height: 1;
+    padding: 0;
+    flex: none;
+    transition: color 150ms var(--ease);
+  }
+  .toast-dismiss:hover { color: var(--ink-1); }
+  .toast-dismiss:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 2px; }
+
+  /* ══════════════════════════════════════════════════════
+     3. POPOVER
+  ══════════════════════════════════════════════════════ */
+
+  .popover-demo {
+    position: relative;
+    display: inline-flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .popover-trigger {
+    font-family: var(--body);
+    font-size: 14px;
+    font-weight: 500;
+    padding: 9px 18px;
+    border-radius: 6px;
+    cursor: pointer;
+    border: 1px solid var(--rule);
+    background: var(--bg-2);
+    color: var(--ink-1);
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    transition: border-color 200ms var(--ease), background-color 200ms var(--ease);
+  }
+  .popover-trigger:hover { border-color: var(--ink-3); }
+  .popover-trigger:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .popover-trigger[aria-expanded="true"] { border-color: var(--accent); }
+
+  .popover {
+    background: var(--bg-2);
+    border: 1px solid var(--rule);
+    border-radius: 8px;
+    padding: 16px;
+    width: 280px;
+    /* Anchored: would use position:absolute in real app;
+       here shown inline in the flow for illustration */
+  }
+
+  .popover-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 6px 0;
+    border-bottom: 1px solid var(--rule);
+  }
+  .popover-row:last-child { border-bottom: none; }
+
+  .popover-key {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    flex: none;
+  }
+  .popover-val {
+    font-size: 13px;
+    color: var(--ink-1);
+    text-align: right;
+  }
+
+  /* ══════════════════════════════════════════════════════
+     4. COMMAND PALETTE
+  ══════════════════════════════════════════════════════ */
+
+  .cmdpal-backdrop {
+    position: relative;
+    background: rgba(14, 17, 22, 0.72);
+    border: 1px solid var(--rule);
+    border-radius: 12px;
+    padding: 40px 20px;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    min-height: 380px;
+  }
+
+  .cmdpal {
+    background: var(--bg-2);
+    border: 1px solid var(--rule);
+    border-radius: 8px;
+    max-width: 640px;
+    width: 100%;
+    overflow: hidden;
+  }
+
+  .cmdpal-input-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--rule);
+  }
+
+  .cmdpal-icon { color: var(--ink-3); flex: none; }
+
+  .cmdpal-input {
+    font-family: var(--mono);
+    font-size: 18px;
+    color: var(--ink-1);
+    background: transparent;
+    border: none;
+    outline: none;
+    width: 100%;
+    line-height: 1.3;
+  }
+  .cmdpal-input::placeholder {
+    color: var(--ink-3);
+    font-size: 16px;
+  }
+
+  .cmdpal-results { padding: 8px 0 4px; }
+
+  .cmdpal-section-header {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    padding: 4px 16px 6px;
+  }
+
+  .cmdpal-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 9px 16px;
+    cursor: pointer;
+    transition: background-color 100ms var(--ease);
+  }
+  .cmdpal-item:hover,
+  .cmdpal-item[aria-selected="true"] {
+    background: var(--bg);
+  }
+  .cmdpal-item:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
+  }
+  .cmdpal-item-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .cmdpal-item-icon { color: var(--ink-3); flex: none; }
+  .cmdpal-item-text { font-size: 14px; color: var(--ink-1); }
+  .cmdpal-item-sub  { font-size: 12px; color: var(--ink-3); }
+  .cmdpal-item-kbd  { font-family: var(--mono); font-size: 10px; color: var(--ink-3); }
+
+  .cmdpal-footer {
+    border-top: 1px solid var(--rule);
+    padding: 8px 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .cmdpal-hint {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    color: var(--ink-3);
+  }
+
+  /* ── FOCUS-VISIBLE GLOBAL ────────────────────────────── */
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+
+  /* ── FOOTER ──────────────────────────────────────────── */
+  .page-footer {
+    margin-top: 64px;
+    padding-top: 24px;
+    border-top: 1px solid var(--rule);
+    font-size: 12px;
+    color: var(--ink-3);
+    line-height: 1.6;
+  }
+
+  /* ── REDUCED MOTION ──────────────────────────────────── */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+</style>
+</head>
+<body>
+
+<a class="skip-link" href="#main">Skip to main content</a>
+
+<main id="main" class="page">
+
+  <!-- PAGE HEADER -->
+  <div class="eyebrow">Mockups</div>
+  <h1 class="page-title">Overlays</h1>
+  <p class="page-subtitle">The four overlay primitives committed in DESIGN.md&nbsp;§&nbsp;Overlays.</p>
+
+  <!-- ══════════════════════════════════════════════════
+       1. MODAL
+  ══════════════════════════════════════════════════════ -->
+  <div class="overlay-section">
+    <div class="section-label">Modal — destructive confirmation</div>
+
+    <div class="modal-backdrop" role="presentation">
+      <div
+        class="modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="modal-title"
+        aria-describedby="modal-desc"
+      >
+        <header class="modal-header">
+          <h2 class="modal-title" id="modal-title">Delete Fairview Health?</h2>
+          <button class="icon-btn" aria-label="Close dialog">
+            <!-- Lucide X -->
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+          </button>
+        </header>
+
+        <div class="modal-body" id="modal-desc">
+          This will permanently remove Fairview Health, all its contacts, projects, notes,
+          and agent threads. <strong style="color:var(--ink-1)">This cannot be undone.</strong>
+        </div>
+
+        <footer class="modal-footer">
+          <span class="modal-esc-hint" aria-hidden="true">
+            <kbd>Esc</kbd> to cancel
+          </span>
+          <!-- Cancel: standard secondary -->
+          <button class="btn" type="button">Cancel</button>
+          <!-- Delete: vermilion border + --ink-1 text — NOT vermilion fill (Q-1) -->
+          <button class="btn btn-destructive" type="button" autofocus>Delete Customer</button>
+        </footer>
+      </div>
+    </div>
+
+    <p class="caption">
+      <strong>Trigger:</strong> "Delete" action on org settings page. &nbsp;
+      <strong>Esc:</strong> closes dialog, returns focus to the trigger element. &nbsp;
+      Focus-trap: Tab cycles between Cancel and Delete Customer only while modal is open.
+      Delete button has <code style="font-family:var(--mono);color:var(--ink-2)">autofocus</code>
+      and a vermilion border per Q-1 (not filled — filled vermilion fails AA at body size).
+    </p>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════
+       2. TOAST
+  ══════════════════════════════════════════════════════ -->
+  <div class="overlay-section">
+    <div class="section-label">Toast — top-right anchored, aria-live="polite"</div>
+
+    <!-- In production, these would be position:fixed top-right.
+         Shown here in document flow for the mockup. -->
+    <div aria-live="polite" aria-atomic="true" aria-label="Notifications">
+      <div class="toast-container">
+
+        <!-- Confirm variant: --accent left border -->
+        <div class="toast toast-confirm" role="status">
+          <div class="toast-content">
+            <div class="toast-message">API key saved.</div>
+            <div class="toast-meta">Settings · just now</div>
+          </div>
+          <button class="toast-dismiss" aria-label="Dismiss notification">×</button>
+        </div>
+
+        <!-- Info variant: --ink-3 left border -->
+        <div class="toast toast-info" role="status">
+          <div class="toast-content">
+            <div class="toast-message">Agent insight saved to Fairview Health.</div>
+            <div class="toast-meta">Awaiting your review in Insights</div>
+          </div>
+          <button class="toast-dismiss" aria-label="Dismiss notification">×</button>
+        </div>
+
+      </div>
+    </div>
+
+    <p class="caption">
+      <strong>Trigger:</strong> any successful mutation (save, create, delete). &nbsp;
+      <strong>Esc / dismiss (×):</strong> removes the toast immediately. Auto-dismisses after
+      6&nbsp;s. Width&nbsp;280px; stacks top-right (<code style="font-family:var(--mono);color:var(--ink-2)">position:fixed; top:16px; right:16px</code>).
+      Confirm variant carries <code style="font-family:var(--mono);color:var(--ink-2)">--accent</code>
+      left border; info uses <code style="font-family:var(--mono);color:var(--ink-2)">--ink-3</code>.
+      <code style="font-family:var(--mono);color:var(--ink-2)">aria-live="polite"</code> on the container announces to screen readers.
+    </p>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════
+       3. POPOVER
+  ══════════════════════════════════════════════════════ -->
+  <div class="overlay-section">
+    <div class="section-label">Popover — anchored to Quick Reference button</div>
+
+    <div class="popover-demo">
+      <!-- The trigger button that would anchor the popover -->
+      <button
+        class="popover-trigger"
+        aria-haspopup="true"
+        aria-expanded="true"
+        aria-controls="popover-profile"
+      >
+        <!-- Lucide Building2 -->
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z"/><path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/><path d="M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2"/><path d="M10 6h4"/><path d="M10 10h4"/><path d="M10 14h4"/><path d="M10 18h4"/></svg>
+        Profile
+      </button>
+
+      <div
+        id="popover-profile"
+        class="popover"
+        role="dialog"
+        aria-label="Fairview Health profile"
+      >
+        <div class="popover-row">
+          <span class="popover-key">Industry</span>
+          <span class="popover-val">Health System</span>
+        </div>
+        <div class="popover-row">
+          <span class="popover-key">Region</span>
+          <span class="popover-val">Midwest</span>
+        </div>
+        <div class="popover-row">
+          <span class="popover-key">Size</span>
+          <span class="popover-val">10,000–50,000&nbsp;employees</span>
+        </div>
+        <div class="popover-row">
+          <span class="popover-key">Tier</span>
+          <span class="popover-val">Enterprise</span>
+        </div>
+        <div class="popover-row">
+          <span class="popover-key">Since</span>
+          <span class="popover-val">2019</span>
+        </div>
+      </div>
+    </div>
+
+    <p class="caption">
+      <strong>Trigger:</strong> click the Profile button in the Quick Reference tile. &nbsp;
+      <strong>Esc:</strong> closes popover, returns focus to trigger. &nbsp;
+      8px border-radius; hairline <code style="font-family:var(--mono);color:var(--ink-2)">--rule</code> border;
+      <code style="font-family:var(--mono);color:var(--ink-2)">--bg-2</code> background; no drop shadow.
+      Trigger gains <code style="font-family:var(--mono);color:var(--ink-2)">border-color: var(--accent)</code>
+      while open (transient vermilion).
+    </p>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════
+       4. COMMAND PALETTE
+  ══════════════════════════════════════════════════════ -->
+  <div class="overlay-section">
+    <div class="section-label">Command palette — ⌘&nbsp;K, full-screen overlay</div>
+
+    <div class="cmdpal-backdrop" role="presentation">
+      <div
+        class="cmdpal"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Command palette"
+      >
+        <!-- Input row: mono-utility font, 18px -->
+        <div class="cmdpal-input-row">
+          <svg class="cmdpal-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+          <input
+            class="cmdpal-input"
+            type="search"
+            role="combobox"
+            aria-expanded="true"
+            aria-haspopup="listbox"
+            aria-autocomplete="list"
+            aria-controls="cmdpal-results"
+            aria-activedescendant="cmdpal-item-1"
+            placeholder="Search or type a command…"
+            value="fair"
+            autocomplete="off"
+            spellcheck="false"
+          />
+        </div>
+
+        <!-- Results -->
+        <div class="cmdpal-results" id="cmdpal-results" role="listbox" aria-label="Results">
+
+          <div class="cmdpal-section-header">Customers</div>
+
+          <div
+            class="cmdpal-item"
+            role="option"
+            id="cmdpal-item-1"
+            aria-selected="true"
+            tabindex="0"
+          >
+            <div class="cmdpal-item-left">
+              <!-- Lucide Building2 -->
+              <svg class="cmdpal-item-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z"/><path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/><path d="M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2"/><path d="M10 6h4"/><path d="M10 10h4"/><path d="M10 14h4"/><path d="M10 18h4"/></svg>
+              <div>
+                <div class="cmdpal-item-text">Open Fairview Health</div>
+                <div class="cmdpal-item-sub">Customer</div>
+              </div>
+            </div>
+            <span class="cmdpal-item-kbd">↵</span>
+          </div>
+
+          <div class="cmdpal-section-header" style="margin-top:4px">Actions</div>
+
+          <div
+            class="cmdpal-item"
+            role="option"
+            id="cmdpal-item-2"
+            aria-selected="false"
+            tabindex="-1"
+          >
+            <div class="cmdpal-item-left">
+              <!-- Lucide Plus -->
+              <svg class="cmdpal-item-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+              <div>
+                <div class="cmdpal-item-text">Add task</div>
+                <div class="cmdpal-item-sub">Anywhere</div>
+              </div>
+            </div>
+          </div>
+
+          <div
+            class="cmdpal-item"
+            role="option"
+            id="cmdpal-item-3"
+            aria-selected="false"
+            tabindex="-1"
+          >
+            <div class="cmdpal-item-left">
+              <!-- Lucide SunMoon -->
+              <svg class="cmdpal-item-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M12 8a4 4 0 1 1-4 4 4 4 0 0 0 4-4z"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
+              <div>
+                <div class="cmdpal-item-text">Toggle theme</div>
+                <div class="cmdpal-item-sub">Switch to light mode</div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Footer hints -->
+        <div class="cmdpal-footer">
+          <span class="cmdpal-hint">
+            <kbd>↑</kbd><kbd>↓</kbd> navigate
+          </span>
+          <span class="cmdpal-hint">
+            <kbd>↵</kbd> open
+          </span>
+          <span class="cmdpal-hint">
+            <kbd>Esc</kbd> close
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <p class="caption">
+      <strong>Trigger:</strong> <kbd>⌘</kbd>&nbsp;<kbd>K</kbd> (or <kbd>Ctrl</kbd>&nbsp;<kbd>K</kbd> on Windows) anywhere in the app. &nbsp;
+      <strong>Esc:</strong> closes palette, restores focus to previously focused element. &nbsp;
+      Input uses <code style="font-family:var(--mono);color:var(--ink-2)">var(--mono)</code> at 18px.
+      Section headers: 11px tracked uppercase. Results use <code style="font-family:var(--mono);color:var(--ink-2)">role="listbox"</code> +
+      <code style="font-family:var(--mono);color:var(--ink-2)">role="option"</code>. Focus-trap active while open.
+      Backdrop: <code style="font-family:var(--mono);color:var(--ink-2)">position:fixed; inset:0</code> at 72% opacity.
+    </p>
+  </div>
+
+  <!-- ── FOOTER ────────────────────────────────────────── -->
+  <footer class="page-footer">
+    Implements: DESIGN.md&nbsp;§&nbsp;Overlays (Modal, Toast, Popover, Command palette),
+    §&nbsp;Color (Q-1 vermilion budget — destructive uses border, not fill),
+    §&nbsp;Accessibility floor (focus-trap, focus-visible rings, aria-modal, aria-live) —
+    and REVIEW.md item R-007 (overlay specs) &amp; R-011 (a11y blockers).
+  </footer>
+
+</main>
+</body>
+</html>
