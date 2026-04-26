@@ -2,7 +2,34 @@
 
 ## Phase 2 — In progress on branch `claude/laughing-ishizaka-8f06fa` (2026-04-25)
 
-- **WorkVault Ingest UI + per-error retry** (2026-04-26): backend adds
+### Checkpoint `phase2-checkpoint-1` — 2026-04-26 PM
+
+Clean state after a multi-agent integration push. Backend 394 tests · frontend
+216 tests · both workspaces typecheck + lint clean. Three meaningful additions
+since the morning batch that shipped the cron editor + command palette + tile
+empty states:
+
+- **AgentsPage test coverage** (`4b10693`): 42 new RTL tests across the four
+  tab components (`TabStrip` 13, `TemplatesTab` 10, `InsightsTab` 11,
+  `ThreadsTab` 8). The four components themselves were already in `5e4a952`;
+  this round filled the coverage gap. Frontend tests 174 → 216. Two backend
+  gaps surfaced for follow-up: `GET /api/agents/threads` requires `?org_id=`
+  but `ThreadsTab.tsx` calls it without (runtime 400 in real use), and there's
+  no aggregator endpoint for cross-org unconfirmed insights (the component
+  fans out per-org queries — fine for ≤20 orgs but worth tracking).
+
+- **`validate.ts` collision defused** (`f8c22b2`): the three
+  `validate{Body,Query,Params}` middlewares all wrote to the same
+  `req.validated` field. No shipped route chains two validators today, but
+  the next one to do so would have silently clobbered the first result.
+  Added dedicated `validatedBody` / `validatedQuery` / `validatedParams`
+  fields; legacy `validated` still populated last-writer-wins so existing
+  routes keep working unchanged. Cherry-picked from the parallel
+  `claude/great-tesla-6c5416` branch (the only piece of that branch worth
+  bringing forward; the rest was a parallel implementation of features
+  this branch already covered better — see commit log for the comparison).
+
+- **WorkVault Ingest UI + per-error retry** (`ac63997`): backend adds
   `POST /api/ingest/errors/:id/retry` (validates with `IngestErrorIdParamSchema`,
   calls `retrySingleError()` in `ingest.service.ts` which re-scans the
   specific file and deletes the error row on success, or marks it resolved if
