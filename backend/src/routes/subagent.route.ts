@@ -3,6 +3,7 @@
  * + usage dashboard tile.
  *
  *   POST /api/subagent/delegate          — run a one-shot Claude task
+ *   POST /api/subagent/delegate-agentic  — run an agentic coding loop
  *   GET  /api/subagent/usage?period=...  — period aggregate
  *   GET  /api/subagent/usage/recent      — last N usage events
  */
@@ -11,12 +12,14 @@ import { validateBody, validateQuery } from '../lib/validate.js';
 import { HttpError } from '../middleware/errorHandler.js';
 import {
   DelegateRequestSchema,
+  AgenticDelegateRequestSchema,
   UsageQuerySchema,
   RecentUsageQuerySchema,
   type DelegateRequest,
+  type AgenticDelegateRequest,
   type UsagePeriodValue,
 } from '../schemas/subagent.schema.js';
-import { delegate, getSessionStart } from '../services/subagent.service.js';
+import { delegate, delegateAgentic, getSessionStart } from '../services/subagent.service.js';
 import { anthropicUsageModel } from '../models/anthropicUsage.model.js';
 
 export const subagentRouter = Router();
@@ -29,6 +32,21 @@ subagentRouter.post(
     try {
       const body = req.validatedBody as DelegateRequest;
       const result = await delegate(body);
+      res.json(result);
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// POST /api/subagent/delegate-agentic --------------------------------------
+subagentRouter.post(
+  '/delegate-agentic',
+  validateBody(AgenticDelegateRequestSchema),
+  async (req, res, next) => {
+    try {
+      const body = req.validatedBody as AgenticDelegateRequest;
+      const result = await delegateAgentic(body);
       res.json(result);
     } catch (err) {
       next(err);

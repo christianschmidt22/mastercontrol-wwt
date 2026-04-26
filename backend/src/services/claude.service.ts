@@ -34,6 +34,8 @@ import { agentToolAuditModel } from '../models/agentToolAudit.model.js';
 import { openSse } from '../lib/sse.js';
 import { HttpError } from '../middleware/errorHandler.js';
 import { resolveSafePath, enforceSizeLimit } from '../lib/safePath.js';
+import { anthropicUsageModel, type UsageSource } from '../models/anthropicUsage.model.js';
+import { computeCostMicros } from '../lib/anthropicPricing.js';
 
 // ---------------------------------------------------------------------------
 // Model imports (Agent 1 parallel build — these types are assumed; adjust if
@@ -198,6 +200,65 @@ function getClient(): Anthropic {
     throw new HttpError(503, 'API key not configured');
   }
   return new Anthropic({ apiKey });
+}
+
+// ---------------------------------------------------------------------------
+// Usage instrumentation — record every Anthropic call in anthropic_usage_events
+// so the AgentsPage tile shows real cross-source cost & token totals (not just
+// /api/subagent/delegate calls).
+// ---------------------------------------------------------------------------
+
+interface AnthropicUsageBlock {
+  input_tokens?: number;
+  output_tokens?: number;
+  cache_read_input_tokens?: number | null;
+  cache_creation_input_tokens?: number | null;
+}
+
+/**
+ * Record one usage event from a finalized Anthropic Message. Safe to call from
+ * any non-streaming or final-stream callback. Failures here are swallowed —
+ * the user's request must not fail because we couldn't write to the usage
+ * table. We log to stderr so it shows up in operator output.
+ */
+function recordUsageFromMessage(
+  source: UsageSource,
+  model: string,
+  message: { id?: string; usage?: AnthropicUsageBlock; model?: string } | null | undefined,
+  taskSummary?: string | null,
+): void {
+  try {
+    const usage: AnthropicUsageBlock = message?.usage ?? {};
+    const inputTokens = usage.input_tokens ?? 0;
+    const outputTokens = usage.output_tokens ?? 0;
+    const cacheRead = usage.cache_read_input_tokens ?? 0;
+    const cacheCreation = usage.cache_creation_input_tokens ?? 0;
+    const effectiveModel = message?.model ?? model;
+    const cost = computeCostMicros(
+      effectiveModel,
+      inputTokens,
+      outputTokens,
+      cacheRead,
+      cacheCreation,
+    );
+    anthropicUsageModel.record({
+      source,
+      model: effectiveModel,
+      input_tokens: inputTokens,
+      output_tokens: outputTokens,
+      cache_read_input_tokens: cacheRead,
+      cache_creation_input_tokens: cacheCreation,
+      cost_usd_micros: cost,
+      request_id: message?.id ?? null,
+      task_summary: taskSummary ?? null,
+    });
+  } catch (err) {
+    // Log but never propagate — instrumentation should never fail the call.
+    console.warn(
+      '[claude.service] recordUsageFromMessage failed:',
+      err instanceof Error ? err.message : String(err),
+    );
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -840,6 +901,10 @@ export async function streamChat({
 
       // Get the final message with fully assembled tool_use blocks.
       const finalMessage = await stream.finalMessage();
+
+      // Record the call in anthropic_usage_events so the AgentsPage tile
+      // shows real per-org chat cost. Non-blocking on failure.
+      recordUsageFromMessage('chat', agentConfig.model, finalMessage);
 
       for (const block of finalMessage.content) {
         if (block.type === 'tool_use') {
@@ -1499,6 +1564,10 @@ export async function generateReport(prompt: string): Promise<string> {
     messages: [{ role: 'user', content: prompt }],
   });
 
+  // Record the call in anthropic_usage_events so the tile's "report" source
+  // reflects actual scheduled-report runs.
+  recordUsageFromMessage('report', model, response);
+
   let text = '';
   for (const block of response.content) {
     if (block.type === 'text') {
@@ -1542,8 +1611,9 @@ export async function extractOrgMentions(
   const client = getClient();
   const nameList = candidateNames.join(', ');
 
+  const ingestModel = 'claude-haiku-4-5';
   const response = await client.messages.create({
-    model: 'claude-haiku-4-5',
+    model: ingestModel,
     max_tokens: 256,
     // R-021: no tools when processing untrusted document content.
     tools: [],
@@ -1561,6 +1631,10 @@ export async function extractOrgMentions(
       },
     ],
   });
+
+  // Record the call in anthropic_usage_events under 'ingest' so the tile
+  // reflects the cost of mention extraction during note imports.
+  recordUsageFromMessage('ingest', ingestModel, response, 'extractOrgMentions');
 
   try {
     const firstBlock = response.content[0];

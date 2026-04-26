@@ -7,6 +7,8 @@
 import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest';
 import request from 'supertest';
 import type { Express } from 'express';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import { buildApp } from '../test/app.js';
 import { settingsModel } from '../models/settings.model.js';
 import { db } from '../db/database.js';
@@ -18,7 +20,11 @@ import { db } from '../db/database.js';
 interface FakeMessage {
   id?: string;
   model?: string;
-  content: Array<{ type: 'text'; text: string }>;
+  stop_reason?: string;
+  content: Array<
+    | { type: 'text'; text: string }
+    | { type: 'tool_use'; id: string; name: string; input: Record<string, unknown> }
+  >;
   usage: {
     input_tokens: number;
     output_tokens: number;
@@ -27,6 +33,10 @@ interface FakeMessage {
   };
 }
 
+/**
+ * Single response for one-shot tests. Can be a value or a function that
+ * throws (to simulate SDK errors).
+ */
 let mockResponse: FakeMessage | (() => never) = {
   id: 'msg_default',
   model: 'claude-sonnet-4-6',
@@ -34,11 +44,23 @@ let mockResponse: FakeMessage | (() => never) = {
   usage: { input_tokens: 10, output_tokens: 5 },
 };
 
+/**
+ * Sequential queue for agentic tests. When non-empty, each `create` call
+ * pops from the front of this array instead of using `mockResponse`.
+ */
+const mockQueue: Array<FakeMessage | (() => never)> = [];
+
 vi.mock('@anthropic-ai/sdk', () => {
   return {
     default: class {
       messages = {
         create: vi.fn().mockImplementation(async () => {
+          // Drain the queue first for agentic / multi-turn tests.
+          if (mockQueue.length > 0) {
+            const next = mockQueue.shift()!;
+            if (typeof next === 'function') return next();
+            return next;
+          }
           if (typeof mockResponse === 'function') {
             return mockResponse(); // throws
           }
@@ -48,6 +70,8 @@ vi.mock('@anthropic-ai/sdk', () => {
     },
   };
 });
+
+import * as os from 'node:os';
 
 let app: Express;
 
@@ -64,6 +88,8 @@ beforeEach(() => {
     content: [{ type: 'text', text: 'default reply' }],
     usage: { input_tokens: 10, output_tokens: 5 },
   };
+  // Clear the sequential queue.
+  mockQueue.length = 0;
   // Personal key needs to be set by default; tests can clear it.
   settingsModel.set('personal_anthropic_api_key', 'sk-test-personal');
 });
@@ -222,5 +248,209 @@ describe('GET /api/subagent/usage/recent', () => {
     expect(res.body).toHaveLength(2);
     expect(res.body[0].task_summary).toBe('B');
     expect(res.body[1].task_summary).toBe('A');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/subagent/delegate-agentic
+// ---------------------------------------------------------------------------
+
+describe('POST /api/subagent/delegate-agentic', () => {
+  // Use os.tmpdir() — always exists on any OS.
+  const WORK_DIR = os.tmpdir();
+
+  const agenticBody = {
+    task: 'list the files in the workspace',
+    tools: ['read_file', 'list_files'],
+    working_dir: WORK_DIR,
+  };
+
+  it('returns 400 when tools array is empty', async () => {
+    const res = await request(app)
+      .post('/api/subagent/delegate-agentic')
+      .send({ task: 'hello', tools: [] });
+    expect(res.status).toBe(400);
+  });
+
+  it('returns 400 when tools contains an invalid tool name', async () => {
+    const res = await request(app)
+      .post('/api/subagent/delegate-agentic')
+      .send({ task: 'hello', tools: ['read_file', 'hack_system'] });
+    expect(res.status).toBe(400);
+  });
+
+  it('returns 400 when personal API key is not configured', async () => {
+    settingsModel.set('personal_anthropic_api_key', '');
+    const res = await request(app)
+      .post('/api/subagent/delegate-agentic')
+      .send(agenticBody);
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/personal anthropic api key/i);
+  });
+
+  it('returns 400 when max_iterations exceeds 50', async () => {
+    const res = await request(app)
+      .post('/api/subagent/delegate-agentic')
+      .send({ task: 'hello', tools: ['read_file'], max_iterations: 99 });
+    expect(res.status).toBe(400);
+  });
+
+  it('happy path: one tool_use turn then end_turn returns ok=true transcript', async () => {
+    // Create a real temp file for read_file to succeed.
+    const tmpFile = path.join(WORK_DIR, 'test-readme-agentic.md');
+    fs.writeFileSync(tmpFile, '# Test README\nHello from test.');
+
+    try {
+      // Turn 1: model asks to read the temp file.
+      mockQueue.push({
+        id: 'msg_turn1',
+        model: 'claude-sonnet-4-6',
+        stop_reason: 'tool_use',
+        content: [
+          {
+            type: 'tool_use',
+            id: 'tu_001',
+            name: 'read_file',
+            input: { path: 'test-readme-agentic.md' },
+          },
+        ],
+        usage: { input_tokens: 20, output_tokens: 10 },
+      });
+      // Turn 2: after tool result, model returns final text.
+      mockQueue.push({
+        id: 'msg_turn2',
+        model: 'claude-sonnet-4-6',
+        stop_reason: 'end_turn',
+        content: [{ type: 'text', text: 'Done! Found the README.' }],
+        usage: { input_tokens: 30, output_tokens: 15 },
+      });
+
+      const res = await request(app)
+        .post('/api/subagent/delegate-agentic')
+        .send(agenticBody);
+
+      expect(res.status).toBe(200);
+      expect(res.body.ok).toBe(true);
+      expect(res.body.stopped_reason).toBe('end_turn');
+      expect(res.body.iterations).toBe(2);
+
+      // Transcript should contain the tool use and the tool result.
+      const transcript = res.body.transcript as Array<{ kind: string }>;
+      expect(transcript.some((e) => e.kind === 'assistant_tool_use')).toBe(true);
+      expect(transcript.some((e) => e.kind === 'tool_result')).toBe(true);
+      expect(transcript.some((e) => e.kind === 'assistant_text')).toBe(true);
+    } finally {
+      try { fs.unlinkSync(tmpFile); } catch { /* ignore */ }
+    }
+  });
+
+  it('records separate usage rows for each turn', async () => {
+    const tmpFile = path.join(WORK_DIR, 'test-agentic-usage.md');
+    fs.writeFileSync(tmpFile, 'content');
+
+    try {
+      mockQueue.push({
+        id: 'msg_t1',
+        model: 'claude-sonnet-4-6',
+        stop_reason: 'tool_use',
+        content: [{ type: 'tool_use', id: 'tu_x', name: 'read_file', input: { path: 'test-agentic-usage.md' } }],
+        usage: { input_tokens: 10, output_tokens: 5 },
+      });
+      mockQueue.push({
+        id: 'msg_t2',
+        model: 'claude-sonnet-4-6',
+        stop_reason: 'end_turn',
+        content: [{ type: 'text', text: 'done' }],
+        usage: { input_tokens: 15, output_tokens: 8 },
+      });
+
+      await request(app)
+        .post('/api/subagent/delegate-agentic')
+        .send({ task: 'do it', tools: ['read_file'], working_dir: WORK_DIR, task_summary: 'multi-turn' });
+
+      const recent = await request(app).get('/api/subagent/usage/recent?limit=10');
+      // Expect 2 usage rows (one per turn).
+      expect(recent.body).toHaveLength(2);
+      expect(recent.body[0].task_summary).toBe('multi-turn');
+      expect(recent.body[1].task_summary).toBe('multi-turn');
+    } finally {
+      try { fs.unlinkSync(tmpFile); } catch { /* ignore */ }
+    }
+  });
+
+  it('tool not in allowed list: model requests bash but bash not enabled — error block returned, loop continues', async () => {
+    // Turn 1: model uses bash (not enabled in this request).
+    mockQueue.push({
+      id: 'msg_t1',
+      model: 'claude-sonnet-4-6',
+      stop_reason: 'tool_use',
+      content: [{ type: 'tool_use', id: 'tu_bash', name: 'bash', input: { command: 'echo hi' } }],
+      usage: { input_tokens: 10, output_tokens: 5 },
+    });
+    // Turn 2: after error block, model recovers with text response.
+    mockQueue.push({
+      id: 'msg_t2',
+      model: 'claude-sonnet-4-6',
+      stop_reason: 'end_turn',
+      content: [{ type: 'text', text: 'I cannot run bash in this context.' }],
+      usage: { input_tokens: 15, output_tokens: 8 },
+    });
+
+    const res = await request(app)
+      .post('/api/subagent/delegate-agentic')
+      .send({ task: 'run a command', tools: ['read_file'], working_dir: WORK_DIR });
+
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+
+    const transcript = res.body.transcript as Array<{ kind: string; is_error?: boolean }>;
+    const toolResult = transcript.find((e) => e.kind === 'tool_result');
+    expect(toolResult?.is_error).toBe(true);
+  });
+
+  it('max_iterations exceeded returns ok=false with error message', async () => {
+    // Every call returns tool_use so loop never ends naturally.
+    // Set max_iterations=2 and provide enough queued responses.
+    const tmpFile = path.join(WORK_DIR, 'test-loop-file.md');
+    fs.writeFileSync(tmpFile, 'x');
+
+    try {
+      for (let i = 0; i < 3; i++) {
+        mockQueue.push({
+          id: `msg_loop_${i}`,
+          model: 'claude-sonnet-4-6',
+          stop_reason: 'tool_use',
+          content: [{ type: 'tool_use', id: `tu_${i}`, name: 'read_file', input: { path: 'test-loop-file.md' } }],
+          usage: { input_tokens: 5, output_tokens: 3 },
+        });
+      }
+
+      const res = await request(app)
+        .post('/api/subagent/delegate-agentic')
+        .send({ task: 'loop forever', tools: ['read_file'], working_dir: WORK_DIR, max_iterations: 2 });
+
+      expect(res.status).toBe(200);
+      expect(res.body.ok).toBe(false);
+      expect(res.body.error).toMatch(/max_iterations/);
+    } finally {
+      try { fs.unlinkSync(tmpFile); } catch { /* ignore */ }
+    }
+  });
+
+  it('SDK error on agentic call returns ok=false (status 200) and records error in usage', async () => {
+    mockResponse = (() => {
+      throw new Error('Anthropic 503 service unavailable');
+    });
+
+    const res = await request(app)
+      .post('/api/subagent/delegate-agentic')
+      .send(agenticBody);
+
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(false);
+    expect(res.body.error).toMatch(/503/);
+
+    const recent = await request(app).get('/api/subagent/usage/recent?limit=5');
+    expect(recent.body[0].error).toMatch(/503/);
   });
 });
