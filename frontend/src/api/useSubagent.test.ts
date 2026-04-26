@@ -10,8 +10,14 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, waitFor, act } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import React from 'react';
-import { useUsage, useDelegateAgentic, subagentKeys } from './useSubagent';
-import type { AgenticResult, UsageAggregate } from '../types/subagent';
+import {
+  useUsage,
+  useDelegateAgentic,
+  useDelegateAgenticSdk,
+  useAuthStatus,
+  subagentKeys,
+} from './useSubagent';
+import type { AgenticResult, UsageAggregate, AuthStatus } from '../types/subagent';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -249,5 +255,126 @@ describe('useDelegateAgentic', () => {
     });
 
     expect(result.current.error?.message).toBe('Network failure');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// useDelegateAgenticSdk
+// ---------------------------------------------------------------------------
+
+describe('useDelegateAgenticSdk', () => {
+  it('calls POST /api/subagent/delegate-sdk and returns ok result', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(makeJsonResponse(MOCK_AGENTIC_OK));
+
+    const { result } = renderHook(() => useDelegateAgenticSdk(), {
+      wrapper: makeWrapper(),
+    });
+
+    act(() => {
+      result.current.mutate({
+        task: 'Subscription task',
+        tools: ['read_file'],
+      });
+    });
+
+    await waitFor(() => {
+      expect(result.current.isSuccess).toBe(true);
+    });
+
+    const call = vi.mocked(fetch).mock.calls[0];
+    expect(call?.[0]).toBe('/api/subagent/delegate-sdk');
+    expect(call?.[1]?.method).toBe('POST');
+    expect(result.current.data).toEqual(MOCK_AGENTIC_OK);
+  });
+
+  it('invalidates usage queries on success', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(makeJsonResponse(MOCK_AGENTIC_OK));
+    vi.mocked(fetch).mockResolvedValue(makeJsonResponse(MOCK_USAGE));
+
+    const qc = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    const invalidateSpy = vi.spyOn(qc, 'invalidateQueries');
+    const wrapper = ({ children }: { children: React.ReactNode }) =>
+      React.createElement(QueryClientProvider, { client: qc }, children);
+
+    const { result } = renderHook(() => useDelegateAgenticSdk(), { wrapper });
+
+    act(() => {
+      result.current.mutate({ task: 'sub task', tools: ['list_files'] });
+    });
+
+    await waitFor(() => { expect(result.current.isSuccess).toBe(true); });
+
+    expect(invalidateSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ queryKey: ['subagent', 'usage'] }),
+    );
+  });
+
+  it('sets isError on network failure', async () => {
+    vi.mocked(fetch).mockRejectedValueOnce(new Error('SDK network error'));
+
+    const { result } = renderHook(() => useDelegateAgenticSdk(), {
+      wrapper: makeWrapper(),
+    });
+
+    act(() => {
+      result.current.mutate({ task: 'Fail', tools: [] });
+    });
+
+    await waitFor(() => { expect(result.current.isError).toBe(true); });
+    expect(result.current.error?.message).toBe('SDK network error');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// useAuthStatus
+// ---------------------------------------------------------------------------
+
+describe('useAuthStatus', () => {
+  it('returns auth status when endpoint responds', async () => {
+    const mockStatus: AuthStatus = {
+      subscription_authenticated: true,
+      api_key_configured: false,
+    };
+    // useAuthStatus uses raw fetch (not request()), so mock ok=true response directly
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(JSON.stringify(mockStatus), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+
+    const { result } = renderHook(() => useAuthStatus(), {
+      wrapper: makeWrapper(),
+    });
+
+    await waitFor(() => { expect(result.current.isSuccess).toBe(true); });
+
+    expect(result.current.data).toEqual(mockStatus);
+    const call = vi.mocked(fetch).mock.calls[0];
+    expect(call?.[0]).toBe('/api/subagent/auth-status');
+  });
+
+  it('returns null (graceful fallback) when endpoint returns 404', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(null, {
+        status: 404,
+        statusText: 'Not Found',
+      }),
+    );
+
+    const { result } = renderHook(() => useAuthStatus(), {
+      wrapper: makeWrapper(),
+    });
+
+    await waitFor(() => { expect(result.current.isSuccess).toBe(true); });
+
+    // Graceful degradation — null means "status unknown"
+    expect(result.current.data).toBeNull();
+  });
+
+  it('uses stable cache key', () => {
+    expect(subagentKeys.authStatus()).toEqual(['subagent', 'auth-status']);
   });
 });

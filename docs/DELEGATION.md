@@ -4,39 +4,77 @@
 > with the tool so you can use it to delegate future coding tasks." This is
 > how that flow works.
 
-## Login: setting your personal Anthropic API key
+## Authentication modes
 
-1. Start the app: `npm run dev` (backend on `:3001`, frontend on `:5173`).
+Two modes are supported. The **Delegate** tab in `/agents` lets you pick per-session; your choice is stored in `localStorage` and persists across reloads.
+
+### Mode 1 — Subscription login (recommended)
+
+Uses your **Claude.ai Pro/Max/Team subscription** via the Agent SDK and OAuth credentials stored by `claude /login`. Usage counts against your subscription allotment, not metered tokens. No API key required.
+
+**When to use:** You have an active Claude.ai subscription and want to delegate tasks without accumulating per-token charges.
+
+#### One-time setup
+
+```bash
+# From any terminal on this machine:
+claude /login
+```
+
+The CLI writes OAuth credentials to `~/.claude/.credentials.json`. The backend reads them from there — MasterControl never stores or proxies them.
+
+After running `claude /login`, open Settings → **Delegation Authentication** → click **Re-check status**. The pill should turn green.
+
+### Mode 2 — API key (fallback)
+
+Uses the `personal_anthropic_api_key` stored in Settings. Pay-per-token billing via the Anthropic Console.
+
+**When to use:** You don't have a Claude.ai subscription, or you want to isolate per-token costs from subscription quota.
+
+#### Setup
+
+1. Start the app: `npm run dev`.
 2. Open `http://localhost:5173/settings`.
-3. Scroll to **Personal Claude Subscription** (the last section).
-4. Paste your personal Anthropic API key (`sk-ant-…`) and click **Save**.
+3. Scroll to **Delegation Authentication → API key (fallback)**.
+4. Paste your personal Anthropic API key (`sk-ant-…`) and click **Save Key**.
 
 The key is stored in `database/mastercontrol.db` under
 `settings.personal_anthropic_api_key`, **DPAPI-encrypted on Windows**
 (`@primno/dpapi` v1.1.x). On non-Windows it's stored in plaintext (the
 no-op fallback path; flagged with a stderr warning at boot).
 
-The **per-org chat key** (`anthropic_api_key`) is stored in a separate
-slot. Both go through the same DPAPI chokepoint
-(`backend/src/models/settings.model.ts` → `SECRET_KEYS` allowlist), and
-both are masked (`***last4`) when read through `getMasked()` for any
-frontend route.
-
-After saving, the **AgentsPage tile** (header above the tab strip) shows:
-
-- a green dot if the personal key is set, grey otherwise
-- four periods (Session · Today · Week · All) with request count, token
-  total, and cost in USD
-- a "Recent activity" disclosure with the last 10 calls
+---
 
 ## Delegating a coding task
 
-Two surfaces, both backed by the same `personal_anthropic_api_key`:
+### Subscription mode — agentic loop (`POST /api/subagent/delegate-sdk`)
+
+Same request/response shape as `/delegate-agentic` (see below), but uses
+OAuth credentials from `~/.claude/.credentials.json` rather than the stored API key.
+
+```bash
+curl -X POST http://localhost:3001/api/subagent/delegate-sdk \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "task": "Read README.md and propose three improvements as a unified diff.",
+    "tools": ["read_file", "list_files"],
+    "max_iterations": 25,
+    "max_tokens": 4096,
+    "task_summary": "readme review"
+  }'
+```
+
+If `~/.claude/.credentials.json` is missing, the endpoint returns:
+```jsonc
+{ "ok": false, "error": "Claude.ai subscription not authenticated. Run `claude /login` first…" }
+```
+with HTTP 200 — the HTTP call succeeded; the auth check did not.
 
 ### One-shot text delegation (`POST /api/subagent/delegate`)
 
 Single round-trip — task in, text out, cost recorded. Best for "summarize
 this," "draft this," or other tasks that don't need to read or edit files.
+Backed by the API key (`personal_anthropic_api_key`).
 
 ```bash
 curl -X POST http://localhost:3001/api/subagent/delegate \
@@ -73,7 +111,7 @@ Configuration errors (no key) return status 400.
 
 ### Agentic loop with file tools (`POST /api/subagent/delegate-agentic`)
 
-Multi-turn loop with bounded tool execution. The agent can `read_file`,
+Multi-turn loop with bounded tool execution (API-key billing). The agent can `read_file`,
 `list_files`, `write_file`, `edit_file`, and (opt-in) `bash` inside a
 constrained working directory — defaults to
 `~/mastercontrol-delegate-workspace`, which is mkdir'd if missing.
@@ -117,18 +155,31 @@ Hard limits:
 
 ### From the UI
 
-`http://localhost:5173/agents` → **Delegate** tab. Lets you submit either
-the one-shot or the agentic variant, see the transcript live, and watch
-the cost meter update.
+`http://localhost:5173/agents` → **Delegate** tab.
+
+1. Pick **Authentication** — Subscription (default) or API key.
+2. Subscription mode: if the status shows "Not authenticated", run `claude /login` in a terminal and click Re-check in Settings.
+3. Fill in the task, choose tools, and click **Run Agent**.
+
+The transcript appears after the run completes; cost is reflected in the live meter.
 
 ## How a future Claude Code session would call this
 
-If the backend is running on this machine, any session can `curl` the
-endpoints directly. Past-session usage in the AgentsPage tile becomes
-context-free billing for whoever owns the personal key.
+Recommended pattern — subscription mode:
 
-Recommended pattern for delegating a coding task from a Claude Code
-session:
+```bash
+curl -s -X POST http://localhost:3001/api/subagent/delegate-sdk \
+  -H 'Content-Type: application/json' \
+  -d "$(jq -n --arg task "$TASK" --arg dir "$WORKDIR" '{
+    task: $task,
+    working_dir: $dir,
+    tools: ["read_file","list_files","write_file","edit_file","bash"],
+    max_iterations: 30,
+    task_summary: "delegated coding task"
+  }')"
+```
+
+Fallback — API-key mode (same body, different endpoint):
 
 ```bash
 curl -s -X POST http://localhost:3001/api/subagent/delegate-agentic \
@@ -146,14 +197,28 @@ The transcript comes back as a single JSON body. Parse the final
 `assistant_text` entry for the agent's summary; iterate the
 `assistant_tool_use` + `tool_result` pairs to see what files it touched.
 
+## Auth status probe (`GET /api/subagent/auth-status`)
+
+The Settings page polls this endpoint every 30 s to show a live status badge.
+
+Response:
+```jsonc
+{ "subscription_authenticated": true, "api_key_configured": false }
+```
+
+If the endpoint returns 404 (backend agent hasn't deployed it yet), the
+frontend degrades gracefully: the badge shows "Status unknown — try
+delegating to verify" and does not block any functionality.
+
 ## Security notes
 
 - The backend binds **127.0.0.1 only** (R-001). Nothing on the network
   can reach the delegation endpoints.
-- The personal key is **never returned in plaintext** to the frontend.
+- OAuth credentials (`~/.claude/.credentials.json`) are read server-side
+  only, never returned to the frontend.
+- The personal API key is **never returned in plaintext** to the frontend.
   Routes only ever read `getMasked()`; the plaintext getter is callable
-  only from `services/subagent.service.ts` (which constructs the
-  Anthropic client and passes the key through to the SDK).
+  only from `services/subagent.service.ts`.
 - The agentic loop's file tools resolve every path through
   `assertSafeRelPath` against the working directory — `..` traversal
   and absolute paths are rejected.

@@ -13,6 +13,21 @@ import * as os from 'node:os';
 import { db } from '../db/database.js';
 
 // ---------------------------------------------------------------------------
+// Mock node:fs.existsSync so the service's pre-flight credentials check
+// passes by default. Tests override the mock when they want to simulate
+// the missing-credentials path.
+// ---------------------------------------------------------------------------
+vi.mock('node:fs', async () => {
+  const actual = await vi.importActual<typeof import('node:fs')>('node:fs');
+  return {
+    ...actual,
+    existsSync: vi.fn(() => true),
+  };
+});
+
+import * as fs from 'node:fs';
+
+// ---------------------------------------------------------------------------
 // Mock @anthropic-ai/claude-agent-sdk BEFORE importing the module under test.
 // vi.mock is hoisted by Vitest.
 // ---------------------------------------------------------------------------
@@ -150,6 +165,8 @@ const BASE_INPUT = {
 beforeEach(() => {
   mockEvents.length = 0;
   db.exec('DELETE FROM anthropic_usage_events');
+  // Default: credentials file appears to exist so the pre-flight passes.
+  vi.mocked(fs.existsSync).mockReturnValue(true);
 });
 
 afterEach(() => {
@@ -336,6 +353,14 @@ describe('delegateViaSubscription', () => {
 
     const { HttpError } = await import('../middleware/errorHandler.js');
 
+    // Override the default existsSync mock: this test wants the working_dir
+    // path to NOT exist. The credentials check still has to pass, so we make
+    // the mock return false ONLY for the nonexistent path.
+    vi.mocked(fs.existsSync).mockImplementation((p) => {
+      const s = String(p);
+      return !s.includes('nonexistent-path-xyz-987654');
+    });
+
     let threw: unknown = null;
     try {
       await delegateViaSubscription({
@@ -353,6 +378,31 @@ describe('delegateViaSubscription', () => {
 
     // SDK should never have been called.
     expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  // ── Missing credentials pre-flight ────────────────────────────────────────
+
+  it('missing ~/.claude/.credentials.json → ok:false with login message before SDK call', async () => {
+    const { query: mockQuery } = await import('@anthropic-ai/claude-agent-sdk');
+    // Override the default mock: working_dir exists, credentials file doesn't.
+    vi.mocked(fs.existsSync).mockImplementation((p) => {
+      const s = String(p);
+      return !s.endsWith('.credentials.json');
+    });
+
+    const result = await delegateViaSubscription(BASE_INPUT);
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error).toMatch(/claude\.ai subscription not authenticated/i);
+      expect(result.error).toMatch(/claude \/login/i);
+    }
+    expect(mockQuery).not.toHaveBeenCalled();
+
+    // The failure was recorded for diagnostics.
+    const events = anthropicUsageModel.recent(5);
+    expect(events[0].error).toMatch(/claude\.ai subscription not authenticated/i);
+    expect(events[0].cost_usd_micros).toBe(0);
   });
 
   // ── task_summary is recorded ──────────────────────────────────────────────

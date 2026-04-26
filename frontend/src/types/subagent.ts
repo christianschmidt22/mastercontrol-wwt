@@ -131,3 +131,18 @@ export interface AgenticResultErr {
 }
 
 export type AgenticResult = AgenticResultOk | AgenticResultErr;
+
+// ---------------------------------------------------------------------------
+// Auth status (GET /api/subagent/auth-status)
+// ---------------------------------------------------------------------------
+
+export interface AuthStatus {
+  subscription_authenticated: boolean;
+  api_key_configured: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// Auth mode — persisted in localStorage
+// ---------------------------------------------------------------------------
+
+export type DelegateAuthMode = 'subscription' | 'api-key';

@@ -3,9 +3,11 @@
  *
  * Endpoints (provided by backend agent):
  *   POST /api/subagent/delegate
- *   POST /api/subagent/delegate-agentic   ← new: full agentic run
+ *   POST /api/subagent/delegate-agentic   ← agentic run via API key
+ *   POST /api/subagent/delegate-sdk       ← agentic run via subscription login
  *   GET  /api/subagent/usage?period=session|today|week|all
  *   GET  /api/subagent/usage/recent?limit=N
+ *   GET  /api/subagent/auth-status        ← subscription + key status probe
  */
 
 import {
@@ -24,6 +26,7 @@ import type {
   UsageEvent,
   AgenticDelegateRequest,
   AgenticResult,
+  AuthStatus,
 } from '../types/subagent';
 
 // ---------------------------------------------------------------------------
@@ -33,6 +36,7 @@ import type {
 export const subagentKeys = {
   usage: (period: UsagePeriod) => ['subagent', 'usage', period] as const,
   recent: (limit: number) => ['subagent', 'usage', 'recent', limit] as const,
+  authStatus: () => ['subagent', 'auth-status'] as const,
 };
 
 // ---------------------------------------------------------------------------
@@ -88,7 +92,7 @@ export function useDelegate(): UseMutationResult<
 }
 
 // ---------------------------------------------------------------------------
-// useDelegateAgentic — full agentic run with transcript
+// useDelegateAgentic — full agentic run with transcript (API-key mode)
 // ---------------------------------------------------------------------------
 
 export function useDelegateAgentic(): UseMutationResult<
@@ -104,5 +108,47 @@ export function useDelegateAgentic(): UseMutationResult<
       // Refresh usage tile after run completes
       void qc.invalidateQueries({ queryKey: ['subagent', 'usage'] });
     },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// useDelegateAgenticSdk — agentic run via Claude.ai subscription (OAuth)
+// ---------------------------------------------------------------------------
+
+export function useDelegateAgenticSdk(): UseMutationResult<
+  AgenticResult,
+  Error,
+  AgenticDelegateRequest
+> {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body) =>
+      request<AgenticResult>('POST', '/api/subagent/delegate-sdk', body),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['subagent', 'usage'] });
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// useAuthStatus — probe subscription + key availability, refetch every 30s
+//
+// If the endpoint returns 404 (not deployed yet), gracefully falls back:
+//   subscription_authenticated: undefined (unknown)
+//   api_key_configured: undefined (unknown, caller derives from useSetting)
+// ---------------------------------------------------------------------------
+
+export function useAuthStatus(): UseQueryResult<AuthStatus | null> {
+  return useQuery({
+    queryKey: subagentKeys.authStatus(),
+    queryFn: async (): Promise<AuthStatus | null> => {
+      const res = await fetch('/api/subagent/auth-status');
+      // 404 = endpoint not deployed yet; treat as "status unknown" not an error
+      if (res.status === 404) return null;
+      if (!res.ok) throw new Error(`auth-status probe failed: ${res.statusText}`);
+      return (await res.json()) as AuthStatus;
+    },
+    refetchInterval: 30_000,
+    retry: false,
   });
 }

@@ -2,6 +2,51 @@
 
 ## Phase 2 — In progress on branch `claude/laughing-ishizaka-8f06fa` (2026-04-25)
 
+### Checkpoint `phase2-checkpoint-3` — 2026-04-26 night
+
+**Subscription-login delegation lands.** The user's recurring concern was
+the metered API price; this round wires up the **second auth path** the
+Claude Agent SDK supports: OAuth credentials from `claude /login`. Usage
+counts against the Claude.ai Pro/Max/Team allotment instead of pay-per-
+token. Both paths are now available behind a UI toggle on the Delegate
+tab; subscription is the default.
+
+Backend 495 tests · frontend 282 tests · lint + typecheck clean both.
+
+- **Agent SDK integration** (`53fbf5d` + this commit): added
+  `@anthropic-ai/claude-agent-sdk@0.2.119` to backend deps (installed
+  with `--legacy-peer-deps` for the zod 3 vs 4 peer-dep mismatch — the
+  SDK ships its own zod runtime). New service
+  `backend/src/services/subagentSdk.service.ts` with
+  `delegateViaSubscription()`, returning the same `AgenticResult` shape
+  as `delegateAgentic()` so the frontend can swap mutations
+  transparently. Pre-flight check for `~/.claude/.credentials.json`
+  short-circuits the subprocess spawn with a clean
+  "Run `claude /login` first" message instead of surfacing the SDK's
+  generic "process exited with code 1". New route
+  `POST /api/subagent/delegate-sdk` plus `GET /api/subagent/auth-status`
+  for the frontend's live status badge. Tool-name translation map
+  (`read_file → Read`, `bash → Bash`, etc.) lives in the service so the
+  same Console form drives both paths. +15 backend tests.
+- **Delegate Console mode toggle + Settings revamp** (`5871148` cherry-
+  picked from worktree): two-button Authentication toggle at the top of
+  the Delegate form; choice persists via localStorage (default
+  `subscription`). New `AuthModeSection.tsx` component shows
+  side-by-side cards for both modes with a live status pill — green on
+  authenticated, grey when `claude /login` is needed. The cards
+  gracefully degrade when the auth-status endpoint isn't responding
+  (treated as "unknown — try delegating to verify"). +22 frontend tests.
+- **`docs/DELEGATION.md` rewrite**: now leads with the subscription
+  flow as the recommended path and demotes the API-key path to
+  fallback. Includes `claude /login` walkthrough, `curl` examples for
+  both endpoints, and security notes covering OAuth credential read
+  semantics (server reads `~/.claude/.credentials.json` directly; never
+  proxies or stores them).
+
+End-to-end smoke verified: both endpoints reach the SDK, auth-status
+returns the right state, the missing-credentials path returns the clean
+actionable message instead of subprocess exit codes.
+
 ### Checkpoint `phase2-checkpoint-2` — 2026-04-26 evening
 
 User-facing milestone: **personal-subscription delegation works end-to-end.**

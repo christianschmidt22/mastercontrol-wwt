@@ -34,6 +34,26 @@ const DEFAULT_MAX_TURNS = 25;
 const HARD_MAX_TURNS = 50;
 const DEFAULT_WORKSPACE_DIR = path.join(os.homedir(), 'mastercontrol-delegate-workspace');
 
+/**
+ * Map our request schema's snake_case tool names → the Agent SDK's built-in
+ * tool names (CamelCase). The frontend Console uses our names so the
+ * subscription path and the API-key path can share a single tool selector;
+ * we translate at the SDK boundary here. Unknown names pass through
+ * unchanged so a user can also pass an SDK-native tool name directly
+ * (e.g. 'Glob') if they want.
+ */
+const TOOL_NAME_MAP: Record<string, string> = {
+  read_file: 'Read',
+  write_file: 'Write',
+  edit_file: 'Edit',
+  list_files: 'Glob',
+  bash: 'Bash',
+};
+
+function toSdkToolNames(names: readonly string[]): string[] {
+  return names.map((n) => TOOL_NAME_MAP[n] ?? n);
+}
+
 // ---------------------------------------------------------------------------
 // Auth-error detection helpers
 // ---------------------------------------------------------------------------
@@ -138,6 +158,29 @@ export async function delegateViaSubscription(
   // Validate working dir (throws HttpError on bad config — propagates to route).
   const workingDir = resolveWorkingDir(input.working_dir);
 
+  // Pre-flight credential check. The Agent SDK spawns the `claude` subprocess
+  // which exits with a generic non-zero code if no OAuth credentials exist —
+  // checking here lets us return a clean, actionable message instead of
+  // surfacing "Claude Code process exited with code 1".
+  const credsPath = path.join(os.homedir(), '.claude', '.credentials.json');
+  if (!fs.existsSync(credsPath)) {
+    anthropicUsageModel.record({
+      source: 'delegate',
+      model: 'claude-sonnet-4-6',
+      input_tokens: 0,
+      output_tokens: 0,
+      cost_usd_micros: 0,
+      task_summary: input.task_summary ?? null,
+      error: AUTH_ACTION_MESSAGE,
+    });
+    return {
+      ok: false,
+      error: AUTH_ACTION_MESSAGE,
+      transcript_so_far: [],
+      total_usage: emptyUsage(),
+    };
+  }
+
   // Transcript accumulated across all SDK events.
   const transcript: TranscriptEntry[] = [];
   const totalUsage = emptyUsage();
@@ -155,8 +198,11 @@ export async function delegateViaSubscription(
       prompt: input.task,
       options: {
         cwd: workingDir,
-        // allowedTools auto-approves the SDK's built-in tools without prompting.
-        allowedTools: input.tools,
+        // allowedTools auto-approves the SDK's built-in tools without
+        // prompting. Translate our snake_case names → SDK CamelCase names
+        // (read_file → Read, bash → Bash, etc.) so the same Console form
+        // works for both auth modes.
+        allowedTools: toSdkToolNames(input.tools),
         // permissionMode: 'acceptEdits' so file writes don't block on a prompt.
         permissionMode: 'acceptEdits',
         maxTurns,

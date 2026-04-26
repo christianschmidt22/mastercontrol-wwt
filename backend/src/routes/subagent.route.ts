@@ -2,12 +2,17 @@
  * subagent.route.ts — endpoints for the personal-subscription delegation
  * + usage dashboard tile.
  *
- *   POST /api/subagent/delegate          — run a one-shot Claude task
- *   POST /api/subagent/delegate-agentic  — run an agentic coding loop
+ *   POST /api/subagent/delegate          — run a one-shot Claude task (API key)
+ *   POST /api/subagent/delegate-agentic  — run an agentic coding loop (API key)
+ *   POST /api/subagent/delegate-sdk      — agentic loop via subscription login
+ *   GET  /api/subagent/auth-status       — { subscription_authenticated, api_key_configured }
  *   GET  /api/subagent/usage?period=...  — period aggregate
  *   GET  /api/subagent/usage/recent      — last N usage events
  */
 import { Router } from 'express';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import { validateBody, validateQuery } from '../lib/validate.js';
 import { HttpError } from '../middleware/errorHandler.js';
 import {
@@ -22,6 +27,7 @@ import {
 import { delegate, delegateAgentic, getSessionStart } from '../services/subagent.service.js';
 import { delegateViaSubscription } from '../services/subagentSdk.service.js';
 import { anthropicUsageModel } from '../models/anthropicUsage.model.js';
+import { settingsModel } from '../models/settings.model.js';
 
 export const subagentRouter = Router();
 
@@ -102,6 +108,28 @@ subagentRouter.get(
     }
   },
 );
+
+// GET /api/subagent/auth-status ------------------------------------------
+//
+// Lightweight probe used by the frontend's auth-mode toggle. Returns
+// whether a Claude.ai subscription credentials file exists at
+// `~/.claude/.credentials.json` (set by `claude /login`) and whether the
+// fallback `personal_anthropic_api_key` is configured. The frontend polls
+// this every ~30s and renders a green/grey badge from the result. Either
+// flag being true means that auth mode will at least *start* — actual
+// credential validity (expired tokens, revoked keys) only surfaces when
+// the user runs a delegation.
+subagentRouter.get('/auth-status', (_req, res, next) => {
+  try {
+    const credsPath = path.join(os.homedir(), '.claude', '.credentials.json');
+    const subscription_authenticated = fs.existsSync(credsPath);
+    const apiKey = settingsModel.get('personal_anthropic_api_key');
+    const api_key_configured = typeof apiKey === 'string' && apiKey.length > 0;
+    res.json({ subscription_authenticated, api_key_configured });
+  } catch (err) {
+    next(err);
+  }
+});
 
 // Defensive 404 — explicit so the regex doesn't match unknown sub-paths.
 subagentRouter.use((_req, _res, next) => {

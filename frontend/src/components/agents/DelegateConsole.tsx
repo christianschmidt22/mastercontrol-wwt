@@ -10,9 +10,35 @@
  */
 
 import { useState } from 'react';
-import { useDelegateAgentic, useUsage } from '../../api/useSubagent';
-import type { DelegateTool, AgenticResult, TranscriptEntry } from '../../types/subagent';
+import {
+  useDelegateAgentic,
+  useDelegateAgenticSdk,
+  useAuthStatus,
+  useUsage,
+} from '../../api/useSubagent';
+import { useSetting } from '../../api/useSettings';
+import type { DelegateTool, AgenticResult, TranscriptEntry, DelegateAuthMode } from '../../types/subagent';
 import { DelegateConsoleTranscript } from './DelegateConsoleTranscript';
+
+// ---------------------------------------------------------------------------
+// Auth-mode persistence helpers
+// ---------------------------------------------------------------------------
+
+const AUTH_MODE_KEY = 'mc.delegate.authMode';
+
+function readStoredMode(): DelegateAuthMode {
+  try {
+    const v = localStorage.getItem(AUTH_MODE_KEY);
+    if (v === 'api-key') return 'api-key';
+  } catch { /* ignore */ }
+  return 'subscription'; // default
+}
+
+function writeStoredMode(mode: DelegateAuthMode) {
+  try {
+    localStorage.setItem(AUTH_MODE_KEY, mode);
+  } catch { /* ignore */ }
+}
 
 // ---------------------------------------------------------------------------
 // Tool definitions with descriptions
@@ -126,9 +152,22 @@ function ResultFooter({ result }: { result: AgenticResult }) {
 // ---------------------------------------------------------------------------
 
 export function DelegateConsole() {
-  const mutation = useDelegateAgentic();
+  // Auth mode: persisted in localStorage, defaults to 'subscription'
+  const [authMode, setAuthMode] = useState<DelegateAuthMode>(readStoredMode);
+
+  const apikeyMutation = useDelegateAgentic();
+  const sdkMutation = useDelegateAgenticSdk();
+  const { data: authStatus } = useAuthStatus();
+  const { data: personalKeySetting } = useSetting('personal_anthropic_api_key');
+
   const sessionUsage = useUsage('session');
   const todayUsage = useUsage('today');
+
+  // Derive per-mode readiness
+  const subscriptionAuthenticated = authStatus?.subscription_authenticated;
+  const subscriptionBlocked = authMode === 'subscription' && subscriptionAuthenticated === false;
+
+  const mutation = authMode === 'subscription' ? sdkMutation : apikeyMutation;
 
   const [task, setTask] = useState('');
   const [workingDir, setWorkingDir] = useState('');
@@ -158,8 +197,13 @@ export function DelegateConsole() {
     });
   };
 
+  function handleModeChange(mode: DelegateAuthMode) {
+    setAuthMode(mode);
+    writeStoredMode(mode);
+  }
+
   const handleRun = () => {
-    if (!task.trim() || isPending) return;
+    if (!task.trim() || isPending || subscriptionBlocked) return;
     mutation.mutate({
       task: task.trim(),
       working_dir: workingDir.trim() || undefined,
@@ -192,6 +236,107 @@ export function DelegateConsole() {
           gap: 18,
         }}
       >
+        {/* ── Authentication mode toggle ── */}
+        <fieldset
+          style={{ border: 'none', margin: 0, padding: 0 }}
+          role="radiogroup"
+          aria-label="Authentication mode"
+        >
+          <legend
+            style={{
+              fontSize: 12,
+              fontWeight: 600,
+              textTransform: 'uppercase',
+              letterSpacing: '0.07em',
+              color: 'var(--ink-3)',
+              fontFamily: 'var(--body)',
+              marginBottom: 8,
+              padding: 0,
+            }}
+          >
+            Authentication
+          </legend>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            {(
+              [
+                {
+                  value: 'subscription' as DelegateAuthMode,
+                  label: 'Subscription',
+                  caption: 'Claude.ai subscription (recommended) — counts against subscription quota.',
+                },
+                {
+                  value: 'api-key' as DelegateAuthMode,
+                  label: 'API key',
+                  caption: `Personal API key from Settings — pay-per-token.${!personalKeySetting?.value ? ' (not configured)' : ''}`,
+                },
+              ] as const
+            ).map(({ value, label, caption }) => {
+              const isSelected = authMode === value;
+              return (
+                <label
+                  key={value}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: 10,
+                    padding: '10px 14px',
+                    border: `1px solid ${isSelected ? 'var(--ink-3)' : 'var(--rule)'}`,
+                    borderRadius: 6,
+                    background: isSelected ? 'var(--accent-soft)' : 'transparent',
+                    cursor: isPending ? 'not-allowed' : 'pointer',
+                    flex: '1 1 200px',
+                    transition: 'background 150ms var(--ease), border-color 150ms var(--ease)',
+                  }}
+                >
+                  <input
+                    type="radio"
+                    name="delegate-auth-mode"
+                    value={value}
+                    checked={isSelected}
+                    disabled={isPending}
+                    onChange={() => handleModeChange(value)}
+                    style={{ marginTop: 2, accentColor: 'var(--accent)', flexShrink: 0 }}
+                    aria-label={label}
+                  />
+                  <span style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                    <span style={{ fontSize: 13, fontWeight: 600, fontFamily: 'var(--body)', color: 'var(--ink-1)' }}>
+                      {label}
+                    </span>
+                    <span style={{ fontSize: 12, fontFamily: 'var(--body)', color: 'var(--ink-3)', lineHeight: 1.4 }}>
+                      {caption}
+                    </span>
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+
+          {/* Subscription not authenticated warning */}
+          {subscriptionBlocked && (
+            <div
+              role="alert"
+              aria-live="polite"
+              style={{
+                marginTop: 10,
+                padding: '10px 14px',
+                border: '1px solid var(--rule)',
+                borderRadius: 6,
+                background: 'var(--bg-2)',
+                fontSize: 13,
+                fontFamily: 'var(--body)',
+                color: 'var(--ink-2)',
+                lineHeight: 1.5,
+              }}
+            >
+              Claude.ai subscription not authenticated on this machine. Run{' '}
+              <code style={{ fontSize: 12, fontFamily: 'var(--mono)', color: 'var(--ink-1)', background: 'var(--bg)', border: '1px solid var(--rule)', borderRadius: 4, padding: '1px 5px' }}>
+                claude /login
+              </code>{' '}
+              from a terminal to authorize MasterControl, then refresh.
+            </div>
+          )}
+        </fieldset>
+
         {/* Task */}
         <div>
           <label
@@ -536,7 +681,7 @@ export function DelegateConsole() {
           <button
             type="button"
             onClick={handleRun}
-            disabled={!task.trim() || isPending}
+            disabled={!task.trim() || isPending || subscriptionBlocked}
             aria-label={isPending ? 'Running…' : 'Run agent task'}
             style={{
               padding: '10px 24px',
@@ -544,10 +689,10 @@ export function DelegateConsole() {
               fontWeight: 600,
               fontFamily: 'var(--body)',
               color: '#fff',
-              background: !task.trim() || isPending ? 'var(--ink-3)' : 'var(--accent)',
+              background: !task.trim() || isPending || subscriptionBlocked ? 'var(--ink-3)' : 'var(--accent)',
               border: 'none',
               borderRadius: 6,
-              cursor: !task.trim() || isPending ? 'not-allowed' : 'pointer',
+              cursor: !task.trim() || isPending || subscriptionBlocked ? 'not-allowed' : 'pointer',
               transition: 'background 200ms var(--ease), opacity 200ms var(--ease)',
             }}
           >

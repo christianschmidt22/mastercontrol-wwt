@@ -18,8 +18,10 @@ import type { AgenticResult } from '../../types/subagent';
 // ---------------------------------------------------------------------------
 
 const mockMutate = vi.fn();
+const mockSdkMutate = vi.fn();
 let mockIsPending = false;
 let mockData: AgenticResult | null = null;
+let mockSubscriptionAuthenticated: boolean | undefined = undefined;
 
 vi.mock('../../api/useSubagent', () => ({
   useDelegateAgentic: () => ({
@@ -27,12 +29,27 @@ vi.mock('../../api/useSubagent', () => ({
     isPending: mockIsPending,
     data: mockData,
   }),
+  useDelegateAgenticSdk: () => ({
+    mutate: mockSdkMutate,
+    isPending: mockIsPending,
+    data: mockData,
+  }),
+  useAuthStatus: () => ({
+    data: mockSubscriptionAuthenticated === undefined
+      ? null
+      : { subscription_authenticated: mockSubscriptionAuthenticated, api_key_configured: true },
+  }),
   // useUsage is called twice (session + today); return different data per call
   useUsage: (period: string) => ({
     data: period === 'session'
       ? { cost_usd: 0.0042 }
       : { cost_usd: 0.0120 },
   }),
+}));
+
+// Also mock useSettings — DelegateConsole calls useSetting for the personal key
+vi.mock('../../api/useSettings', () => ({
+  useSetting: () => ({ data: null }),
 }));
 
 // ---------------------------------------------------------------------------
@@ -54,8 +71,12 @@ function renderConsole() {
 
 beforeEach(() => {
   mockMutate.mockReset();
+  mockSdkMutate.mockReset();
   mockIsPending = false;
   mockData = null;
+  mockSubscriptionAuthenticated = undefined;
+  // Reset localStorage mode so each test starts from the default
+  try { localStorage.removeItem('mc.delegate.authMode'); } catch { /* ignore */ }
 });
 
 
@@ -135,15 +156,16 @@ describe('DelegateConsole — Run button', () => {
     expect(btn).not.toBeDisabled();
   });
 
-  it('calls mutate with correct payload when Run is clicked', () => {
+  it('calls mutate with correct payload when Run is clicked (subscription mode by default)', () => {
     renderConsole();
     const textarea = screen.getByRole('textbox', { name: /task/i });
     fireEvent.change(textarea, { target: { value: 'Do something useful' } });
     const btn = screen.getByRole('button', { name: /run agent/i });
     fireEvent.click(btn);
 
-    expect(mockMutate).toHaveBeenCalledOnce();
-    const callArg = mockMutate.mock.calls[0]?.[0] as Record<string, unknown>;
+    // Default mode = subscription → uses mockSdkMutate
+    expect(mockSdkMutate).toHaveBeenCalledOnce();
+    const callArg = mockSdkMutate.mock.calls[0]?.[0] as Record<string, unknown>;
     expect(callArg.task).toBe('Do something useful');
     expect(Array.isArray(callArg.tools)).toBe(true);
     // default tools: read_file + list_files
@@ -308,5 +330,85 @@ describe('DelegateConsole — Advanced section', () => {
       expect(screen.getByLabelText(/max tokens/i)).toBeInTheDocument();
       expect(screen.getByLabelText(/system prompt/i)).toBeInTheDocument();
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Auth-mode toggle
+// ---------------------------------------------------------------------------
+
+describe('DelegateConsole — auth-mode toggle', () => {
+  it('renders the Authentication radio group', () => {
+    renderConsole();
+    expect(screen.getByRole('radiogroup', { name: /authentication/i })).toBeInTheDocument();
+  });
+
+  it('subscription mode is selected by default', () => {
+    renderConsole();
+    const subscriptionRadio = screen.getByRole<HTMLInputElement>('radio', { name: /subscription/i });
+    expect(subscriptionRadio.checked).toBe(true);
+  });
+
+  it('switching to API key mode selects that radio', () => {
+    renderConsole();
+    const apiKeyRadio = screen.getByRole<HTMLInputElement>('radio', { name: /api key/i });
+    fireEvent.click(apiKeyRadio);
+    expect(apiKeyRadio.checked).toBe(true);
+    const subRadio = screen.getByRole<HTMLInputElement>('radio', { name: /subscription/i });
+    expect(subRadio.checked).toBe(false);
+  });
+
+  it('subscription mode dispatches useDelegateAgenticSdk (mockSdkMutate)', () => {
+    // Default mode = subscription
+    renderConsole();
+    const textarea = screen.getByRole('textbox', { name: /task/i });
+    fireEvent.change(textarea, { target: { value: 'SDK task' } });
+    const btn = screen.getByRole('button', { name: /run agent/i });
+    fireEvent.click(btn);
+    expect(mockSdkMutate).toHaveBeenCalledOnce();
+    expect(mockMutate).not.toHaveBeenCalled();
+  });
+
+  it('API-key mode dispatches useDelegateAgentic (mockMutate)', () => {
+    renderConsole();
+    const apiKeyRadio = screen.getByRole('radio', { name: /api key/i });
+    fireEvent.click(apiKeyRadio);
+    const textarea = screen.getByRole('textbox', { name: /task/i });
+    fireEvent.change(textarea, { target: { value: 'API key task' } });
+    const btn = screen.getByRole('button', { name: /run agent/i });
+    fireEvent.click(btn);
+    expect(mockMutate).toHaveBeenCalledOnce();
+    expect(mockSdkMutate).not.toHaveBeenCalled();
+  });
+
+  it('persists mode to localStorage and restores on re-render', () => {
+    const { unmount } = renderConsole();
+    const apiKeyRadio = screen.getByRole('radio', { name: /api key/i });
+    fireEvent.click(apiKeyRadio);
+    unmount();
+
+    // Re-render — should restore api-key from localStorage
+    renderConsole();
+    const restoredRadio = screen.getByRole<HTMLInputElement>('radio', { name: /api key/i });
+    expect(restoredRadio.checked).toBe(true);
+  });
+
+  it('shows warning and disables Run when subscription not authenticated', () => {
+    mockSubscriptionAuthenticated = false;
+    renderConsole();
+    // Default mode = subscription, not authenticated
+    expect(screen.getByRole('alert')).toBeInTheDocument();
+    expect(screen.getByText(/claude \/login/i)).toBeInTheDocument();
+    const btn = screen.getByRole('button', { name: /run agent/i });
+    // Button disabled even with task
+    const textarea = screen.getByRole('textbox', { name: /task/i });
+    fireEvent.change(textarea, { target: { value: 'some task' } });
+    expect(btn).toBeDisabled();
+  });
+
+  it('does NOT show auth warning when subscription is authenticated', () => {
+    mockSubscriptionAuthenticated = true;
+    renderConsole();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 });
