@@ -3,7 +3,7 @@ import { TabStrip } from '../components/agents/TabStrip';
 import { TemplatesTab } from '../components/agents/TemplatesTab';
 import { ThreadsTab } from '../components/agents/ThreadsTab';
 import { InsightsTab } from '../components/agents/InsightsTab';
-import { PersonalUsageTile } from '../components/agents/PersonalUsageTile';
+import { DelegateConsole } from '../components/agents/DelegateConsole';
 import type { AgentsTab } from '../components/agents/TabStrip';
 
 export function AgentsPage() {
@@ -65,9 +65,6 @@ export function AgentsPage() {
         </p>
       </header>
 
-      {/* Personal subscription overview — Option B: persistent strip above all tabs */}
-      <PersonalUsageTile />
-
       {/* Tab strip */}
       <TabStrip
         active={activeTab}
@@ -102,6 +99,15 @@ export function AgentsPage() {
       >
         {/* InsightsTab always mounted to keep insight count current for the badge */}
         <InsightsTab onCountChange={handleInsightCount} />
+      </div>
+
+      <div
+        id="agents-panel-delegate"
+        role="tabpanel"
+        aria-labelledby="agents-tab-delegate"
+        hidden={activeTab !== 'delegate'}
+      >
+        {activeTab === 'delegate' && <DelegateConsole />}
       </div>
     </div>
   );

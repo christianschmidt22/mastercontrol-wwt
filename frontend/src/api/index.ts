@@ -89,4 +89,5 @@ export {
   useUsage,
   useRecentUsage,
   useDelegate,
+  useDelegateAgentic,
 } from './useSubagent';

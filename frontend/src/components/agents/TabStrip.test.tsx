@@ -35,10 +35,10 @@ function renderStrip(active: AgentsTab = 'templates', insightCount = 0) {
 // ---------------------------------------------------------------------------
 
 describe('TabStrip — rendering', () => {
-  it('renders a tablist with three tabs', () => {
+  it('renders a tablist with four tabs', () => {
     renderStrip();
     expect(screen.getByRole('tablist')).toBeDefined();
-    expect(screen.getAllByRole('tab')).toHaveLength(3);
+    expect(screen.getAllByRole('tab')).toHaveLength(4);
   });
 
   it('marks only the active tab as aria-selected=true', () => {
@@ -49,7 +49,7 @@ describe('TabStrip — rendering', () => {
     const notSelected = tabs.filter((t) => t.getAttribute('aria-selected') === 'false');
     expect(selected).toHaveLength(1);
     expect(selected[0]?.textContent).toContain('Threads');
-    expect(notSelected).toHaveLength(2);
+    expect(notSelected).toHaveLength(3);
   });
 
   it('active tab has tabIndex=0; inactive tabs have tabIndex=-1', () => {
@@ -122,13 +122,13 @@ describe('TabStrip — keyboard navigation', () => {
     const templatesTab = screen.getByRole('tab', { name: 'Templates' });
     await userEvent.click(templatesTab);
     await userEvent.keyboard('{ArrowLeft}');
-    expect(onChange).toHaveBeenCalledWith('insights');
+    expect(onChange).toHaveBeenCalledWith('delegate');
   });
 
   it('ArrowRight from last tab wraps to first tab', async () => {
-    const { onChange } = renderStrip('insights');
-    const insightsTab = screen.getByRole('tab', { name: 'Insights queue' });
-    await userEvent.click(insightsTab);
+    const { onChange } = renderStrip('delegate');
+    const delegateTab = screen.getByRole('tab', { name: 'Delegate' });
+    await userEvent.click(delegateTab);
     await userEvent.keyboard('{ArrowRight}');
     expect(onChange).toHaveBeenCalledWith('templates');
   });
@@ -141,11 +141,11 @@ describe('TabStrip — keyboard navigation', () => {
     expect(onChange).toHaveBeenCalledWith('templates');
   });
 
-  it('End key moves to last tab (insights)', async () => {
+  it('End key moves to last tab (delegate)', async () => {
     const { onChange } = renderStrip('templates');
     const templatesTab = screen.getByRole('tab', { name: 'Templates' });
     await userEvent.click(templatesTab);
     await userEvent.keyboard('{End}');
-    expect(onChange).toHaveBeenCalledWith('insights');
+    expect(onChange).toHaveBeenCalledWith('delegate');
   });
 });

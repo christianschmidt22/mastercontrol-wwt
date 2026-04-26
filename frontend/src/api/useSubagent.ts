@@ -3,6 +3,7 @@
  *
  * Endpoints (provided by backend agent):
  *   POST /api/subagent/delegate
+ *   POST /api/subagent/delegate-agentic   ← new: full agentic run
  *   GET  /api/subagent/usage?period=session|today|week|all
  *   GET  /api/subagent/usage/recent?limit=N
  */
@@ -21,6 +22,8 @@ import type {
   UsagePeriod,
   UsageAggregate,
   UsageEvent,
+  AgenticDelegateRequest,
+  AgenticResult,
 } from '../types/subagent';
 
 // ---------------------------------------------------------------------------
@@ -79,6 +82,26 @@ export function useDelegate(): UseMutationResult<
       request<DelegateResult>('POST', '/api/subagent/delegate', body),
     onSuccess: () => {
       // Invalidate all usage queries so the tile refreshes
+      void qc.invalidateQueries({ queryKey: ['subagent', 'usage'] });
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// useDelegateAgentic — full agentic run with transcript
+// ---------------------------------------------------------------------------
+
+export function useDelegateAgentic(): UseMutationResult<
+  AgenticResult,
+  Error,
+  AgenticDelegateRequest
+> {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body) =>
+      request<AgenticResult>('POST', '/api/subagent/delegate-agentic', body),
+    onSuccess: () => {
+      // Refresh usage tile after run completes
       void qc.invalidateQueries({ queryKey: ['subagent', 'usage'] });
     },
   });

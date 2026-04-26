@@ -63,3 +63,71 @@ export interface UsageEvent {
   task_summary: string | null;
   error: string | null;
 }
+
+// ---------------------------------------------------------------------------
+// Agentic delegate (POST /api/subagent/delegate-agentic)
+// ---------------------------------------------------------------------------
+
+export type DelegateTool =
+  | 'read_file'
+  | 'list_files'
+  | 'write_file'
+  | 'edit_file'
+  | 'bash';
+
+export interface AgenticDelegateRequest {
+  task: string;
+  working_dir?: string;
+  tools: DelegateTool[];
+  model?: string;
+  max_iterations?: number;
+  max_tokens?: number;
+  system?: string;
+  task_summary?: string;
+}
+
+export type TranscriptEntry =
+  | {
+      kind: 'assistant_text';
+      text: string;
+      turn: number;
+    }
+  | {
+      kind: 'assistant_tool_use';
+      tool: string;
+      input: unknown;
+      tool_use_id: string;
+      turn: number;
+    }
+  | {
+      kind: 'tool_result';
+      tool_use_id: string;
+      output: string;
+      is_error: boolean;
+      turn: number;
+    };
+
+export interface AgenticTokenUsage {
+  input_tokens: number;
+  output_tokens: number;
+  cache_read_input_tokens: number;
+  cache_creation_input_tokens: number;
+}
+
+export interface AgenticResultOk {
+  ok: true;
+  transcript: TranscriptEntry[];
+  total_usage: AgenticTokenUsage;
+  total_cost_usd: number;
+  iterations: number;
+  stopped_reason: 'end_turn' | 'max_iterations';
+}
+
+export interface AgenticResultErr {
+  ok: false;
+  error: string;
+  transcript_so_far: TranscriptEntry[];
+  total_usage: AgenticTokenUsage;
+}
+
+export type AgenticResult = AgenticResultOk | AgenticResultErr;

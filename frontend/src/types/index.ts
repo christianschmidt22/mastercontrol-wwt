@@ -67,4 +67,10 @@ export type {
   UsageAggregate,
   UsageEventSource,
   UsageEvent,
+  DelegateTool,
+  AgenticDelegateRequest,
+  TranscriptEntry,
+  AgenticResult,
+  AgenticResultOk,
+  AgenticResultErr,
 } from './subagent';

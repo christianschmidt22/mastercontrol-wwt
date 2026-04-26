@@ -1,12 +1,13 @@
 import { useCallback, useRef } from 'react';
 
-export type AgentsTab = 'templates' | 'threads' | 'insights';
+export type AgentsTab = 'templates' | 'threads' | 'insights' | 'delegate';
 
-const TAB_ORDER: AgentsTab[] = ['templates', 'threads', 'insights'];
+const TAB_ORDER: AgentsTab[] = ['templates', 'threads', 'insights', 'delegate'];
 const TAB_LABELS: Record<AgentsTab, string> = {
   templates: 'Templates',
   threads: 'Threads',
   insights: 'Insights queue',
+  delegate: 'Delegate',
 };
 
 interface TabStripProps {
