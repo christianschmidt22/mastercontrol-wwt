@@ -20,6 +20,10 @@ const upsertStmt = db.prepare<[string, string]>(
  */
 export const SECRET_KEYS: ReadonlySet<string> = new Set([
   'anthropic_api_key',
+  // R-003: personal subscription key for /api/subagent/delegate. Stored
+  // separately from the per-org-chat key so the user can use a different
+  // billing account for ad-hoc subagent tasks.
+  'personal_anthropic_api_key',
 ]);
 
 const ENC_PREFIX = 'enc:';

@@ -23,17 +23,17 @@ import { makeOrg, makeContact } from '../test/factories.js';
 // ---------------------------------------------------------------------------
 
 describe('runMigrations — initial apply', () => {
-  it('records all 6 numbered migrations in _migrations', () => {
+  it('records every numbered migration in _migrations in sequence', () => {
     const rows = db.prepare('SELECT id, name FROM _migrations ORDER BY id').all() as Array<{
       id: number;
       name: string;
     }>;
 
-    expect(rows).toHaveLength(6);
-    expect(rows.map((r) => r.id)).toEqual([1, 2, 3, 4, 5, 6]);
-    // Sanity-check that names match the on-disk filenames.
+    // Sequence is 1..N with N = current count. Adding new migrations bumps
+    // the count without breaking this assertion.
+    expect(rows.length).toBeGreaterThanOrEqual(6);
+    expect(rows.map((r) => r.id)).toEqual(rows.map((_, i) => i + 1));
     expect(rows[0].name).toMatch(/^001_/);
-    expect(rows[5].name).toMatch(/^006_/);
   });
 });
 
@@ -44,12 +44,13 @@ describe('runMigrations — initial apply', () => {
 describe('runMigrations — idempotency', () => {
   it('a second call leaves _migrations unchanged and throws no errors', () => {
     const before = db.prepare('SELECT COUNT(*) AS n FROM _migrations').get() as { n: number };
-    expect(before.n).toBe(6);
+    const startCount = before.n;
+    expect(startCount).toBeGreaterThanOrEqual(6);
 
     expect(() => runMigrations()).not.toThrow();
 
     const after = db.prepare('SELECT COUNT(*) AS n FROM _migrations').get() as { n: number };
-    expect(after.n).toBe(6);
+    expect(after.n).toBe(startCount);
   });
 });
 
