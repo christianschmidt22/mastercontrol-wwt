@@ -2,6 +2,64 @@
 
 ## Phase 2 — In progress on branch `claude/laughing-ishizaka-8f06fa` (2026-04-25)
 
+### Checkpoint `phase2-checkpoint-2` — 2026-04-26 evening
+
+User-facing milestone: **personal-subscription delegation works end-to-end.**
+Set the key in Settings → Personal Claude Subscription, then use the new
+Agents → Delegate tab (or `POST /api/subagent/delegate-agentic` directly)
+to delegate coding tasks with file tools. See `docs/DELEGATION.md` for
+the full login + delegation flow.
+
+Backend 480 tests · frontend 260 tests · both lint + typecheck clean.
+
+- **Agentic delegation loop** (`5692c15`): `subagent.service.ts` gets
+  `delegateAgentic()` — multi-turn tool-use loop bounded at 50 iterations
+  hard, default 25. Five tools shipped in `subagentTools.service.ts`:
+  `read_file`, `list_files`, `write_file`, `edit_file`, and (opt-in)
+  `bash`. Each file tool routes through a new `assertSafeRelPath` helper
+  rather than reusing `lib/safePath.ts` (the existing helper is locked
+  to a `.md/.txt/.pdf` extension allowlist for the per-org chat's
+  `read_document` tool). New route `POST /api/subagent/delegate-agentic`.
+  +39 backend tests (10 service + 30 tools-unit + 9 route-integration).
+  Also captures the chat-usage instrumentation that was held in working
+  tree from a parallel self-edit:
+  - `recordUsageFromMessage()` helper in `claude.service.ts`
+  - per-org chat (`messages.stream` final message), `generateReport`
+    (scheduled report runs), and `extractOrgMentions` (ingest mention
+    extraction) all now record to `anthropic_usage_events` so the tile
+    shows real cross-source usage instead of just delegate-only.
+- **Delegate Console UI** (`6d9520f`): new 4th tab in AgentsPage
+  ("Delegate"). Form with task textarea, working-dir field, tool
+  checkbox group (bash off by default), model select, advanced
+  disclosure (max_iterations / max_tokens / system). Live cost meter
+  pulling `useUsage('session'|'today')`. Transcript view renders the
+  three entry kinds with collapsible tool-use input and truncatable
+  tool results. +21 frontend tests (23 component + 11 hook minus the
+  9 from the legacy `useSubagent.test.tsx` we replaced).
+- **Round 9 audit punch list** (`850e839`): 7 fixes shipped, 2
+  deferred. CommandPalette input now respects `:focus-visible`;
+  TasksPage ChipGroup outline fixed; backdrop rgba values use the
+  palette tokens; SettingsPage redundant `textWrap` declarations
+  removed (global `h1, h2, h3 { text-wrap: balance }` rule covers
+  them). Sidebar OEM icon fix, HomePage h1 textWrap, ReportsPage h2
+  section header. Findings doc at `docs/REVIEW-ROUND9.md` is
+  annotated with `(FIXED in <commit>)` / `(DEFERRED — <reason>)`.
+- **DPAPI module-shape fix** (this commit): `@primno/dpapi` v1.1.x
+  exposes `protectData`/`unprotectData` under a `Dpapi` object (also
+  the default export), not as bare named exports. The previous
+  destructure quietly produced `undefined` references and
+  `decryptSync` blew up with "dpapi.unprotectData is not a function"
+  the first time a route tried to read an encrypted setting. The
+  loader now normalizes both the new `Dpapi`-object shape, the
+  default-export shape, and the legacy bare-named-exports shape.
+  Discovered during the smoke-test pass; without this the personal
+  key couldn't actually be read at runtime.
+- **`docs/DELEGATION.md`** (this commit): operator guide for the
+  login + delegation flow. Covers Settings UI, `curl` examples for
+  both endpoints, security notes, and known gaps for next round
+  (streaming, per-call cost cap, per-error retry on the activity
+  feed).
+
 ### Checkpoint `phase2-checkpoint-1` — 2026-04-26 PM
 
 Clean state after a multi-agent integration push. Backend 394 tests · frontend
