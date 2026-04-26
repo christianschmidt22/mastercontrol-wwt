@@ -236,7 +236,7 @@ export function ReportPreview({ reportId, runId, runDate, enabled }: ReportPrevi
     >
       {query.isLoading && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--ink-3)', fontSize: 13 }}>
-          <Loader2 size={14} strokeWidth={1.5} aria-hidden="true" style={{ animation: 'spin 1s linear infinite' }} />
+          <Loader2 size={14} strokeWidth={1.5} aria-hidden="true" className="animate-spin" />
           Loading preview…
         </div>
       )}

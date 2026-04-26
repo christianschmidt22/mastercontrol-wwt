@@ -281,7 +281,7 @@ function BulkBar({ count, onBulkAccept, onBulkDismiss, isBusy }: BulkBarProps) {
         display: 'flex',
         alignItems: 'center',
         gap: 16,
-        boxShadow: '0 4px 24px rgba(0,0,0,0.18)',
+        boxShadow: 'none',
         zIndex: 100,
       }}
     >

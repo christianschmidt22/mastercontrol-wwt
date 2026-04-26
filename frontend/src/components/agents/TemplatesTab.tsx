@@ -419,7 +419,7 @@ function TemplateCard({ section, config }: SectionCardProps) {
                 width="12"
                 height="12"
                 viewBox="0 0 12 12"
-                style={{ animation: 'spin 0.8s linear infinite' }}
+                className="animate-spin"
               >
                 <circle
                   cx="6"
