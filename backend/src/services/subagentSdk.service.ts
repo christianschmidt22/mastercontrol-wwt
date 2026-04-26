@@ -24,7 +24,7 @@ import type { BetaContentBlock } from '@anthropic-ai/sdk/resources/beta/messages
 import { anthropicUsageModel } from '../models/anthropicUsage.model.js';
 import { HttpError } from '../middleware/errorHandler.js';
 import type { AgenticDelegateRequest } from '../schemas/subagent.schema.js';
-import type { AgenticResult, TranscriptEntry } from './subagent.service.js';
+import type { AgenticResult, AgenticStreamOptions, TranscriptEntry } from './subagent.service.js';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -102,6 +102,133 @@ function resolveWorkingDir(requested: string | undefined): string {
 }
 
 // ---------------------------------------------------------------------------
+// Locate the `claude` executable so we can hand the SDK an explicit path
+// instead of relying on PATH inheritance, which is unreliable on Windows
+// (Claude Desktop's MSIX-bundled CLI lives under
+// `%LocalAppData%\Packages\Claude_*\LocalCache\Roaming\Claude\claude-code\<ver>\claude.exe`
+// — that directory is not in the PATH that node-spawned subprocesses see).
+//
+// Lookup order:
+//   1. CLAUDE_CODE_EXECUTABLE_PATH env var (manual override / escape hatch)
+//   2. npm global install: %APPDATA%\npm\claude.cmd  /  ~/.npm-global/bin/claude
+//   3. MSIX-bundled: %LocalAppData%\Packages\Claude_*\LocalCache\Roaming\Claude\
+//                    claude-code\<latest-version>\claude.exe
+//   4. Return undefined → SDK falls back to its built-in spawn (and PATH).
+//
+// Result is cached for the process lifetime; restart the backend to pick up
+// a new install.
+// ---------------------------------------------------------------------------
+
+let _resolvedExecutable: string | null | undefined = undefined;
+
+export function resolveClaudeExecutable(): string | null {
+  if (_resolvedExecutable !== undefined) return _resolvedExecutable;
+  _resolvedExecutable = doResolveClaudeExecutable();
+  return _resolvedExecutable;
+}
+
+function doResolveClaudeExecutable(): string | null {
+  // 1. Explicit env override.
+  const envOverride = process.env.CLAUDE_CODE_EXECUTABLE_PATH;
+  if (envOverride && fs.existsSync(envOverride)) return envOverride;
+
+  // 2. npm global bin.
+  const appdata = process.env.APPDATA;
+  if (appdata) {
+    const npmCmd = path.join(appdata, 'npm', 'claude.cmd');
+    if (fs.existsSync(npmCmd)) return npmCmd;
+    const npmBare = path.join(appdata, 'npm', 'claude');
+    if (fs.existsSync(npmBare)) return npmBare;
+  }
+
+  // 3. MSIX-bundled (Claude Desktop on Windows).
+  const localAppData = process.env.LOCALAPPDATA;
+  if (localAppData) {
+    const packagesRoot = path.join(localAppData, 'Packages');
+    if (fs.existsSync(packagesRoot)) {
+      try {
+        const claudePackages = fs
+          .readdirSync(packagesRoot)
+          .filter((name) => name.toLowerCase().startsWith('claude_'));
+        for (const pkg of claudePackages) {
+          const codeRoot = path.join(
+            packagesRoot,
+            pkg,
+            'LocalCache',
+            'Roaming',
+            'Claude',
+            'claude-code',
+          );
+          if (!fs.existsSync(codeRoot)) continue;
+          // Sort version dirs descending so we pick the newest.
+          const versions = fs
+            .readdirSync(codeRoot)
+            .filter((v) => /^\d+\.\d+\.\d+/.test(v))
+            .sort((a, b) => compareSemver(b, a));
+          for (const version of versions) {
+            const exe = path.join(codeRoot, version, 'claude.exe');
+            if (fs.existsSync(exe)) return exe;
+          }
+        }
+      } catch {
+        // Permission error or transient — fall through to next tier.
+      }
+    }
+  }
+
+  // 4. Give up; let the SDK try.
+  return null;
+}
+
+function compareSemver(a: string, b: string): number {
+  const av = a.split('.').map((n) => parseInt(n, 10));
+  const bv = b.split('.').map((n) => parseInt(n, 10));
+  for (let i = 0; i < Math.max(av.length, bv.length); i++) {
+    const ai = av[i] ?? 0;
+    const bi = bv[i] ?? 0;
+    if (ai !== bi) return ai - bi;
+  }
+  return 0;
+}
+
+// ---------------------------------------------------------------------------
+// Locate bash.exe on Windows. Claude Code refuses to run without Git Bash
+// available; if it can't find it on PATH it instructs the user to set
+// CLAUDE_CODE_GIT_BASH_PATH. We auto-detect the common install locations
+// here and set the env var before spawning so the SDK subprocess inherits
+// it. No-op on non-Windows (bash is always on PATH).
+// ---------------------------------------------------------------------------
+
+let _bashPathResolved = false;
+
+function ensureBashEnvForClaudeCode(): void {
+  if (_bashPathResolved) return;
+  _bashPathResolved = true;
+
+  if (process.platform !== 'win32') return;
+  if (process.env.CLAUDE_CODE_GIT_BASH_PATH) return; // user already set it
+
+  const candidates: string[] = [];
+  const local = process.env.LOCALAPPDATA;
+  if (local) {
+    candidates.push(path.join(local, 'Programs', 'Git', 'usr', 'bin', 'bash.exe'));
+    candidates.push(path.join(local, 'Programs', 'Git', 'bin', 'bash.exe'));
+  }
+  candidates.push('C:\\Program Files\\Git\\usr\\bin\\bash.exe');
+  candidates.push('C:\\Program Files\\Git\\bin\\bash.exe');
+  candidates.push('C:\\Program Files (x86)\\Git\\usr\\bin\\bash.exe');
+
+  for (const c of candidates) {
+    if (fs.existsSync(c)) {
+      process.env.CLAUDE_CODE_GIT_BASH_PATH = c;
+      return;
+    }
+  }
+  // Couldn't find it — leave env unset, the SDK will surface the missing-
+  // bash error to the user with its own instructions.
+}
+
+// ---------------------------------------------------------------------------
 // SDK event narrowing helpers
 // ---------------------------------------------------------------------------
 
@@ -149,6 +276,7 @@ function emptyUsage(): AccumulatedUsage {
  */
 export async function delegateViaSubscription(
   input: AgenticDelegateRequest,
+  options?: AgenticStreamOptions,
 ): Promise<AgenticResult> {
   const maxTurns = Math.min(
     input.max_iterations ?? DEFAULT_MAX_TURNS,
@@ -185,6 +313,12 @@ export async function delegateViaSubscription(
   const transcript: TranscriptEntry[] = [];
   const totalUsage = emptyUsage();
 
+  /** Push an entry into the transcript and fire the optional streaming callback. */
+  const pushEntry = (entry: TranscriptEntry): void => {
+    transcript.push(entry);
+    options?.onEvent?.(entry);
+  };
+
   // Track which turn we are on (each SDKAssistantMessage is one turn).
   let turn = 0;
 
@@ -192,6 +326,16 @@ export async function delegateViaSubscription(
   let finalModel = 'claude-sonnet-4-6';
   let stoppedReason: 'end_turn' | 'max_iterations' = 'end_turn';
   let totalCostUsd = 0;
+
+  // Resolve the Claude Code executable path. On Windows the binary often
+  // lives in a path that node-spawned subprocesses don't inherit (Claude
+  // Desktop's MSIX bundle in particular). Pass it explicitly so the SDK's
+  // spawn doesn't fail with a generic exit code 1.
+  const claudeExe = resolveClaudeExecutable();
+
+  // Claude Code on Windows needs Git Bash. Autodetect and set the env var
+  // it looks for so the SDK subprocess can find bash.exe.
+  ensureBashEnvForClaudeCode();
 
   try {
     const sdkQuery = query({
@@ -206,6 +350,7 @@ export async function delegateViaSubscription(
         // permissionMode: 'acceptEdits' so file writes don't block on a prompt.
         permissionMode: 'acceptEdits',
         maxTurns,
+        ...(claudeExe ? { pathToClaudeCodeExecutable: claudeExe } : {}),
         // Don't persist these automated sessions to ~/.claude/projects/.
         persistSession: false,
       },
@@ -234,7 +379,7 @@ export async function delegateViaSubscription(
             const entry: TranscriptEntry = { kind: 'assistant_text', text: block.text };
             // Spread turn as a runtime decoration — callers may use it.
             (entry as TranscriptEntry & { turn: number }).turn = currentTurn;
-            transcript.push(entry);
+            pushEntry(entry);
           } else if (block.type === 'tool_use') {
             const entry: TranscriptEntry = {
               kind: 'assistant_tool_use',
@@ -243,7 +388,7 @@ export async function delegateViaSubscription(
               input: block.input as Record<string, unknown>,
             };
             (entry as TranscriptEntry & { turn: number }).turn = currentTurn;
-            transcript.push(entry);
+            pushEntry(entry);
           }
           // thinking / redacted_thinking blocks are silently skipped.
         }

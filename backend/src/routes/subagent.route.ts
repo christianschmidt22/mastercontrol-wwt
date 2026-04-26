@@ -28,6 +28,7 @@ import { delegate, delegateAgentic, getSessionStart } from '../services/subagent
 import { delegateViaSubscription } from '../services/subagentSdk.service.js';
 import { anthropicUsageModel } from '../models/anthropicUsage.model.js';
 import { settingsModel } from '../models/settings.model.js';
+import { openSse } from '../lib/sse.js';
 
 export const subagentRouter = Router();
 
@@ -73,6 +74,124 @@ subagentRouter.post(
     } catch (err) {
       next(err);
     }
+  },
+);
+
+// POST /api/subagent/delegate-agentic-stream ---------------------------------
+//
+// Same request body as /delegate-agentic but response is text/event-stream.
+// Each transcript entry is sent as:
+//   data: {"type":"transcript","entry":{...}}\n\n
+// On completion:
+//   data: {"type":"done","total_usage":{...},"total_cost_usd":N,"iterations":N,"stopped_reason":"..."}\n\n
+// On error:
+//   data: {"type":"error","error":"...","transcript_so_far":[...]}\n\n
+subagentRouter.post(
+  '/delegate-agentic-stream',
+  validateBody(AgenticDelegateRequestSchema),
+  async (req, res, next) => {
+    const body = req.validatedBody as AgenticDelegateRequest;
+    const sse = openSse(req, res);
+
+    // Run the agentic loop with an onEvent callback that streams each entry.
+    let result;
+    try {
+      result = await Promise.race([
+        delegateAgentic(body, {
+          onEvent: (entry) => {
+            sse.send({ type: 'transcript', entry });
+          },
+        }),
+        // If the client disconnects mid-run, we still let delegateAgentic
+        // finish (it's non-cancellable mid-API-call), but we stop writing SSE
+        // frames because sse.send() is a no-op once disconnected.
+        sse.disconnected.then((): null => null),
+      ]);
+    } catch (err) {
+      // HttpError (bad config, missing key, etc.) — send error frame.
+      const message = err instanceof Error ? err.message : String(err);
+      sse.send({ type: 'error', error: message, transcript_so_far: [] });
+      sse.end();
+      // Also pass to next() so the error handler logs it.
+      next(err);
+      return;
+    }
+
+    if (result === null) {
+      // Client disconnected before the run finished.
+      sse.end();
+      return;
+    }
+
+    if (!result.ok) {
+      sse.send({
+        type: 'error',
+        error: result.error,
+        transcript_so_far: result.transcript_so_far,
+      });
+    } else {
+      sse.send({
+        type: 'done',
+        total_usage: result.total_usage,
+        total_cost_usd: result.total_cost_usd,
+        iterations: result.iterations,
+        stopped_reason: result.stopped_reason,
+      });
+    }
+    sse.end();
+  },
+);
+
+// POST /api/subagent/delegate-sdk-stream -------------------------------------
+//
+// Same request body as /delegate-sdk but response is text/event-stream.
+// Same SSE event protocol as /delegate-agentic-stream above.
+subagentRouter.post(
+  '/delegate-sdk-stream',
+  validateBody(AgenticDelegateRequestSchema),
+  async (req, res, next) => {
+    const body = req.validatedBody as AgenticDelegateRequest;
+    const sse = openSse(req, res);
+
+    let result;
+    try {
+      result = await Promise.race([
+        delegateViaSubscription(body, {
+          onEvent: (entry) => {
+            sse.send({ type: 'transcript', entry });
+          },
+        }),
+        sse.disconnected.then((): null => null),
+      ]);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      sse.send({ type: 'error', error: message, transcript_so_far: [] });
+      sse.end();
+      next(err);
+      return;
+    }
+
+    if (result === null) {
+      sse.end();
+      return;
+    }
+
+    if (!result.ok) {
+      sse.send({
+        type: 'error',
+        error: result.error,
+        transcript_so_far: result.transcript_so_far,
+      });
+    } else {
+      sse.send({
+        type: 'done',
+        total_usage: result.total_usage,
+        total_cost_usd: result.total_cost_usd,
+        iterations: result.iterations,
+        stopped_reason: result.stopped_reason,
+      });
+    }
+    sse.end();
   },
 );
 

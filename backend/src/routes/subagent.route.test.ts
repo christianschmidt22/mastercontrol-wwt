@@ -468,6 +468,7 @@ vi.mock('../services/subagentSdk.service.js', () => ({
 
 // Import the mocked module so we can reconfigure it per-test.
 import { delegateViaSubscription } from '../services/subagentSdk.service.js';
+import type { AgenticStreamOptions } from '../services/subagent.service.js';
 
 describe('POST /api/subagent/delegate-sdk', () => {
   const SDK_BODY = {
@@ -546,5 +547,190 @@ describe('POST /api/subagent/delegate-sdk', () => {
     expect(res.status).toBe(200);
     expect(res.body.ok).toBe(false);
     expect(res.body.error).toMatch(/claude \/login/i);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/subagent/delegate-agentic-stream
+// ---------------------------------------------------------------------------
+
+/** Parse a text/event-stream body into individual JSON payloads (excluding [DONE]). */
+function parseSSEBody(body: string): Array<Record<string, unknown>> {
+  const result: Array<Record<string, unknown>> = [];
+  for (const line of body.split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith('data: ')) continue;
+    const payload = trimmed.slice(6);
+    if (payload === '[DONE]') continue;
+    try {
+      result.push(JSON.parse(payload) as Record<string, unknown>);
+    } catch {
+      // skip malformed
+    }
+  }
+  return result;
+}
+
+describe('POST /api/subagent/delegate-agentic-stream', () => {
+  const WORK_DIR = os.tmpdir();
+  const STREAM_BODY = {
+    task: 'list files',
+    tools: ['read_file'],
+    working_dir: WORK_DIR,
+  };
+
+  it('happy path: SSE stream contains transcript events then a done event', async () => {
+    // Single end_turn response — no tool use.
+    mockQueue.push({
+      id: 'msg_stream_1',
+      model: 'claude-sonnet-4-6',
+      stop_reason: 'end_turn',
+      content: [{ type: 'text', text: 'All done via stream.' }],
+      usage: { input_tokens: 12, output_tokens: 6 },
+    });
+
+    const res = await request(app)
+      .post('/api/subagent/delegate-agentic-stream')
+      .send(STREAM_BODY)
+      .buffer(true)
+      .parse((res, callback) => {
+        let data = '';
+        res.on('data', (chunk: Buffer) => { data += chunk.toString(); });
+        res.on('end', () => callback(null, data));
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toMatch(/text\/event-stream/);
+
+    const events = parseSSEBody(res.body as string);
+    const transcriptEvents = events.filter((e) => e.type === 'transcript');
+    const doneEvent = events.find((e) => e.type === 'done');
+
+    expect(transcriptEvents.length).toBeGreaterThanOrEqual(1);
+    const firstEntry = transcriptEvents[0]?.entry as Record<string, unknown>;
+    expect(firstEntry?.kind).toBe('assistant_text');
+    expect(firstEntry?.text).toBe('All done via stream.');
+
+    expect(doneEvent).toBeDefined();
+    expect(doneEvent?.stopped_reason).toBe('end_turn');
+    expect(typeof doneEvent?.iterations).toBe('number');
+    expect(typeof doneEvent?.total_cost_usd).toBe('number');
+  });
+
+  it('error path: when personal API key missing, SSE stream contains error event', async () => {
+    settingsModel.set('personal_anthropic_api_key', '');
+
+    const res = await request(app)
+      .post('/api/subagent/delegate-agentic-stream')
+      .send(STREAM_BODY)
+      .buffer(true)
+      .parse((res, callback) => {
+        let data = '';
+        res.on('data', (chunk: Buffer) => { data += chunk.toString(); });
+        res.on('end', () => callback(null, data));
+      });
+
+    // Status 200 because SSE headers were already sent (openSse was called
+    // before the error was raised by delegateAgentic).
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toMatch(/text\/event-stream/);
+
+    const events = parseSSEBody(res.body as string);
+    const errorEvent = events.find((e) => e.type === 'error');
+    expect(errorEvent).toBeDefined();
+    expect(String(errorEvent?.error)).toMatch(/personal anthropic api key/i);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/subagent/delegate-sdk-stream
+// ---------------------------------------------------------------------------
+
+describe('POST /api/subagent/delegate-sdk-stream', () => {
+  const SDK_STREAM_BODY = {
+    task: 'List top-level files',
+    tools: ['read_file'],
+    working_dir: os.tmpdir(),
+  };
+
+  beforeEach(() => {
+    // Default to a simple success; tests override as needed.
+    vi.mocked(delegateViaSubscription).mockResolvedValue({
+      ok: true,
+      transcript: [{ kind: 'assistant_text' as const, text: 'stream done' }],
+      total_usage: { input_tokens: 5, output_tokens: 3, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 },
+      total_cost_usd: 0,
+      iterations: 1,
+      stopped_reason: 'end_turn' as const,
+    });
+  });
+
+  it('happy path: SSE stream contains transcript events then a done event', async () => {
+    // Use a mock implementation that calls onEvent before resolving.
+    vi.mocked(delegateViaSubscription).mockImplementation(
+      async (_input, opts?: AgenticStreamOptions) => {
+        opts?.onEvent?.({ kind: 'assistant_text', text: 'SDK stream reply' });
+        return {
+          ok: true,
+          transcript: [{ kind: 'assistant_text' as const, text: 'SDK stream reply' }],
+          total_usage: { input_tokens: 8, output_tokens: 4, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 },
+          total_cost_usd: 0,
+          iterations: 1,
+          stopped_reason: 'end_turn' as const,
+        };
+      },
+    );
+
+    const res = await request(app)
+      .post('/api/subagent/delegate-sdk-stream')
+      .send(SDK_STREAM_BODY)
+      .buffer(true)
+      .parse((res, callback) => {
+        let data = '';
+        res.on('data', (chunk: Buffer) => { data += chunk.toString(); });
+        res.on('end', () => callback(null, data));
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toMatch(/text\/event-stream/);
+
+    const events = parseSSEBody(res.body as string);
+    const transcriptEvents = events.filter((e) => e.type === 'transcript');
+    const doneEvent = events.find((e) => e.type === 'done');
+
+    expect(transcriptEvents.length).toBe(1);
+    const entry = transcriptEvents[0]?.entry as Record<string, unknown>;
+    expect(entry?.kind).toBe('assistant_text');
+    expect(entry?.text).toBe('SDK stream reply');
+
+    expect(doneEvent).toBeDefined();
+    expect(doneEvent?.stopped_reason).toBe('end_turn');
+  });
+
+  it('error path: when service returns ok=false, SSE stream contains error event', async () => {
+    vi.mocked(delegateViaSubscription).mockResolvedValue({
+      ok: false,
+      error: 'Subscription expired.',
+      transcript_so_far: [],
+      total_usage: { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 },
+    });
+
+    const res = await request(app)
+      .post('/api/subagent/delegate-sdk-stream')
+      .send(SDK_STREAM_BODY)
+      .buffer(true)
+      .parse((res, callback) => {
+        let data = '';
+        res.on('data', (chunk: Buffer) => { data += chunk.toString(); });
+        res.on('end', () => callback(null, data));
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toMatch(/text\/event-stream/);
+
+    const events = parseSSEBody(res.body as string);
+    const errorEvent = events.find((e) => e.type === 'error');
+    expect(errorEvent).toBeDefined();
+    expect(String(errorEvent?.error)).toMatch(/subscription expired/i);
   });
 });

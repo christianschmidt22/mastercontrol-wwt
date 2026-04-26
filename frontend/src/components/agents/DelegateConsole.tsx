@@ -1,23 +1,32 @@
 /**
  * DelegateConsole.tsx
  *
- * UI for submitting an agentic delegation task and viewing the full
- * transcript once the run completes. Streaming is not in scope — the
- * backend returns the complete transcript at the end of the run.
+ * UI for submitting an agentic delegation task and viewing the transcript
+ * as entries stream in via SSE. The JSON mutation hooks are kept for
+ * backward compatibility; the Run button uses the streaming variants.
  *
  * Component budget: ~200 lines. Heavy transcript rendering is in
  * DelegateConsoleTranscript.tsx.
  */
 
-import { useState } from 'react';
+import { useState, useRef, useCallback } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   useDelegateAgentic,
   useDelegateAgenticSdk,
   useAuthStatus,
   useUsage,
+  streamDelegateAgentic,
+  streamDelegateAgenticSdk,
+  subagentKeys,
 } from '../../api/useSubagent';
 import { useSetting } from '../../api/useSettings';
-import type { DelegateTool, AgenticResult, TranscriptEntry, DelegateAuthMode } from '../../types/subagent';
+import type {
+  DelegateTool,
+  AgenticResult,
+  TranscriptEntry,
+  DelegateAuthMode,
+} from '../../types/subagent';
 import { DelegateConsoleTranscript } from './DelegateConsoleTranscript';
 
 // ---------------------------------------------------------------------------
@@ -155,10 +164,13 @@ export function DelegateConsole() {
   // Auth mode: persisted in localStorage, defaults to 'subscription'
   const [authMode, setAuthMode] = useState<DelegateAuthMode>(readStoredMode);
 
+  // Keep JSON mutation hooks for backward compat — not used for the Run button
+  // anymore but kept so existing callers of useDelegateAgentic/Sdk still work.
   const apikeyMutation = useDelegateAgentic();
   const sdkMutation = useDelegateAgenticSdk();
   const { data: authStatus } = useAuthStatus();
   const { data: personalKeySetting } = useSetting('personal_anthropic_api_key');
+  const qc = useQueryClient();
 
   const sessionUsage = useUsage('session');
   const todayUsage = useUsage('today');
@@ -167,7 +179,13 @@ export function DelegateConsole() {
   const subscriptionAuthenticated = authStatus?.subscription_authenticated;
   const subscriptionBlocked = authMode === 'subscription' && subscriptionAuthenticated === false;
 
-  const mutation = authMode === 'subscription' ? sdkMutation : apikeyMutation;
+  // Streaming state
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [streamTranscript, setStreamTranscript] = useState<TranscriptEntry[]>([]);
+  const [streamResult, setStreamResult] = useState<AgenticResult | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+  // Counter used to invalidate usage periodically during streaming.
+  const entryCountRef = useRef(0);
 
   const [task, setTask] = useState('');
   const [workingDir, setWorkingDir] = useState('');
@@ -180,13 +198,19 @@ export function DelegateConsole() {
   const [maxTokens, setMaxTokens] = useState(4096);
   const [systemPrompt, setSystemPrompt] = useState('');
 
-  const isPending = mutation.isPending;
-  const result = mutation.data ?? null;
-  const transcript: TranscriptEntry[] = result
-    ? result.ok
-      ? result.transcript
-      : result.transcript_so_far
-    : [];
+  // Prefer streaming transcript/result; fall back to JSON mutation data.
+  const isPending = isStreaming || apikeyMutation.isPending || sdkMutation.isPending;
+
+  // Build the displayed result from streaming state if available.
+  const result: AgenticResult | null = streamResult ?? apikeyMutation.data ?? sdkMutation.data ?? null;
+
+  const transcript: TranscriptEntry[] = isStreaming
+    ? streamTranscript
+    : result
+      ? result.ok
+        ? result.transcript
+        : result.transcript_so_far
+      : [];
 
   const toggleTool = (key: DelegateTool) => {
     setTools((prev) => {
@@ -202,9 +226,10 @@ export function DelegateConsole() {
     writeStoredMode(mode);
   }
 
-  const handleRun = () => {
+  const handleRun = useCallback(() => {
     if (!task.trim() || isPending || subscriptionBlocked) return;
-    mutation.mutate({
+
+    const input = {
       task: task.trim(),
       working_dir: workingDir.trim() || undefined,
       tools: [...tools],
@@ -212,7 +237,77 @@ export function DelegateConsole() {
       max_iterations: maxIterations,
       max_tokens: maxTokens,
       system: systemPrompt.trim() || undefined,
+    };
+
+    // Reset streaming state for the new run.
+    setStreamTranscript([]);
+    setStreamResult(null);
+    setIsStreaming(true);
+    entryCountRef.current = 0;
+
+    const abort = new AbortController();
+    abortRef.current = abort;
+
+    const streamFn = authMode === 'subscription' ? streamDelegateAgenticSdk : streamDelegateAgentic;
+
+    // Local accumulator so onDone and onError closures see the full transcript
+    // without depending on potentially-stale React state snapshots.
+    const accumulated: TranscriptEntry[] = [];
+
+    streamFn(input, {
+      onEntry: (entry) => {
+        accumulated.push(entry);
+        setStreamTranscript((prev) => [...prev, entry]);
+        entryCountRef.current += 1;
+        // Invalidate usage tile every 5 entries so the cost meter updates live.
+        if (entryCountRef.current % 5 === 0) {
+          void qc.invalidateQueries({ queryKey: subagentKeys.usage('session') });
+          void qc.invalidateQueries({ queryKey: subagentKeys.usage('today') });
+        }
+      },
+      onDone: (evt) => {
+        const doneResult: AgenticResult = {
+          ok: true,
+          transcript: [...accumulated],
+          total_usage: evt.total_usage,
+          total_cost_usd: evt.total_cost_usd,
+          iterations: evt.iterations,
+          stopped_reason: evt.stopped_reason,
+        };
+        setStreamResult(doneResult);
+        setIsStreaming(false);
+        void qc.invalidateQueries({ queryKey: ['subagent', 'usage'] });
+      },
+      onError: (evt) => {
+        const errResult: AgenticResult = {
+          ok: false,
+          error: evt.error,
+          transcript_so_far: evt.transcript_so_far,
+          total_usage: { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 },
+        };
+        setStreamResult(errResult);
+        setIsStreaming(false);
+        void qc.invalidateQueries({ queryKey: ['subagent', 'usage'] });
+      },
+      signal: abort.signal,
+    }).catch((err: unknown) => {
+      // AbortError from navigation = clean cancel; don't show error.
+      const isAbort = err instanceof DOMException && err.name === 'AbortError';
+      if (!isAbort) {
+        setStreamResult({
+          ok: false,
+          error: err instanceof Error ? err.message : String(err),
+          transcript_so_far: [...accumulated],
+          total_usage: { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 },
+        });
+      }
+      setIsStreaming(false);
     });
+  }, [task, isPending, subscriptionBlocked, workingDir, tools, model, maxIterations, maxTokens, systemPrompt, authMode, qc]);
+
+  // Cancel in-flight stream when the component unmounts.
+  const handleAbort = () => {
+    abortRef.current?.abort();
   };
 
   const sessionCost = sessionUsage.data?.cost_usd ?? 0;
@@ -676,28 +771,65 @@ export function DelegateConsole() {
             alignItems: 'center',
             justifyContent: 'space-between',
             gap: 16,
+            flexWrap: 'wrap',
           }}
         >
-          <button
-            type="button"
-            onClick={handleRun}
-            disabled={!task.trim() || isPending || subscriptionBlocked}
-            aria-label={isPending ? 'Running…' : 'Run agent task'}
-            style={{
-              padding: '10px 24px',
-              fontSize: 14,
-              fontWeight: 600,
-              fontFamily: 'var(--body)',
-              color: '#fff',
-              background: !task.trim() || isPending || subscriptionBlocked ? 'var(--ink-3)' : 'var(--accent)',
-              border: 'none',
-              borderRadius: 6,
-              cursor: !task.trim() || isPending || subscriptionBlocked ? 'not-allowed' : 'pointer',
-              transition: 'background 200ms var(--ease), opacity 200ms var(--ease)',
-            }}
-          >
-            {isPending ? 'Running…' : 'Run Agent'}
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <button
+              type="button"
+              onClick={handleRun}
+              disabled={!task.trim() || isPending || subscriptionBlocked}
+              aria-label={isPending ? 'Running…' : 'Run agent task'}
+              style={{
+                padding: '10px 24px',
+                fontSize: 14,
+                fontWeight: 600,
+                fontFamily: 'var(--body)',
+                color: '#fff',
+                background: !task.trim() || isPending || subscriptionBlocked ? 'var(--ink-3)' : 'var(--accent)',
+                border: 'none',
+                borderRadius: 6,
+                cursor: !task.trim() || isPending || subscriptionBlocked ? 'not-allowed' : 'pointer',
+                transition: 'background 200ms var(--ease), opacity 200ms var(--ease)',
+              }}
+            >
+              {isPending ? 'Running…' : 'Run Agent'}
+            </button>
+
+            {/* Streaming indicator + abort button */}
+            {isStreaming && (
+              <>
+                <span
+                  aria-hidden="true"
+                  style={{
+                    fontSize: 12,
+                    fontFamily: 'var(--body)',
+                    color: 'var(--ink-3)',
+                    letterSpacing: '0.04em',
+                  }}
+                >
+                  Streaming
+                </span>
+                <button
+                  type="button"
+                  onClick={handleAbort}
+                  aria-label="Cancel streaming run"
+                  style={{
+                    padding: '4px 12px',
+                    fontSize: 12,
+                    fontFamily: 'var(--body)',
+                    color: 'var(--ink-2)',
+                    background: 'none',
+                    border: '1px solid var(--rule)',
+                    borderRadius: 4,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Cancel
+                </button>
+              </>
+            )}
+          </div>
 
           {/* Live cost meter */}
           <p
@@ -742,7 +874,37 @@ export function DelegateConsole() {
         </div>
       )}
 
-      {isPending && (
+      {/* Streaming: show partial transcript as it arrives, with running status */}
+      {isStreaming && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div
+            role="status"
+            aria-label="Agent running"
+            style={{
+              padding: '12px 16px',
+              border: '1px solid var(--rule)',
+              borderRadius: 6,
+              background: 'var(--bg-2)',
+              fontSize: 13,
+              fontFamily: 'var(--body)',
+              color: 'var(--ink-3)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+            }}
+          >
+            <span aria-hidden="true">●</span>
+            Agent running… {streamTranscript.length} event{streamTranscript.length !== 1 ? 's' : ''} received
+          </div>
+          {streamTranscript.length > 0 && (
+            <div aria-live="polite" aria-label="Agent transcript">
+              <DelegateConsoleTranscript entries={streamTranscript} />
+            </div>
+          )}
+        </div>
+      )}
+
+      {!isStreaming && isPending && (
         <div
           role="status"
           aria-label="Agent running"
@@ -762,7 +924,9 @@ export function DelegateConsole() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <ResultFooter result={result} />
           {transcript.length > 0 && (
-            <DelegateConsoleTranscript entries={transcript} />
+            <div aria-live="polite" aria-label="Agent transcript">
+              <DelegateConsoleTranscript entries={transcript} />
+            </div>
           )}
         </div>
       )}

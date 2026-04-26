@@ -19,6 +19,9 @@ import type { AgenticResult } from '../../types/subagent';
 
 const mockMutate = vi.fn();
 const mockSdkMutate = vi.fn();
+// Streaming function mocks — default: resolve immediately without calling callbacks
+const mockStreamAgentic = vi.fn().mockResolvedValue(undefined);
+const mockStreamSdk = vi.fn().mockResolvedValue(undefined);
 let mockIsPending = false;
 let mockData: AgenticResult | null = null;
 let mockSubscriptionAuthenticated: boolean | undefined = undefined;
@@ -45,6 +48,11 @@ vi.mock('../../api/useSubagent', () => ({
       ? { cost_usd: 0.0042 }
       : { cost_usd: 0.0120 },
   }),
+  streamDelegateAgentic: (...args: unknown[]) => mockStreamAgentic(...args),
+  streamDelegateAgenticSdk: (...args: unknown[]) => mockStreamSdk(...args),
+  subagentKeys: {
+    usage: (period: string) => ['subagent', 'usage', period],
+  },
 }));
 
 // Also mock useSettings — DelegateConsole calls useSetting for the personal key
@@ -72,6 +80,8 @@ function renderConsole() {
 beforeEach(() => {
   mockMutate.mockReset();
   mockSdkMutate.mockReset();
+  mockStreamAgentic.mockReset().mockResolvedValue(undefined);
+  mockStreamSdk.mockReset().mockResolvedValue(undefined);
   mockIsPending = false;
   mockData = null;
   mockSubscriptionAuthenticated = undefined;
@@ -156,16 +166,16 @@ describe('DelegateConsole — Run button', () => {
     expect(btn).not.toBeDisabled();
   });
 
-  it('calls mutate with correct payload when Run is clicked (subscription mode by default)', () => {
+  it('calls streaming function with correct payload when Run is clicked (subscription mode by default)', () => {
     renderConsole();
     const textarea = screen.getByRole('textbox', { name: /task/i });
     fireEvent.change(textarea, { target: { value: 'Do something useful' } });
     const btn = screen.getByRole('button', { name: /run agent/i });
     fireEvent.click(btn);
 
-    // Default mode = subscription → uses mockSdkMutate
-    expect(mockSdkMutate).toHaveBeenCalledOnce();
-    const callArg = mockSdkMutate.mock.calls[0]?.[0] as Record<string, unknown>;
+    // Default mode = subscription → uses streamDelegateAgenticSdk
+    expect(mockStreamSdk).toHaveBeenCalledOnce();
+    const callArg = mockStreamSdk.mock.calls[0]?.[0] as Record<string, unknown>;
     expect(callArg.task).toBe('Do something useful');
     expect(Array.isArray(callArg.tools)).toBe(true);
     // default tools: read_file + list_files
@@ -358,18 +368,18 @@ describe('DelegateConsole — auth-mode toggle', () => {
     expect(subRadio.checked).toBe(false);
   });
 
-  it('subscription mode dispatches useDelegateAgenticSdk (mockSdkMutate)', () => {
+  it('subscription mode calls streamDelegateAgenticSdk (not streamDelegateAgentic)', () => {
     // Default mode = subscription
     renderConsole();
     const textarea = screen.getByRole('textbox', { name: /task/i });
     fireEvent.change(textarea, { target: { value: 'SDK task' } });
     const btn = screen.getByRole('button', { name: /run agent/i });
     fireEvent.click(btn);
-    expect(mockSdkMutate).toHaveBeenCalledOnce();
-    expect(mockMutate).not.toHaveBeenCalled();
+    expect(mockStreamSdk).toHaveBeenCalledOnce();
+    expect(mockStreamAgentic).not.toHaveBeenCalled();
   });
 
-  it('API-key mode dispatches useDelegateAgentic (mockMutate)', () => {
+  it('API-key mode calls streamDelegateAgentic (not streamDelegateAgenticSdk)', () => {
     renderConsole();
     const apiKeyRadio = screen.getByRole('radio', { name: /api key/i });
     fireEvent.click(apiKeyRadio);
@@ -377,8 +387,8 @@ describe('DelegateConsole — auth-mode toggle', () => {
     fireEvent.change(textarea, { target: { value: 'API key task' } });
     const btn = screen.getByRole('button', { name: /run agent/i });
     fireEvent.click(btn);
-    expect(mockMutate).toHaveBeenCalledOnce();
-    expect(mockSdkMutate).not.toHaveBeenCalled();
+    expect(mockStreamAgentic).toHaveBeenCalledOnce();
+    expect(mockStreamSdk).not.toHaveBeenCalled();
   });
 
   it('persists mode to localStorage and restores on re-render', () => {
@@ -410,5 +420,136 @@ describe('DelegateConsole — auth-mode toggle', () => {
     mockSubscriptionAuthenticated = true;
     renderConsole();
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Streaming flow
+// ---------------------------------------------------------------------------
+
+describe('DelegateConsole — streaming flow', () => {
+  it('shows "Streaming" indicator while stream is open', async () => {
+    // The mock will call onEntry then never resolve — simulating an open stream.
+    // We make it call the callbacks synchronously to test the indicator.
+    mockStreamSdk.mockImplementation(
+      (_input: unknown, callbacks: { onEntry: (e: { kind: string; text: string }) => void }) => {
+        callbacks.onEntry({ kind: 'assistant_text', text: 'Step one.' });
+        // Return a never-resolving promise to keep the stream "open".
+        return new Promise(() => undefined);
+      },
+    );
+
+    renderConsole();
+    const textarea = screen.getByRole('textbox', { name: /task/i });
+    fireEvent.change(textarea, { target: { value: 'Do a task' } });
+    fireEvent.click(screen.getByRole('button', { name: /run agent/i }));
+
+    // The "Streaming" indicator should appear while the promise is unresolved.
+    await waitFor(() => {
+      expect(screen.getByText(/streaming/i)).toBeInTheDocument();
+    });
+
+    // Cancel button should also be visible.
+    expect(screen.getByRole('button', { name: /cancel/i })).toBeInTheDocument();
+  });
+
+  it('progressive events appear in the transcript as they arrive', async () => {
+    mockStreamSdk.mockImplementation(
+      (_input: unknown, callbacks: {
+        onEntry: (e: { kind: string; text: string }) => void;
+        onDone: (e: { type: 'done'; total_usage: object; total_cost_usd: number; iterations: number; stopped_reason: string }) => void;
+      }) => {
+        callbacks.onEntry({ kind: 'assistant_text', text: 'First event.' });
+        callbacks.onEntry({ kind: 'assistant_text', text: 'Second event.' });
+        callbacks.onDone({
+          type: 'done',
+          total_usage: { input_tokens: 10, output_tokens: 5, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 },
+          total_cost_usd: 0.001,
+          iterations: 1,
+          stopped_reason: 'end_turn',
+        });
+        return Promise.resolve();
+      },
+    );
+
+    renderConsole();
+    fireEvent.change(screen.getByRole('textbox', { name: /task/i }), {
+      target: { value: 'Stream this' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /run agent/i }));
+
+    // Both text events should appear after the run finishes.
+    // Use getAllByText since "Second event." may appear in both the transcript
+    // and the result callout (ResultFooter shows the last assistant text).
+    await waitFor(() => {
+      expect(screen.getAllByText('First event.').length).toBeGreaterThanOrEqual(1);
+      expect(screen.getAllByText('Second event.').length).toBeGreaterThanOrEqual(1);
+    });
+  });
+
+  it('done event finalizes the result and hides streaming indicator', async () => {
+    mockStreamSdk.mockImplementation(
+      (_input: unknown, callbacks: {
+        onDone: (e: { type: 'done'; total_usage: object; total_cost_usd: number; iterations: number; stopped_reason: string }) => void;
+      }) => {
+        callbacks.onDone({
+          type: 'done',
+          total_usage: { input_tokens: 5, output_tokens: 3, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 },
+          total_cost_usd: 0.0005,
+          iterations: 1,
+          stopped_reason: 'end_turn',
+        });
+        return Promise.resolve();
+      },
+    );
+
+    renderConsole();
+    fireEvent.change(screen.getByRole('textbox', { name: /task/i }), {
+      target: { value: 'Finalize me' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /run agent/i }));
+
+    // After the done event, "Streaming" indicator should disappear.
+    await waitFor(() => {
+      expect(screen.queryByText(/streaming/i)).not.toBeInTheDocument();
+    });
+    // Cost should appear in the result footer.
+    await waitFor(() => {
+      expect(screen.getByText('$0.0005')).toBeInTheDocument();
+    });
+  });
+
+  it('aborting the stream hides the streaming indicator', async () => {
+    // The streaming function receives callbacks as the second argument, including signal.
+    // We simulate an open stream that rejects with AbortError when the signal fires.
+    mockStreamSdk.mockImplementation(
+      (_input: unknown, callbacks: { signal?: AbortSignal }) => {
+        return new Promise<void>((_resolve, reject) => {
+          if (callbacks.signal) {
+            callbacks.signal.addEventListener('abort', () => {
+              reject(new DOMException('The operation was aborted.', 'AbortError'));
+            });
+          }
+        });
+      },
+    );
+
+    renderConsole();
+    fireEvent.change(screen.getByRole('textbox', { name: /task/i }), {
+      target: { value: 'Cancel me' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /run agent/i }));
+
+    // Streaming indicator appears while the promise is unresolved.
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /cancel/i })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /cancel/i }));
+
+    // After abort, streaming indicator should disappear.
+    await waitFor(() => {
+      expect(screen.queryByText(/streaming/i)).not.toBeInTheDocument();
+    });
   });
 });

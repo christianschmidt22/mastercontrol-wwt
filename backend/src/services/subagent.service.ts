@@ -304,7 +304,15 @@ export async function delegate(input: DelegateRequest): Promise<DelegateResult> 
  * `{ ok: false, error, transcript_so_far, total_usage }`. HTTP 200 in both
  * cases — the route call succeeded; the agentic run may not have.
  */
-export async function delegateAgentic(input: AgenticDelegateRequest): Promise<AgenticResult> {
+export interface AgenticStreamOptions {
+  /** Called for each transcript entry as it is produced during the run. */
+  onEvent?: (entry: TranscriptEntry) => void;
+}
+
+export async function delegateAgentic(
+  input: AgenticDelegateRequest,
+  options?: AgenticStreamOptions,
+): Promise<AgenticResult> {
   const model = input.model && input.model.length > 0 ? input.model : DEFAULT_MODEL;
   const maxTokens = Math.min(input.max_tokens ?? DEFAULT_MAX_TOKENS, HARD_MAX_TOKENS);
   const maxIter = Math.min(
@@ -345,9 +353,15 @@ export async function delegateAgentic(input: AgenticDelegateRequest): Promise<Ag
   let totalCostMicros = 0;
   let iterations = 0;
 
+  /** Push an entry into the transcript and fire the optional streaming callback. */
+  const pushEntry = (entry: TranscriptEntry): void => {
+    transcript.push(entry);
+    options?.onEvent?.(entry);
+  };
+
   // Audit callback: appends an audit entry to the transcript.
   const audit = (entry: AuditEntry): void => {
-    transcript.push({ kind: 'audit', entry });
+    pushEntry({ kind: 'audit', entry });
   };
 
   const toolCtx = { working_dir: workingDir, audit };
@@ -409,10 +423,10 @@ export async function delegateAgentic(input: AgenticDelegateRequest): Promise<Ag
 
       for (const block of response.content) {
         if (block.type === 'text') {
-          transcript.push({ kind: 'assistant_text', text: block.text });
+          pushEntry({ kind: 'assistant_text', text: block.text });
         } else if (block.type === 'tool_use') {
           toolUseBlocks.push(block);
-          transcript.push({
+          pushEntry({
             kind: 'assistant_tool_use',
             id: block.id,
             name: block.name,
@@ -449,12 +463,13 @@ export async function delegateAgentic(input: AgenticDelegateRequest): Promise<Ag
           const errContent = JSON.stringify({
             error: `Tool '${toolName}' was not enabled for this run. Enabled tools: ${requestedTools.join(', ')}.`,
           });
-          transcript.push({
+          const errEntry: TranscriptEntry = {
             kind: 'tool_result',
             tool_use_id: toolBlock.id,
             content: errContent,
             is_error: true,
-          });
+          };
+          pushEntry(errEntry);
           toolResultContents.push({
             type: 'tool_result' as const,
             tool_use_id: toolBlock.id,
@@ -467,12 +482,13 @@ export async function delegateAgentic(input: AgenticDelegateRequest): Promise<Ag
         const tool = SUBAGENT_TOOLS[toolName];
         if (!tool) {
           const errContent = JSON.stringify({ error: `Unknown tool: ${toolName}` });
-          transcript.push({
+          const errEntry: TranscriptEntry = {
             kind: 'tool_result',
             tool_use_id: toolBlock.id,
             content: errContent,
             is_error: true,
-          });
+          };
+          pushEntry(errEntry);
           toolResultContents.push({
             type: 'tool_result' as const,
             tool_use_id: toolBlock.id,
@@ -504,7 +520,7 @@ export async function delegateAgentic(input: AgenticDelegateRequest): Promise<Ag
           // non-JSON result — treat as success
         }
 
-        transcript.push({
+        pushEntry({
           kind: 'tool_result',
           tool_use_id: toolBlock.id,
           content: resultContent,

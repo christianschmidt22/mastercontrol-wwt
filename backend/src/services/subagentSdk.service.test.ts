@@ -18,7 +18,7 @@ import { db } from '../db/database.js';
 // the missing-credentials path.
 // ---------------------------------------------------------------------------
 vi.mock('node:fs', async () => {
-  const actual = await vi.importActual<typeof import('node:fs')>('node:fs');
+  const actual = await vi.importActual<typeof fs>('node:fs');
   return {
     ...actual,
     existsSync: vi.fn(() => true),
@@ -438,5 +438,58 @@ describe('delegateViaSubscription', () => {
     });
 
     expect(result.ok).toBe(true);
+  });
+
+  // ── onEvent streaming callback ─────────────────────────────────────────────
+
+  it('onEvent fires for each transcript entry in order', async () => {
+    mockEvents.push(
+      makeAssistantEvent({
+        textBlocks: ['Reading file...'],
+        toolUseBlocks: [{ id: 'tu_cb_1', name: 'Read', input: { file_path: 'a.txt' } }],
+        usage: { input_tokens: 12, output_tokens: 4 },
+      }),
+      makeAssistantEvent({
+        textBlocks: ['Done.'],
+        usage: { input_tokens: 18, output_tokens: 6 },
+      }),
+      makeResultSuccess({ num_turns: 2, usage: { input_tokens: 30, output_tokens: 10 } }),
+    );
+
+    const fired: Array<{ kind: string }> = [];
+    const result = await delegateViaSubscription(BASE_INPUT, {
+      onEvent: (entry) => {
+        fired.push({ kind: entry.kind });
+      },
+    });
+
+    expect(result.ok).toBe(true);
+    // Turn 1 emits: assistant_text + assistant_tool_use
+    // Turn 2 emits: assistant_text
+    expect(fired.map((e) => e.kind)).toEqual([
+      'assistant_text',
+      'assistant_tool_use',
+      'assistant_text',
+    ]);
+  });
+
+  it('onEvent fires before the run resolves (events arrive incrementally)', async () => {
+    const arrivals: string[] = [];
+
+    mockEvents.push(
+      makeAssistantEvent({ textBlocks: ['Step 1'] }),
+      makeAssistantEvent({ textBlocks: ['Step 2'] }),
+      makeResultSuccess({ num_turns: 2 }),
+    );
+
+    await delegateViaSubscription(BASE_INPUT, {
+      onEvent: (entry) => {
+        if (entry.kind === 'assistant_text') {
+          arrivals.push(entry.text);
+        }
+      },
+    });
+
+    expect(arrivals).toEqual(['Step 1', 'Step 2']);
   });
 });
