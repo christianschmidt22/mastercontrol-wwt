@@ -1511,3 +1511,77 @@ export async function generateReport(prompt: string): Promise<string> {
   }
   return text;
 }
+
+// ---------------------------------------------------------------------------
+// extractOrgMentions — Phase 2 / Step 3c
+//
+// Non-streaming Anthropic call used by mention.service.ts to identify which
+// org names appear in a given note. Uses claude-haiku-4-5 for cost efficiency
+// (this is a classification / extraction call, not a reasoning task).
+//
+// R-021: tools set to [] — no write tools on untrusted content passes.
+// R-026: note content wrapped in <untrusted_document> so the model treats any
+//        directives inside as data, not instructions.
+// ---------------------------------------------------------------------------
+
+export interface OrgMention {
+  name: string;
+  confidence: number;
+}
+
+/**
+ * Ask the model which of the `candidateNames` appear in `noteContent`.
+ *
+ * Returns a JSON-parsed array of `{ name, confidence }` objects. Confidence
+ * is 0.0–1.0; callers should filter below their own threshold (mention.service
+ * uses 0.5). Returns [] on any parse error so the caller can continue without
+ * crashing.
+ */
+export async function extractOrgMentions(
+  noteContent: string,
+  candidateNames: string[],
+): Promise<OrgMention[]> {
+  if (candidateNames.length === 0) return [];
+
+  const client = getClient();
+  const nameList = candidateNames.join(', ');
+
+  const response = await client.messages.create({
+    model: 'claude-haiku-4-5',
+    max_tokens: 256,
+    // R-021: no tools when processing untrusted document content.
+    tools: [],
+    system:
+      `You are an entity extractor. Given a note, identify which of these ` +
+      `organization names are mentioned: ${nameList}. ` +
+      `Return a JSON array of objects: [{name: string, confidence: number}]. ` +
+      `confidence is 0.0–1.0. Return [] if none match. ` +
+      `Respond with valid JSON only — no markdown, no explanation.`,
+    messages: [
+      {
+        role: 'user',
+        // R-026: wrap note content in untrusted-document envelope.
+        content: `<untrusted_document src="note">\n${noteContent}\n</untrusted_document>`,
+      },
+    ],
+  });
+
+  try {
+    const firstBlock = response.content[0];
+    if (!firstBlock || firstBlock.type !== 'text') return [];
+    const parsed = JSON.parse(firstBlock.text) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    // Validate shape — filter out any malformed entries.
+    return parsed.filter(
+      (item): item is OrgMention =>
+        typeof item === 'object' &&
+        item !== null &&
+        typeof (item as Record<string, unknown>)['name'] === 'string' &&
+        typeof (item as Record<string, unknown>)['confidence'] === 'number',
+    );
+  } catch {
+    // JSON parse failure or unexpected shape — return empty to avoid crashing
+    // the scan. The caller (mention.service / ingest.service) logs this.
+    return [];
+  }
+}

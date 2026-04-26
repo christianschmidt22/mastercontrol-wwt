@@ -21,6 +21,12 @@ interface NoteRow {
   provenance: string | null;
   confirmed: number;
   created_at: string;
+  // Phase 2 ingest columns (005_ingest.sql)
+  file_id: string | null;
+  content_sha256: string | null;
+  last_seen_at: string | null;
+  deleted_at: string | null;
+  conflict_of_note_id: number | null;
 }
 
 export interface Note {
@@ -35,6 +41,12 @@ export interface Note {
   provenance: NoteProvenance | null;
   confirmed: boolean;
   created_at: string;
+  // Phase 2 ingest columns (005_ingest.sql)
+  file_id: string | null;
+  content_sha256: string | null;
+  last_seen_at: string | null;
+  deleted_at: string | null;
+  conflict_of_note_id: number | null;
 }
 
 export interface NoteInput {
@@ -67,6 +79,12 @@ function hydrate(row: NoteRow): Note {
     ...row,
     provenance: row.provenance ? (JSON.parse(row.provenance) as NoteProvenance) : null,
     confirmed: row.confirmed === 1,
+    // Phase 2 ingest columns — pass through (nullable strings + numbers)
+    file_id: row.file_id ?? null,
+    content_sha256: row.content_sha256 ?? null,
+    last_seen_at: row.last_seen_at ?? null,
+    deleted_at: row.deleted_at ?? null,
+    conflict_of_note_id: row.conflict_of_note_id ?? null,
   };
 }
 
@@ -102,6 +120,65 @@ const searchStmt = db.prepare<[string, number | null, number | null], NoteRow>(
      AND (? IS NULL OR organization_id = ?)
    ORDER BY created_at DESC
    LIMIT 10`,
+);
+
+// ---------------------------------------------------------------------------
+// Phase 2 ingest statements
+// ---------------------------------------------------------------------------
+
+/** Input for creating an imported note from the WorkVault walker. */
+export interface NoteIngestInput {
+  organization_id: number;
+  content: string;
+  source_path: string;
+  file_mtime: string;
+  file_id: string;
+  content_sha256: string;
+}
+
+const getByFileIdStmt = db.prepare<[string], NoteRow>(
+  `SELECT * FROM notes WHERE file_id = ? AND deleted_at IS NULL LIMIT 1`,
+);
+
+// Parameters: org_id, content, source_path, file_mtime, file_id, content_sha256, last_seen_at
+const insertImportedStmt = db.prepare<
+  [number, string, string, string, string, string, string]
+>(
+  `INSERT INTO notes
+     (organization_id, content, source_path, file_mtime, role, file_id, content_sha256, last_seen_at, confirmed)
+   VALUES (?, ?, ?, ?, 'imported', ?, ?, ?, 1)`,
+);
+
+const updateByIngestStmt = db.prepare<[string, string, string, string, number]>(
+  `UPDATE notes
+   SET content = ?, content_sha256 = ?, file_mtime = ?, last_seen_at = ?
+   WHERE id = ?`,
+);
+
+const touchLastSeenAtStmt = db.prepare<[string, number]>(
+  `UPDATE notes SET last_seen_at = ? WHERE id = ?`,
+);
+
+const tombstoneStmt = db.prepare<[string, number]>(
+  `UPDATE notes SET deleted_at = ? WHERE id = ?`,
+);
+
+/** Tombstone all file-sourced notes not seen since a given ISO timestamp. */
+const tombstoneStaleSinceStmt = db.prepare<[string]>(
+  `UPDATE notes
+   SET deleted_at = datetime('now')
+   WHERE file_id IS NOT NULL
+     AND deleted_at IS NULL
+     AND (last_seen_at IS NULL OR last_seen_at < ?)`,
+);
+
+// Parameters: org_id, content, source_path, file_mtime, file_id, content_sha256, conflict_of_note_id
+const insertConflictStmt = db.prepare<
+  [number, string, string, string, string, string, number]
+>(
+  `INSERT INTO notes
+     (organization_id, content, source_path, file_mtime, role, file_id, content_sha256, last_seen_at, confirmed, conflict_of_note_id)
+   VALUES (?, ?, ?, ?, 'imported', ?, ?, datetime('now'), 1, ?)`,
 );
 
 // ---------------------------------------------------------------------------
@@ -234,4 +311,98 @@ export const noteModel = {
   reject: (id: number): boolean => deleteStmt.run(id).changes > 0,
 
   remove: (id: number): boolean => deleteStmt.run(id).changes > 0,
+
+  // ---------------------------------------------------------------------------
+  // Phase 2 ingest helpers
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Look up a note by its stable `file_id` UUID. Returns only non-deleted rows.
+   * Used by the reconciliation loop to detect insert vs update vs touch.
+   */
+  getByFileId(fileId: string): Note | undefined {
+    const row = getByFileIdStmt.get(fileId);
+    return row ? hydrate(row) : undefined;
+  },
+
+  /**
+   * Insert a new note row for a WorkVault-sourced file.
+   * role='imported', confirmed=1, last_seen_at=now().
+   */
+  createImported(input: NoteIngestInput): Note {
+    const now = new Date().toISOString();
+    const result = insertImportedStmt.run(
+      input.organization_id,
+      input.content,
+      input.source_path,
+      input.file_mtime,
+      input.file_id,
+      input.content_sha256,
+      now,
+    );
+    return hydrate(getStmt.get(Number(result.lastInsertRowid))!);
+  },
+
+  /**
+   * Update an existing imported note's content + metadata after the file
+   * changed on disk (mtime advanced or sha256 differs).
+   * Bumps last_seen_at to now.
+   */
+  updateByIngest(
+    id: number,
+    content: string,
+    contentSha256: string,
+    fileMtime: string,
+  ): void {
+    const now = new Date().toISOString();
+    updateByIngestStmt.run(content, contentSha256, fileMtime, now, id);
+  },
+
+  /**
+   * Touch-only: advance last_seen_at without changing content (file unchanged).
+   */
+  touchLastSeenAt(id: number): void {
+    touchLastSeenAtStmt.run(new Date().toISOString(), id);
+  },
+
+  /**
+   * Soft-delete (tombstone) a note whose file has been removed from WorkVault.
+   * Sets deleted_at to the provided ISO timestamp.
+   */
+  tombstone(id: number, deletedAt: string): void {
+    tombstoneStmt.run(deletedAt, id);
+  },
+
+  /**
+   * Tombstone all file-sourced notes whose last_seen_at is strictly older than
+   * `scanStartIso`. Called after a full scan to catch any file that disappeared
+   * between scans. Skips rows already tombstoned.
+   */
+  tombstoneStaleSince(scanStartIso: string): number {
+    return tombstoneStaleSinceStmt.run(scanStartIso).changes;
+  },
+
+  /**
+   * Insert a conflict note — a new row pointing back to the original via
+   * `conflict_of_note_id`. Created when sha256 differs but mtime hasn't
+   * advanced (indicates a file was modified without updating mtime, which is
+   * unusual and worth flagging).
+   */
+  createConflict(
+    original: Note,
+    content: string,
+    contentSha256: string,
+    fileMtime: string,
+  ): Note {
+    const result = insertConflictStmt.run(
+      original.organization_id,
+      content,
+      original.source_path ?? '',
+      fileMtime,
+      original.file_id ?? '',
+      contentSha256,
+      original.id,
+    );
+    return hydrate(getStmt.get(Number(result.lastInsertRowid))!);
+  },
 };
