@@ -25,9 +25,10 @@ export const AgentThreadCreateSchema = z.object({
   title: z.string().optional(),
 });
 
-/** GET /agents/threads?org_id= query */
+/** GET /agents/threads?org_id=&limit= query — org_id is optional; omit for all-orgs list */
 export const AgentThreadListQuerySchema = z.object({
-  org_id: z.coerce.number().int().positive(),
+  org_id: z.coerce.number().int().positive().optional(),
+  limit: z.coerce.number().int().min(1).max(200).optional(),
 });
 
 /** POST /agents/:org_id/chat body */

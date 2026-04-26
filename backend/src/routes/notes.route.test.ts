@@ -160,6 +160,110 @@ describe('DELETE /api/notes/:id', () => {
 });
 
 // ---------------------------------------------------------------------------
+// GET /api/notes/unconfirmed — cross-org aggregator (Gap #2)
+// ---------------------------------------------------------------------------
+
+describe('GET /api/notes/unconfirmed', () => {
+  it('returns unconfirmed agent_insight notes across all orgs', async () => {
+    const org1 = makeOrg();
+    const org2 = makeOrg();
+
+    noteModel.createInsight(org1.id, 'Insight from org1', {
+      tool: 'record_insight',
+      source_thread_id: 1,
+      source_org_id: org1.id,
+    });
+    noteModel.createInsight(org2.id, 'Insight from org2', {
+      tool: 'record_insight',
+      source_thread_id: 2,
+      source_org_id: org2.id,
+    });
+
+    const res = await request(app).get('/api/notes/unconfirmed');
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body)).toBe(true);
+
+    const contents = (res.body as Array<{ content: string }>).map((n) => n.content);
+    expect(contents).toContain('Insight from org1');
+    expect(contents).toContain('Insight from org2');
+  });
+
+  it('includes org_name and org_type on each row', async () => {
+    const org = makeOrg({ name: 'Acme Corp', type: 'customer' });
+
+    noteModel.createInsight(org.id, 'Typed insight', {
+      tool: 'record_insight',
+      source_thread_id: 1,
+      source_org_id: org.id,
+    });
+
+    const res = await request(app).get('/api/notes/unconfirmed');
+    expect(res.status).toBe(200);
+
+    const row = (res.body as Array<{ org_name: string; org_type: string; content: string }>).find(
+      (n) => n.content === 'Typed insight',
+    );
+    expect(row).toBeDefined();
+    expect(row!.org_name).toBe('Acme Corp');
+    expect(row!.org_type).toBe('customer');
+  });
+
+  it('excludes confirmed insights', async () => {
+    const org = makeOrg();
+
+    const insight = noteModel.createInsight(org.id, 'Already confirmed', {
+      tool: 'record_insight',
+      source_thread_id: 1,
+      source_org_id: org.id,
+    });
+    noteModel.confirm(insight.id);
+
+    const res = await request(app).get('/api/notes/unconfirmed');
+    expect(res.status).toBe(200);
+
+    const contents = (res.body as Array<{ content: string }>).map((n) => n.content);
+    expect(contents).not.toContain('Already confirmed');
+  });
+
+  it('excludes non-insight notes', async () => {
+    const org = makeOrg();
+    makeNote(org.id, { content: 'Just a user note', role: 'user' });
+
+    const res = await request(app).get('/api/notes/unconfirmed');
+    expect(res.status).toBe(200);
+
+    const contents = (res.body as Array<{ content: string }>).map((n) => n.content);
+    expect(contents).not.toContain('Just a user note');
+  });
+
+  it('returns empty array when no unconfirmed insights exist', async () => {
+    const res = await request(app).get('/api/notes/unconfirmed');
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body)).toBe(true);
+  });
+
+  it('respects ?limit= parameter', async () => {
+    const org = makeOrg();
+    for (let i = 0; i < 5; i++) {
+      noteModel.createInsight(org.id, `Bulk insight ${i}`, {
+        tool: 'record_insight',
+        source_thread_id: 1,
+        source_org_id: org.id,
+      });
+    }
+
+    const res = await request(app).get('/api/notes/unconfirmed?limit=3');
+    expect(res.status).toBe(200);
+    expect((res.body as unknown[]).length).toBeLessThanOrEqual(3);
+  });
+
+  it('rejects limit > 200 with 400', async () => {
+    const res = await request(app).get('/api/notes/unconfirmed?limit=201');
+    expect(res.status).toBe(400);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Notes feed inclusion/exclusion via GET /api/organizations/:id/notes
 // ---------------------------------------------------------------------------
 

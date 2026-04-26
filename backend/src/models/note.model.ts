@@ -182,6 +182,83 @@ const insertConflictStmt = db.prepare<
 );
 
 // ---------------------------------------------------------------------------
+// Cross-org unconfirmed insights (Gap #2 aggregator)
+// ---------------------------------------------------------------------------
+
+/**
+ * Row shape returned by listUnconfirmedAcrossOrgs — a Note joined with
+ * the owning org's name and type so the UI can render in one pass.
+ */
+export interface NoteWithOrgRow {
+  id: number;
+  organization_id: number;
+  org_name: string;
+  org_type: string;
+  content: string;
+  ai_response: string | null;
+  source_path: string | null;
+  file_mtime: string | null;
+  role: NoteRole;
+  thread_id: number | null;
+  provenance: string | null;
+  confirmed: number;
+  created_at: string;
+}
+
+/**
+ * Public shape returned by the aggregator. Built from the JOIN above; only
+ * the fields the InsightsTab actually renders are projected. We intentionally
+ * do NOT extend `Note` here to keep the wire shape small and decoupled from
+ * the file-ingest fields (file_id / content_sha256 / etc.) which are always
+ * null on agent_insight rows anyway.
+ */
+export interface NoteWithOrg {
+  id: number;
+  organization_id: number;
+  org_name: string;
+  org_type: string;
+  content: string;
+  ai_response: string | null;
+  source_path: string | null;
+  file_mtime: string | null;
+  role: NoteRole;
+  thread_id: number | null;
+  provenance: NoteProvenance | null;
+  confirmed: boolean;
+  created_at: string;
+}
+
+const listUnconfirmedAcrossOrgsStmt = db.prepare<[number], NoteWithOrgRow>(
+  `SELECT
+     n.id,
+     n.organization_id,
+     o.name  AS org_name,
+     o.type  AS org_type,
+     n.content,
+     n.ai_response,
+     n.source_path,
+     n.file_mtime,
+     n.role,
+     n.thread_id,
+     n.provenance,
+     n.confirmed,
+     n.created_at
+   FROM notes n
+   JOIN organizations o ON o.id = n.organization_id
+   WHERE n.role = 'agent_insight' AND n.confirmed = 0
+   ORDER BY n.created_at DESC
+   LIMIT ?`,
+);
+
+function hydrateWithOrg(row: NoteWithOrgRow): NoteWithOrg {
+  return {
+    ...row,
+    provenance: row.provenance ? (JSON.parse(row.provenance) as NoteProvenance) : null,
+    confirmed: row.confirmed === 1,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // notes_unified VIEW queries (R-005)
 // ---------------------------------------------------------------------------
 
@@ -405,4 +482,9 @@ export const noteModel = {
     );
     return hydrate(getStmt.get(Number(result.lastInsertRowid))!);
   },
+
+  /** Aggregator: return all unconfirmed agent_insight notes across all orgs,
+   *  joined with the org's name and type. Used by GET /api/notes/unconfirmed. */
+  listUnconfirmedAcrossOrgs: (limit: number): NoteWithOrg[] =>
+    listUnconfirmedAcrossOrgsStmt.all(limit).map(hydrateWithOrg),
 };

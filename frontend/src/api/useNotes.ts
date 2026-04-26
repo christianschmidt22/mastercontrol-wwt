@@ -6,7 +6,7 @@ import {
   type UseMutationResult,
 } from '@tanstack/react-query';
 import { request } from './http';
-import type { Note, NoteCreate } from '../types';
+import type { Note, NoteCreate, NoteWithOrg } from '../types';
 
 // ---------------------------------------------------------------------------
 // Cache key factory
@@ -20,6 +20,7 @@ export const noteKeys = {
   all: (orgId: number) => ['notes', orgId] as const,
   list: (orgId: number, includeUnconfirmed: boolean) =>
     ['notes', orgId, { includeUnconfirmed }] as const,
+  unconfirmedAll: (limit: number) => ['notes_unconfirmed_all', { limit }] as const,
 };
 
 // ---------------------------------------------------------------------------
@@ -40,6 +41,20 @@ export function useNotes(
       return request<Note[]>('GET', url);
     },
     enabled: orgId > 0,
+  });
+}
+
+/**
+ * Aggregator: fetch all unconfirmed agent_insight notes across all orgs in
+ * one request. Replaces the N-per-org fan-out in InsightsTab (Gap #2).
+ */
+export function useUnconfirmedInsightsAcrossOrgs(
+  limit = 50,
+): UseQueryResult<NoteWithOrg[]> {
+  return useQuery({
+    queryKey: noteKeys.unconfirmedAll(limit),
+    queryFn: () =>
+      request<NoteWithOrg[]>('GET', `/api/notes/unconfirmed?limit=${limit}`),
   });
 }
 
@@ -87,6 +102,7 @@ export function useConfirmInsight(): UseMutationResult<
       request<Note>('POST', `/api/notes/${id}/confirm`),
     onSuccess: (_data, { orgId }) => {
       void qc.invalidateQueries({ queryKey: noteKeys.all(orgId) });
+      void qc.invalidateQueries({ queryKey: ['notes_unconfirmed_all'] });
     },
   });
 }
@@ -105,6 +121,7 @@ export function useRejectInsight(): UseMutationResult<
     mutationFn: ({ id }) => request<void>('DELETE', `/api/notes/${id}`),
     onSuccess: (_data, { orgId }) => {
       void qc.invalidateQueries({ queryKey: noteKeys.all(orgId) });
+      void qc.invalidateQueries({ queryKey: ['notes_unconfirmed_all'] });
     },
   });
 }

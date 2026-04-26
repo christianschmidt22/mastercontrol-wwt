@@ -16,6 +16,9 @@ export interface AgentThreadInput {
 const listStmt = db.prepare<[number], AgentThread>(
   'SELECT * FROM agent_threads WHERE organization_id = ? ORDER BY last_message_at DESC'
 );
+const listAllStmt = db.prepare<[number], AgentThread>(
+  'SELECT * FROM agent_threads ORDER BY last_message_at DESC LIMIT ?'
+);
 const getStmt = db.prepare<[number], AgentThread>('SELECT * FROM agent_threads WHERE id = ?');
 const insertStmt = db.prepare<[number, string | null]>(
   'INSERT INTO agent_threads (organization_id, title) VALUES (?, ?)'
@@ -27,6 +30,9 @@ const deleteStmt = db.prepare<[number]>('DELETE FROM agent_threads WHERE id = ?'
 
 export const agentThreadModel = {
   listFor: (orgId: number): AgentThread[] => listStmt.all(orgId),
+
+  /** Return all threads across all orgs, sorted by last_message_at DESC. */
+  listAll: (limit = 50): AgentThread[] => listAllStmt.all(limit),
 
   get: (id: number): AgentThread | undefined => getStmt.get(id),
 

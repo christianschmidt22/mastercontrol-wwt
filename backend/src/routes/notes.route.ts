@@ -1,12 +1,18 @@
 import { Router } from 'express';
 import { noteModel } from '../models/note.model.js';
-import { NoteCreateSchema } from '../schemas/note.schema.js';
-import { validateBody } from '../lib/validate.js';
+import { NoteCreateSchema, UnconfirmedInsightsQuerySchema } from '../schemas/note.schema.js';
+import { validateBody, validateQuery } from '../lib/validate.js';
 import { bumpOrgVersion } from '../services/claude.service.js';
 import { extractMentions } from '../services/mention.service.js';
 import { HttpError } from '../middleware/errorHandler.js';
 
 export const notesRouter = Router();
+
+// GET /unconfirmed?limit=N — aggregator: all unconfirmed agent_insight notes across orgs
+notesRouter.get('/unconfirmed', validateQuery(UnconfirmedInsightsQuerySchema), (req, res) => {
+  const { limit } = req.validated as { limit?: number };
+  res.json(noteModel.listUnconfirmedAcrossOrgs(limit ?? 50));
+});
 
 // POST / — manual note save
 notesRouter.post('/', validateBody(NoteCreateSchema), (req, res) => {

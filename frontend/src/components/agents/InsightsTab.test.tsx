@@ -1,13 +1,16 @@
 /**
  * InsightsTab.test.tsx
  *
- * Tests for the Insights queue tab:
- *  - Renders empty state when no insights
+ * Tests for the Insights queue tab. Mocks the cross-org aggregator hook
+ * `useUnconfirmedInsightsAcrossOrgs` introduced when Gap #2 was fixed.
+ *
+ * Covered:
+ *  - Empty state when there are no unconfirmed insights
  *  - Renders insight rows when data is present
  *  - Accept button calls confirmMutation
  *  - Dismiss button calls rejectMutation
- *  - Checkboxes select insights for bulk actions
- *  - Live region announces count
+ *  - Bulk select reveals the action bar
+ *  - onCountChange callback
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -16,25 +19,17 @@ import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import React from 'react';
 import { InsightsTab } from './InsightsTab';
-import type { Note } from '../../types';
-import type { Organization } from '../../types';
+import type { NoteWithOrg } from '../../types';
 
 // ---------------------------------------------------------------------------
 // Mock data
 // ---------------------------------------------------------------------------
 
-const mockOrg: Organization = {
-  id: 10,
-  type: 'customer',
-  name: 'Acme Corp',
-  metadata: {},
-  created_at: '2026-01-01T00:00:00Z',
-  updated_at: '2026-01-01T00:00:00Z',
-};
-
-const mockInsightNote: Note = {
+const mockInsight: NoteWithOrg = {
   id: 101,
   organization_id: 10,
+  org_name: 'Acme Corp',
+  org_type: 'customer',
   content: 'Acme is expanding their network infrastructure.',
   ai_response: null,
   source_path: null,
@@ -46,12 +41,6 @@ const mockInsightNote: Note = {
   created_at: '2026-04-26T10:00:00Z',
 };
 
-const mockConfirmedNote: Note = {
-  ...mockInsightNote,
-  id: 102,
-  confirmed: true,
-};
-
 // ---------------------------------------------------------------------------
 // Mocks
 // ---------------------------------------------------------------------------
@@ -59,22 +48,14 @@ const mockConfirmedNote: Note = {
 const mockConfirmMutateAsync = vi.fn().mockResolvedValue({});
 const mockRejectMutateAsync = vi.fn().mockResolvedValue(undefined);
 
-vi.mock('../../api/useOrganizations', () => ({
-  useOrganizations: vi.fn(() => ({
-    data: [mockOrg],
-    isLoading: false,
-  })),
-}));
-
-// We control what useNotes returns per test via this ref
-let _notesData: Note[] = [mockInsightNote];
+// What the aggregator returns; tests can mutate this between cases.
+let _aggregatorData: NoteWithOrg[] = [mockInsight];
 
 vi.mock('../../api/useNotes', () => ({
-  useNotes: vi.fn((orgId: number, opts?: { includeUnconfirmed?: boolean }) => {
-    void orgId;
-    void opts;
-    return { data: _notesData };
-  }),
+  useUnconfirmedInsightsAcrossOrgs: vi.fn(() => ({
+    data: _aggregatorData,
+    isLoading: false,
+  })),
   useConfirmInsight: vi.fn(() => ({
     mutateAsync: mockConfirmMutateAsync,
     isPending: false,
@@ -107,7 +88,7 @@ function renderTab(onCountChange?: (n: number) => void) {
 // ---------------------------------------------------------------------------
 
 beforeEach(() => {
-  _notesData = [mockInsightNote];
+  _aggregatorData = [mockInsight];
   vi.clearAllMocks();
   mockConfirmMutateAsync.mockResolvedValue({});
   mockRejectMutateAsync.mockResolvedValue(undefined);
@@ -123,16 +104,8 @@ afterEach(() => {
 // ---------------------------------------------------------------------------
 
 describe('InsightsTab — empty state', () => {
-  it('shows empty state message when there are no unconfirmed insights', () => {
-    _notesData = [mockConfirmedNote]; // only confirmed — no unconfirmed
-    renderTab();
-    expect(
-      screen.getByText(/no agent insights waiting for review/i),
-    ).toBeDefined();
-  });
-
-  it('shows empty state when notes array is empty', () => {
-    _notesData = [];
+  it('shows empty state when aggregator returns no insights', () => {
+    _aggregatorData = [];
     renderTab();
     expect(
       screen.getByText(/no agent insights waiting for review/i),
@@ -164,8 +137,12 @@ describe('InsightsTab — rendering insights', () => {
   it('renders Accept and Dismiss buttons for each insight', async () => {
     renderTab();
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /accept insight from acme corp/i })).toBeDefined();
-      expect(screen.getByRole('button', { name: /dismiss insight from acme corp/i })).toBeDefined();
+      expect(
+        screen.getByRole('button', { name: /accept insight from acme corp/i }),
+      ).toBeDefined();
+      expect(
+        screen.getByRole('button', { name: /dismiss insight from acme corp/i }),
+      ).toBeDefined();
     });
   });
 
@@ -246,7 +223,7 @@ describe('InsightsTab — count callback', () => {
   });
 
   it('calls onCountChange(0) when there are no insights', async () => {
-    _notesData = [];
+    _aggregatorData = [];
     const onCountChange = vi.fn();
     renderTab(onCountChange);
     await waitFor(() => {
@@ -270,7 +247,6 @@ describe('InsightsTab — bulk select', () => {
     await userEvent.click(checkboxes[0]!);
 
     await waitFor(() => {
-      // The bulk region has aria-label="Bulk actions"
       expect(screen.getByRole('region', { name: /bulk actions/i })).toBeDefined();
     });
   });

@@ -32,6 +32,7 @@ export type {
   NoteProvenance,
   Note,
   NoteCreate,
+  NoteWithOrg,
 } from './note';
 
 export type {
