@@ -199,7 +199,11 @@ function ApiKeySection() {
           <FormField
             id="anthropic_api_key"
             label="Anthropic API key"
-            helper="Stored locally and DPAPI-encrypted on Windows. Never sent to the frontend after save."
+            helper={
+              existing?.value
+                ? 'Stored locally and DPAPI-encrypted on Windows. Never sent to the frontend after save.'
+                : 'Need a key? Click below to open the Anthropic console — sign in (or sign up), then "Create Key", name it "MasterControl", copy the sk-ant-… string, and paste it here.'
+            }
             error={error}
           >
             <input
@@ -227,7 +231,7 @@ function ApiKeySection() {
             />
           </FormField>
 
-          <div style={{ marginTop: 16, display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ marginTop: 16, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
             <button
               type="submit"
               disabled={isPending || !dirty}
@@ -247,6 +251,28 @@ function ApiKeySection() {
               )}
               {isPending ? 'Saving…' : 'Save API Key'}
             </button>
+            <a
+              href="https://console.anthropic.com/settings/keys"
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                fontFamily: 'var(--body)',
+                fontSize: 13,
+                fontWeight: 500,
+                padding: '8px 18px',
+                borderRadius: 6,
+                border: '1px dashed var(--rule)',
+                background: 'transparent',
+                color: 'var(--ink-2)',
+                textDecoration: 'none',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+              }}
+            >
+              Get an API key from Anthropic
+              <span aria-hidden="true">↗</span>
+            </a>
             <StatusPill savedAt={savedAt} />
           </div>
         </form>
