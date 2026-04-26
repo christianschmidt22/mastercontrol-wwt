@@ -57,3 +57,14 @@ export type {
   SettingPut,
   SettingGetResponse,
 } from './settings';
+
+export type {
+  DelegateRequest,
+  DelegateResult,
+  DelegateResultOk,
+  DelegateResultErr,
+  UsagePeriod,
+  UsageAggregate,
+  UsageEventSource,
+  UsageEvent,
+} from './subagent';

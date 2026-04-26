@@ -3,6 +3,7 @@ import { TabStrip } from '../components/agents/TabStrip';
 import { TemplatesTab } from '../components/agents/TemplatesTab';
 import { ThreadsTab } from '../components/agents/ThreadsTab';
 import { InsightsTab } from '../components/agents/InsightsTab';
+import { PersonalUsageTile } from '../components/agents/PersonalUsageTile';
 import type { AgentsTab } from '../components/agents/TabStrip';
 
 export function AgentsPage() {
@@ -63,6 +64,9 @@ export function AgentsPage() {
           queue.
         </p>
       </header>
+
+      {/* Personal subscription overview — Option B: persistent strip above all tabs */}
+      <PersonalUsageTile />
 
       {/* Tab strip */}
       <TabStrip

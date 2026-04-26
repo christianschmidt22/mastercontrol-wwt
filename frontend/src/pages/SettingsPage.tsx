@@ -724,6 +724,177 @@ function useBeforeUnloadGuard(isDirty: boolean) {
   }, [isDirty]);
 }
 
+// ─── Section 7: Personal Claude Subscription ─────────────────────────────────
+
+function PersonalSubscriptionSection() {
+  const { data: existing } = useSetting('personal_anthropic_api_key');
+  const setSetting = useSetSetting();
+
+  const [value, setValue] = useState('');
+  const [showKey, setShowKey] = useState(false);
+  const [dirty, setDirty] = useState(false);
+  const [savedAt, setSavedAt] = useState<number | null>(null);
+  const [error, setError] = useState('');
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useBeforeUnloadGuard(dirty);
+
+  function handleChange(e: ChangeEvent<HTMLInputElement>) {
+    setValue(e.target.value);
+    setDirty(true);
+    setError('');
+  }
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault();
+    if (!value.trim()) {
+      setError('API key is required.');
+      inputRef.current?.focus();
+      return;
+    }
+    setError('');
+    try {
+      await setSetting.mutateAsync({
+        key: 'personal_anthropic_api_key',
+        value: value.trim(),
+      });
+      setValue('');
+      setDirty(false);
+      setSavedAt(Date.now());
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Save failed. Try again.');
+    }
+  }
+
+  const isPending = setSetting.isPending;
+
+  return (
+    <section
+      id="section-personal-subscription"
+      aria-labelledby="section-personal-subscription-heading"
+    >
+      <h2 id="section-personal-subscription-heading" style={SECTION_TITLE_STYLE}>
+        Personal Claude Subscription
+      </h2>
+      <div style={CARD_STYLE}>
+        <p
+          style={{
+            fontFamily: 'var(--body)',
+            fontSize: 14,
+            color: 'var(--ink-2)',
+            lineHeight: 1.6,
+            marginBottom: 20,
+          }}
+        >
+          This key is used for subagent delegation tasks and is separate from your
+          per-org chat key. It is stored encrypted via Windows DPAPI and never
+          exposed to the frontend after saving.
+        </p>
+
+        {existing?.value && (
+          <p
+            style={{
+              fontFamily: 'var(--body)',
+              fontSize: 13,
+              color: 'var(--ink-2)',
+              marginBottom: 16,
+            }}
+          >
+            Current key:{' '}
+            <code
+              style={{
+                fontFamily: 'var(--mono)',
+                fontSize: 13,
+                color: 'var(--ink-1)',
+                background: 'var(--bg-2)',
+                border: '1px solid var(--rule)',
+                borderRadius: 4,
+                padding: '1px 6px',
+              }}
+            >
+              {existing.value}
+            </code>
+          </p>
+        )}
+
+        <form onSubmit={(e) => void handleSubmit(e)} noValidate>
+          <FormField
+            id="personal_anthropic_api_key"
+            label="Personal Anthropic API key"
+            helper="Enter your personal Anthropic API key to enable subagent tasks."
+            error={error}
+          >
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <input
+                id="personal_anthropic_api_key"
+                ref={inputRef}
+                type={showKey ? 'text' : 'password'}
+                autoComplete="off"
+                spellCheck={false}
+                name="personal_anthropic_api_key"
+                placeholder={existing?.value ?? 'sk-ant-…'}
+                value={value}
+                onChange={handleChange}
+                aria-describedby={
+                  error
+                    ? 'personal_anthropic_api_key-error'
+                    : 'personal_anthropic_api_key-helper'
+                }
+                style={{
+                  ...INPUT_STYLE,
+                  flex: 1,
+                  borderColor: error ? 'var(--accent)' : 'var(--rule)',
+                }}
+                onFocus={(e) => {
+                  (e.target).style.borderColor = 'var(--accent)';
+                }}
+                onBlur={(e) => {
+                  (e.target).style.borderColor =
+                    error ? 'var(--accent)' : 'var(--rule)';
+                }}
+              />
+              <button
+                type="button"
+                aria-label={showKey ? 'Hide API key' : 'Show API key'}
+                onClick={() => setShowKey((v) => !v)}
+                style={{
+                  ...SAVE_BTN_BASE,
+                  padding: '8px 12px',
+                  flexShrink: 0,
+                }}
+              >
+                {showKey ? 'Hide' : 'Show'}
+              </button>
+            </div>
+          </FormField>
+
+          <div style={{ marginTop: 16, display: 'flex', alignItems: 'center', gap: 12 }}>
+            <button
+              type="submit"
+              disabled={isPending || !dirty}
+              style={{
+                ...SAVE_BTN_BASE,
+                opacity: isPending || !dirty ? 0.5 : 1,
+                cursor: isPending || !dirty ? 'default' : 'pointer',
+              }}
+            >
+              {isPending && (
+                <Loader2
+                  size={14}
+                  strokeWidth={1.5}
+                  aria-hidden="true"
+                  className="animate-spin"
+                />
+              )}
+              {isPending ? 'Saving…' : 'Save Key'}
+            </button>
+            <StatusPill savedAt={savedAt} />
+          </div>
+        </form>
+      </div>
+    </section>
+  );
+}
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export function SettingsPage() {
@@ -777,6 +948,7 @@ export function SettingsPage() {
         <SchedulerSection />
         <IngestSection />
         <AgentOverridesSection />
+        <PersonalSubscriptionSection />
       </div>
     </div>
   );
