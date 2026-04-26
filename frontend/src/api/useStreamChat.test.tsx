@@ -130,7 +130,7 @@ describe('useStreamChat — happy path', () => {
       start(controller) {
         controller.enqueue(encoder.encode(sseFrame({ type: 'text', delta: 'partial text' })));
         // Don't close — hang
-        new Promise<void>((r) => { resolveStream = r; }).then(() => controller.close());
+        void new Promise<void>((r) => { resolveStream = r; }).then(() => controller.close());
       },
     });
 

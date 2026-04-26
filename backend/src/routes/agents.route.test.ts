@@ -30,6 +30,7 @@
 import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest';
 import request from 'supertest';
 import type { Express } from 'express';
+import type { AgentMessageInput, MessageRole } from '../models/agentMessage.model.js';
 import { db } from '../db/database.js';
 import { makeOrg, makeThread, makeMessage } from '../test/factories.js';
 import { agentConfigModel } from '../models/agentConfig.model.js';
@@ -111,6 +112,8 @@ vi.mock('@anthropic-ai/sdk', () => {
 // ---------------------------------------------------------------------------
 
 vi.mock('../models/note.model.js', async () => {
+  // importActual typed inline because vi.importActual requires the type at the call site.
+  // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- vi.importActual inline generic
   const actual = await vi.importActual<typeof import('../models/note.model.js')>(
     '../models/note.model.js',
   );
@@ -133,6 +136,8 @@ vi.mock('../models/note.model.js', async () => {
 // ---------------------------------------------------------------------------
 
 vi.mock('../models/agentMessage.model.js', async () => {
+  // importActual typed inline because vi.importActual requires the type at the call site.
+  // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- vi.importActual inline generic
   const actual = await vi.importActual<typeof import('../models/agentMessage.model.js')>(
     '../models/agentMessage.model.js',
   );
@@ -143,7 +148,7 @@ vi.mock('../models/agentMessage.model.js', async () => {
       ...actual.agentMessageModel,
       // Wrap append to accept either (object) or (threadId, role, content, toolCalls)
       append: (
-        inputOrThreadId: import('../models/agentMessage.model.js').AgentMessageInput | number,
+        inputOrThreadId: AgentMessageInput | number,
         role?: string,
         content?: string,
         toolCalls?: unknown,
@@ -152,7 +157,7 @@ vi.mock('../models/agentMessage.model.js', async () => {
           // Positional style called by claude.service.ts
           return actual.agentMessageModel.append({
             threadId: inputOrThreadId,
-            role: role as import('../models/agentMessage.model.js').MessageRole,
+            role: role as MessageRole,
             content: content ?? '',
             toolCalls: toolCalls as unknown[] | null | undefined,
           });

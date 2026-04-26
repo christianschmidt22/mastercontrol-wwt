@@ -1,4 +1,4 @@
-import { useState, useCallback, type CSSProperties } from 'react';
+import { useState, useCallback } from 'react';
 import { Check, X } from 'lucide-react';
 import { Tile } from '../Tile';
 import type { Note } from '../../../types';
@@ -8,17 +8,8 @@ interface UseNotesResult {
   isLoading: boolean;
 }
 
-interface UseInsightMutations {
-  confirm: (noteId: number) => void;
-  reject: (noteId: number) => void;
-}
-
 function useNotesStub(_orgId: number, _options?: { includeUnconfirmed?: boolean }): UseNotesResult {
   return { data: undefined, isLoading: false };
-}
-
-function useInsightMutationsStub(): UseInsightMutations {
-  return { confirm: (_id: number) => {}, reject: (_id: number) => {} };
 }
 
 interface RecentNotesTileProps {
@@ -120,7 +111,7 @@ function NoteRow({
               display: shouldClamp ? '-webkit-box' : 'block',
               WebkitLineClamp: shouldClamp ? 3 : undefined,
               WebkitBoxOrient: shouldClamp ? 'vertical' : undefined,
-            } as CSSProperties
+            }
           }
         >
           {note.content}

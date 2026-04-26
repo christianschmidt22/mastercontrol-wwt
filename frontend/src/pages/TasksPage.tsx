@@ -1027,7 +1027,7 @@ export function TasksPage() {
           marginLeft: -3,
           marginBottom: 4,
           textWrap: 'balance',
-        } as CSSProperties}
+        }}
       >
         Tasks
       </h1>

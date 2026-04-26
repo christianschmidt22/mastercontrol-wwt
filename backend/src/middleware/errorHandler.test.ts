@@ -32,7 +32,7 @@ function makeReq(): Request {
 }
 
 function makeNext(): NextFunction {
-  return vi.fn() as unknown as NextFunction;
+  return vi.fn();
 }
 
 // ---------------------------------------------------------------------------

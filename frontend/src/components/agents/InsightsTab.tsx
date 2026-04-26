@@ -1,4 +1,4 @@
-import { useState, useCallback, useId, useEffect, useRef } from 'react';
+import { useState, useCallback, useId, useEffect, useMemo, useRef } from 'react';
 import type { Note } from '../../types';
 import { useNotes, useConfirmInsight, useRejectInsight } from '../../api/useNotes';
 import { useOrganizations } from '../../api/useOrganizations';

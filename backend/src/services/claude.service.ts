@@ -328,7 +328,7 @@ async function buildVolatileBlock(
         .map((n) => {
           const prov = n.provenance ? JSON.parse(n.provenance) as Record<string, unknown> : null;
           const provStr = prov
-            ? ` | source_thread=${prov['source_thread_id'] ?? '?'}, source_org=${prov['source_org_id'] ?? '?'}`
+            ? ` | source_thread=${toStr(prov['source_thread_id'])}, source_org=${toStr(prov['source_org_id'])}`
             : '';
           return `  [${n.created_at}${provStr}] ${n.content.slice(0, 500)}`;
         })
@@ -438,7 +438,7 @@ function buildWebSearchTool(
     type: 'web_search_20250305' as const,
     name: 'web_search',
     max_uses: maxUses,
-  } as unknown as Anthropic.Tool;
+  };
 }
 
 const RECORD_INSIGHT_TOOL: Anthropic.Tool = {
@@ -511,7 +511,7 @@ export async function streamChat({
   // ------------------------------------------------------------------
   // 1. Persist user message
   // ------------------------------------------------------------------
-  await m.agentMessageModel.append(threadId, 'user', content);
+  m.agentMessageModel.append(threadId, 'user', content);
 
   // ------------------------------------------------------------------
   // 2. Load agent config
@@ -560,7 +560,7 @@ export async function streamChat({
   // ------------------------------------------------------------------
   // 5. Load thread history for the messages array
   // ------------------------------------------------------------------
-  const history = await m.agentMessageModel.listByThread(threadId);
+  const history = m.agentMessageModel.listByThread(threadId);
   // Convert DB rows to Anthropic message format. We include all turns up to
   // (not including) the user message we just appended, so we build the
   // message list from the stored history excluding the last row (which is the
@@ -619,8 +619,6 @@ export async function streamChat({
     },
   ];
 
-  let streamCompleted = false;
-
   try {
     const stream = client.messages.stream({
       model: agentConfig.model,
@@ -628,7 +626,7 @@ export async function streamChat({
       // Cast: CachedTextBlock is structurally compatible with TextBlockParam;
       // the extra `cache_control` field is accepted by the Anthropic API even
       // though the SDK type omits it. Safe to remove cast when SDK types catch up.
-      system: systemBlocks as Anthropic.TextBlockParam[],
+      system: systemBlocks,
       messages: messagesPayload,
       // Cast to ToolUnion — `webSearchTool` carries the native
       // web_search_20250305 shape via an `as unknown as Anthropic.Tool`
@@ -684,7 +682,6 @@ export async function streamChat({
         // text blocks are already streamed via content_block_delta events above.
       }
 
-      streamCompleted = true;
     })();
 
     // Race the stream against client disconnect so we don't hold the
@@ -705,13 +702,13 @@ export async function streamChat({
   // nothing was produced (disconnect before first token), skip.
   // ------------------------------------------------------------------
   if (fullText || toolCallsAccumulated.length > 0) {
-    await m.agentMessageModel.append(
+    m.agentMessageModel.append(
       threadId,
       'assistant',
       fullText,
       toolCallsAccumulated.length > 0 ? toolCallsAccumulated : undefined,
     );
-    await m.agentThreadModel.touchLastMessage(threadId);
+    m.agentThreadModel.touchLastMessage(threadId);
   }
 
   // ------------------------------------------------------------------
@@ -787,7 +784,7 @@ async function handleRecordInsight({
   };
 
   try {
-    const note = await m.noteModel.createInsight(targetOrgId, input.content, provenance);
+    const note = m.noteModel.createInsight(targetOrgId, input.content, provenance);
 
     // C-07: invalidate the target org's stable system-prompt cache so the next
     // chat turn against that org sees the newly-recorded insight.
@@ -823,6 +820,13 @@ async function handleRecordInsight({
 // ---------------------------------------------------------------------------
 // Utility
 // ---------------------------------------------------------------------------
+
+/** Safely coerce an unknown provenance field to a display string. */
+function toStr(v: unknown): string {
+  if (v === null || v === undefined) return '?';
+  if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') return String(v);
+  return '?';
+}
 
 function escapeXml(s: string): string {
   return s
