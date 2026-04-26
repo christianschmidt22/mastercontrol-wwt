@@ -1,6 +1,7 @@
 import { useState, useCallback, useId, type FormEvent } from 'react';
 import { Plus } from 'lucide-react';
 import { Tile } from '../Tile';
+import { TileEmptyState } from '../TileEmptyState';
 import type { Task } from '../../../types';
 
 interface UseTasksResult {
@@ -100,18 +101,10 @@ export function TasksTile({ orgId, _useTasks, _useTaskMutations }: TasksTileProp
       )}
 
       {!isLoading && openTasks.length === 0 && !addingTask && (
-        <div
-          style={{
-            border: '1px dashed var(--rule)',
-            borderRadius: 6,
-            padding: '16px',
-            textAlign: 'center',
-            fontSize: 13,
-            color: 'var(--ink-2)',
-          }}
-        >
-          No open tasks.
-        </div>
+        <TileEmptyState
+          copy="Nothing due today."
+          ariaLive
+        />
       )}
 
       {openTasks.length > 0 && (

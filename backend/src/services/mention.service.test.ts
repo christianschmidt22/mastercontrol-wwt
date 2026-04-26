@@ -94,9 +94,9 @@ describe('mention.service — extractMentions', () => {
 
     const mentions = noteMentionModel.listByNote(note.id);
     expect(mentions.length).toBe(1);
-    expect(mentions[0]!.mentioned_org_id).toBe(org.id);
-    expect(mentions[0]!.source).toBe('ai_auto');
-    expect(mentions[0]!.confidence).toBe(0.9);
+    expect(mentions[0].mentioned_org_id).toBe(org.id);
+    expect(mentions[0].source).toBe('ai_auto');
+    expect(mentions[0].confidence).toBe(0.9);
   });
 
   it('filters out mentions with confidence < 0.5', async () => {
@@ -124,7 +124,7 @@ describe('mention.service — extractMentions', () => {
 
     const mentions = noteMentionModel.listByNote(note.id);
     expect(mentions.length).toBe(1);
-    expect(mentions[0]!.confidence).toBe(0.5);
+    expect(mentions[0].confidence).toBe(0.5);
   });
 
   it('skips org names not in the DB even if the model returns them', async () => {
@@ -140,7 +140,7 @@ describe('mention.service — extractMentions', () => {
 
     const mentions = noteMentionModel.listByNote(note.id);
     expect(mentions.length).toBe(1);
-    expect(mentions[0]!.mentioned_org_id).toBe(org.id);
+    expect(mentions[0].mentioned_org_id).toBe(org.id);
   });
 
   it('performs case-insensitive org name matching', async () => {
@@ -154,7 +154,7 @@ describe('mention.service — extractMentions', () => {
 
     const mentions = noteMentionModel.listByNote(note.id);
     expect(mentions.length).toBe(1);
-    expect(mentions[0]!.mentioned_org_id).toBe(org.id);
+    expect(mentions[0].mentioned_org_id).toBe(org.id);
   });
 
   it('is a no-op when the Anthropic response is an empty array', async () => {
@@ -180,7 +180,7 @@ describe('mention.service — extractMentions', () => {
     await extractMentions(note.id, 'Checking tool constraint.');
 
     expect(hoistedCreate).toHaveBeenCalledOnce();
-    const callArgs = hoistedCreate.mock.calls[0]![0] as Record<string, unknown>;
+    const callArgs = hoistedCreate.mock.calls[0][0] as Record<string, unknown>;
     expect(callArgs['tools']).toEqual([]);
   });
 
@@ -195,11 +195,11 @@ describe('mention.service — extractMentions', () => {
     const noteContent = 'Sensitive note content here.';
     await extractMentions(note.id, noteContent);
 
-    const callArgs = hoistedCreate.mock.calls[0]![0] as Record<string, unknown>;
+    const callArgs = hoistedCreate.mock.calls[0][0] as Record<string, unknown>;
     const messages = callArgs['messages'] as Array<{ role: string; content: string }>;
-    expect(messages[0]!.content).toContain('<untrusted_document');
-    expect(messages[0]!.content).toContain(noteContent);
-    expect(messages[0]!.content).toContain('</untrusted_document>');
+    expect(messages[0].content).toContain('<untrusted_document');
+    expect(messages[0].content).toContain(noteContent);
+    expect(messages[0].content).toContain('</untrusted_document>');
   });
 
   it('uses the claude-haiku-4-5 model for cost efficiency', async () => {
@@ -212,7 +212,7 @@ describe('mention.service — extractMentions', () => {
 
     await extractMentions(note.id, 'Content to check model.');
 
-    const callArgs = hoistedCreate.mock.calls[0]![0] as Record<string, unknown>;
+    const callArgs = hoistedCreate.mock.calls[0][0] as Record<string, unknown>;
     expect(callArgs['model']).toBe('claude-haiku-4-5');
   });
 
@@ -247,6 +247,6 @@ describe('mention.service — extractMentions', () => {
     // Should still be only one row (upserted).
     const forThisOrg = mentions.filter((m) => m.mentioned_org_id === org.id);
     expect(forThisOrg.length).toBe(1);
-    expect(forThisOrg[0]!.confidence).toBe(0.9);
+    expect(forThisOrg[0].confidence).toBe(0.9);
   });
 });

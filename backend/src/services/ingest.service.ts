@@ -243,7 +243,8 @@ export async function scanWorkvault(opts: ScanOptions): Promise<ScanResult> {
     // -------------------------------------------------------------------------
     // Parse frontmatter, generating and writing a file_id if absent.
     // -------------------------------------------------------------------------
-    let { fileId, body, raw } = parseFrontmatter(fileContent);
+    const { fileId: parsedFileId, body, raw } = parseFrontmatter(fileContent);
+    let fileId = parsedFileId;
 
     if (!fileId) {
       fileId = crypto.randomUUID();

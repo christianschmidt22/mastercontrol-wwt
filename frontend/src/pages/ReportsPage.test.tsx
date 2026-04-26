@@ -46,6 +46,7 @@ vi.mock('../api/useReports', () => ({
 
 vi.mock('../api/useReportRuns', () => ({
   useReportRuns: vi.fn(),
+  useReportRunOutput: vi.fn(),
 }));
 
 vi.mock('../api/useOrganizations', () => ({
@@ -53,7 +54,8 @@ vi.mock('../api/useOrganizations', () => ({
 }));
 
 import { useReports } from '../api/useReports';
-import { useReportRuns } from '../api/useReportRuns';
+import { useReportRuns, useReportRunOutput } from '../api/useReportRuns';
+import type { ReportRunOutput } from '../api/useReportRuns';
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -107,6 +109,12 @@ function renderWithClient(ui: React.ReactElement) {
   );
 }
 
+const sampleOutput: ReportRunOutput = {
+  content: '# Daily Review\n\nToday at a glance: things are fine.',
+  output_path: 'C:\\mastercontrol\\reports\\1\\7.md',
+  output_sha256: 'abc',
+};
+
 beforeEach(() => {
   runNowMutate.mockReset();
   createMutate.mockReset();
@@ -125,6 +133,14 @@ beforeEach(() => {
     isError: false,
     isSuccess: true,
   } as unknown as ReturnType<typeof useReportRuns>);
+
+  vi.mocked(useReportRunOutput).mockReturnValue({
+    data: sampleOutput,
+    isLoading: false,
+    isError: false,
+    isSuccess: true,
+    refetch: vi.fn(),
+  } as unknown as ReturnType<typeof useReportRunOutput>);
 });
 
 afterEach(() => {
@@ -274,5 +290,46 @@ describe('ReportsPage — New Report dialog', () => {
     expect(screen.getByLabelText(/^name$/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/prompt template/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/schedule \(cron\)/i)).toBeInTheDocument();
+  });
+});
+
+describe('ReportsPage — History drawer preview expansion', () => {
+  it('clicking Preview on a done run expands the preview region', async () => {
+    const user = userEvent.setup();
+    renderWithClient(<ReportsPage />);
+
+    // Open the history drawer.
+    await user.click(
+      screen.getByRole('button', {
+        name: /view run history for daily task review/i,
+      }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole('dialog')).toBeInTheDocument();
+    });
+
+    // The Preview button should appear for the done run.
+    const previewBtn = screen.getByRole('button', { name: /preview report output/i });
+    expect(previewBtn).toBeInTheDocument();
+
+    // Click it — the preview region should appear.
+    await user.click(previewBtn);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole('region', { name: /report output for/i }),
+      ).toBeInTheDocument();
+    });
+
+    // Content from sampleOutput is rendered.
+    expect(
+      screen.getByRole('heading', { level: 1, name: /daily review/i }),
+    ).toBeInTheDocument();
+
+    // The button label should now say Collapse.
+    expect(
+      screen.getByRole('button', { name: /collapse report preview/i }),
+    ).toBeInTheDocument();
   });
 });

@@ -1,6 +1,7 @@
-import { useState, useCallback, type CSSProperties } from 'react';
+import { useState, useCallback } from 'react';
 import { Check, X } from 'lucide-react';
 import { Tile } from '../Tile';
+import { TileEmptyState } from '../TileEmptyState';
 import type { Note } from '../../../types';
 
 interface UseNotesResult {
@@ -8,17 +9,8 @@ interface UseNotesResult {
   isLoading: boolean;
 }
 
-interface UseInsightMutations {
-  confirm: (noteId: number) => void;
-  reject: (noteId: number) => void;
-}
-
 function useNotesStub(_orgId: number, _options?: { includeUnconfirmed?: boolean }): UseNotesResult {
   return { data: undefined, isLoading: false };
-}
-
-function useInsightMutationsStub(): UseInsightMutations {
-  return { confirm: (_id: number) => {}, reject: (_id: number) => {} };
 }
 
 interface RecentNotesTileProps {
@@ -120,7 +112,7 @@ function NoteRow({
               display: shouldClamp ? '-webkit-box' : 'block',
               WebkitLineClamp: shouldClamp ? 3 : undefined,
               WebkitBoxOrient: shouldClamp ? 'vertical' : undefined,
-            } as CSSProperties
+            }
           }
         >
           {note.content}
@@ -231,18 +223,12 @@ export function RecentNotesTile({ orgId, _useNotes, _useConfirmInsight, _useReje
       )}
 
       {!isLoading && noteList.length === 0 && (
-        <div
-          style={{
-            border: '1px dashed var(--rule)',
-            borderRadius: 6,
-            padding: '16px',
-            textAlign: 'center',
-            fontSize: 13,
-            color: 'var(--ink-2)',
-          }}
-        >
-          No notes yet — start chatting with the agent to capture notes.
-        </div>
+        <TileEmptyState
+          copy="Take your first note. The agent will see anything you save here."
+          actionLabel="Add note"
+          onAction={() => {}}
+          ariaLive
+        />
       )}
 
       {noteList.length > 0 && (

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Mail, Phone, Plus } from 'lucide-react';
 import { Tile } from '../Tile';
+import { TileEmptyState } from '../TileEmptyState';
 import type { Contact } from '../../../types';
 
 interface UseContactsResult {
@@ -39,18 +40,12 @@ export function ContactsTile({ orgId, editMode, _useContacts }: ContactsTileProp
       )}
 
       {!isLoading && contactList.length === 0 && !showAdd && (
-        <div
-          style={{
-            border: '1px dashed var(--rule)',
-            borderRadius: 6,
-            padding: '16px',
-            textAlign: 'center',
-            fontSize: 13,
-            color: 'var(--ink-2)',
-          }}
-        >
-          No contacts yet — add one to start tracking.
-        </div>
+        <TileEmptyState
+          copy="No contacts yet. Add the account team."
+          actionLabel="Add contact"
+          onAction={() => setShowAdd(true)}
+          ariaLive
+        />
       )}
 
       {contactList.length > 0 && (

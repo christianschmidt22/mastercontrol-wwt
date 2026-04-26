@@ -17,6 +17,7 @@ import {
   useRunReportNow,
 } from '../api/useReports';
 import { useReportRuns } from '../api/useReportRuns';
+import { ReportPreview } from '../components/overlays/ReportPreview';
 import { useOrganizations } from '../api/useOrganizations';
 import type {
   Report,
@@ -781,13 +782,21 @@ function HistoryList({ reportId }: HistoryProps) {
       style={{ listStyle: 'none', margin: 0, padding: 0 }}
     >
       {runs.map((r) => (
-        <HistoryRow key={r.id} run={r} />
+        <HistoryRow key={r.id} run={r} reportId={reportId} />
       ))}
     </ul>
   );
 }
 
-function HistoryRow({ run }: { run: ReportRun }) {
+interface HistoryRowProps {
+  run: ReportRun;
+  reportId: number;
+}
+
+function HistoryRow({ run, reportId }: HistoryRowProps) {
+  const [expanded, setExpanded] = useState(false);
+  const canPreview = run.status === 'done' && run.output_path !== null;
+
   return (
     <li
       style={{
@@ -817,7 +826,29 @@ function HistoryRow({ run }: { run: ReportRun }) {
         >
           {formatRelative(run.started_at)}
         </time>
-        <StatusBadge status={run.status} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <StatusBadge status={run.status} />
+          {canPreview && (
+            <button
+              type="button"
+              onClick={() => setExpanded((v) => !v)}
+              aria-expanded={expanded}
+              aria-label={expanded ? 'Collapse report preview' : 'Preview report output'}
+              style={{
+                fontFamily: 'var(--body)',
+                fontSize: 11,
+                padding: '2px 8px',
+                borderRadius: 3,
+                cursor: 'pointer',
+                border: '1px solid var(--rule)',
+                background: expanded ? 'var(--bg-2)' : 'transparent',
+                color: 'var(--ink-2)',
+              }}
+            >
+              {expanded ? 'Collapse' : 'Preview'}
+            </button>
+          )}
+        </div>
       </div>
       <div
         style={{
@@ -852,6 +883,14 @@ function HistoryRow({ run }: { run: ReportRun }) {
         >
           {run.error}
         </p>
+      )}
+      {expanded && canPreview && (
+        <ReportPreview
+          reportId={reportId}
+          runId={run.id}
+          runDate={run.started_at}
+          enabled={expanded}
+        />
       )}
     </li>
   );
@@ -1218,7 +1257,7 @@ export function ReportsPage() {
               margin: 0,
               marginLeft: -3,
               textWrap: 'balance',
-            } as CSSProperties
+            }
           }
         >
           Reports

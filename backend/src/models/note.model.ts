@@ -288,7 +288,7 @@ export const noteModel = {
       null,
       null,
       null,
-      'agent_insight' as NoteRole,
+      'agent_insight',
       null,
       JSON.stringify(provenance),
       0   // confirmed = false — awaits user accept

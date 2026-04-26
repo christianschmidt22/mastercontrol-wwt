@@ -245,7 +245,7 @@ describe('ingest.service — Case 4: CONFLICT', () => {
   it('logs an ingest_error and creates a conflict note when sha256 differs at same mtime', async () => {
     const tmpDir = makeTmpDir();
     const sourceId = makeSource(tmpDir);
-    const orgId = ensureOrg();
+    ensureOrg();
 
     const fileId = crypto.randomUUID();
     const filePath = writeFile(

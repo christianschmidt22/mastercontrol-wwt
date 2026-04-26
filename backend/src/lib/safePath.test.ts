@@ -25,7 +25,7 @@ const SEP = path.sep;
 
 /** Make realpathSync return the provided resolved path. */
 function mockRealpath(resolvedTo: string) {
-  vi.mocked(fs.realpathSync).mockReturnValue(resolvedTo as unknown as string);
+  vi.mocked(fs.realpathSync).mockReturnValue(resolvedTo);
 }
 
 /** Make lstatSync return a non-symlink for all checked paths. */

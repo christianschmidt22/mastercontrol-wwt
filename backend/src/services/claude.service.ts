@@ -342,8 +342,14 @@ async function buildVolatileBlock(
     ? insights
         .map((n) => {
           const prov = n.provenance ? JSON.parse(n.provenance) as Record<string, unknown> : null;
+          const toStr = (v: unknown): string => {
+            if (v === null || v === undefined) return '?';
+            if (typeof v === 'string') return v;
+            if (typeof v === 'number' || typeof v === 'boolean') return String(v);
+            return JSON.stringify(v);
+          };
           const provStr = prov
-            ? ` | source_thread=${prov['source_thread_id'] ?? '?'}, source_org=${prov['source_org_id'] ?? '?'}`
+            ? ` | source_thread=${toStr(prov['source_thread_id'])}, source_org=${toStr(prov['source_org_id'])}`
             : '';
           return `  [${n.created_at}${provStr}] ${n.content.slice(0, 500)}`;
         })
@@ -433,9 +439,7 @@ async function resolveAllowlist(
  * R-021: web_search tool config reads `max_uses` from agent_configs.tools_enabled JSON.
  * If not configured, defaults to 5 uses per turn.
  */
-function buildWebSearchTool(
-  toolsEnabled: string,
-): Anthropic.Tool | { type: 'web_search_20250305'; name: string; max_uses: number } {
+function buildWebSearchTool(toolsEnabled: string): Anthropic.Tool {
   let maxUses = 5;
   try {
     const cfg = JSON.parse(toolsEnabled) as Record<string, unknown>;
@@ -446,9 +450,9 @@ function buildWebSearchTool(
   } catch {
     // malformed JSON — use default
   }
-  // The Anthropic SDK represents native web_search as a special block type.
-  // Using type assertion here because the SDK type definitions don't expose
-  // this as a strongly-typed union member yet; the shape is per Anthropic docs.
+  // The native web_search_20250305 tool shape isn't modeled by `Anthropic.Tool`
+  // (no `input_schema`) but is accepted by the SDK at runtime. Double cast
+  // bridges the gap until the SDK ships a discriminated member.
   return {
     type: 'web_search_20250305' as const,
     name: 'web_search',
@@ -616,7 +620,7 @@ function parseEnabledTools(toolsEnabled: unknown): Set<string> {
     return names.length > 0 ? new Set(names) : new Set(DEFAULT_ENABLED_TOOLS);
   }
   if (parsed && typeof parsed === 'object') {
-    const keys = Object.keys(parsed as Record<string, unknown>);
+    const keys = Object.keys(parsed);
     return keys.length > 0 ? new Set(keys) : new Set(DEFAULT_ENABLED_TOOLS);
   }
   return new Set(DEFAULT_ENABLED_TOOLS);
@@ -684,7 +688,7 @@ export async function streamChat({
   // ------------------------------------------------------------------
   // 1. Persist user message
   // ------------------------------------------------------------------
-  await m.agentMessageModel.append(threadId, 'user', content);
+  m.agentMessageModel.append(threadId, 'user', content);
 
   // ------------------------------------------------------------------
   // 2. Load agent config
@@ -733,7 +737,7 @@ export async function streamChat({
   // ------------------------------------------------------------------
   // 5. Load thread history for the messages array
   // ------------------------------------------------------------------
-  const history = await m.agentMessageModel.listByThread(threadId);
+  const history = m.agentMessageModel.listByThread(threadId);
   // Convert DB rows to Anthropic message format. We include all turns up to
   // (not including) the user message we just appended, so we build the
   // message list from the stored history excluding the last row (which is the
@@ -761,7 +765,7 @@ export async function streamChat({
   // R-021: filter the tool list against agent_configs.tools_enabled. A tool
   // not in the enabled set is omitted from the SDK call entirely so the model
   // can't invoke it.
-  const allTools: Array<{ name: string; spec: Anthropic.Tool | unknown }> = [
+  const allTools: Array<{ name: string; spec: Anthropic.Tool }> = [
     { name: 'web_search', spec: webSearchTool },
     { name: 'record_insight', spec: RECORD_INSIGHT_TOOL },
     { name: 'search_notes', spec: SEARCH_NOTES_TOOL },
@@ -808,8 +812,6 @@ export async function streamChat({
     },
   ];
 
-  let streamCompleted = false;
-
   try {
     const stream = client.messages.stream({
       model: agentConfig.model,
@@ -817,14 +819,9 @@ export async function streamChat({
       // Cast: CachedTextBlock is structurally compatible with TextBlockParam;
       // the extra `cache_control` field is accepted by the Anthropic API even
       // though the SDK type omits it. Safe to remove cast when SDK types catch up.
-      system: systemBlocks as Anthropic.TextBlockParam[],
+      system: systemBlocks,
       messages: messagesPayload,
-      // Cast to ToolUnion — `webSearchTool` carries the native
-      // web_search_20250305 shape via an `as unknown as Anthropic.Tool`
-      // upstream; the array literal trips the same SDK-type-lag that
-      // motivated the original cast. Safe to drop when SDK ships
-      // a discriminated `web_search_20250305` member.
-      tools: filteredTools as Anthropic.ToolUnion[],
+      tools: filteredTools,
     });
 
     // Race the stream against client disconnect so we don't hold the Anthropic
@@ -904,7 +901,6 @@ export async function streamChat({
         // text blocks are already streamed via content_block_delta events above.
       }
 
-      streamCompleted = true;
     })();
 
     // Race the stream against client disconnect so we don't hold the
@@ -925,13 +921,13 @@ export async function streamChat({
   // nothing was produced (disconnect before first token), skip.
   // ------------------------------------------------------------------
   if (fullText || toolCallsAccumulated.length > 0) {
-    await m.agentMessageModel.append(
+    m.agentMessageModel.append(
       threadId,
       'assistant',
       fullText,
       toolCallsAccumulated.length > 0 ? toolCallsAccumulated : undefined,
     );
-    await m.agentThreadModel.touchLastMessage(threadId);
+    m.agentThreadModel.touchLastMessage(threadId);
   }
 
   // ------------------------------------------------------------------
@@ -1419,7 +1415,7 @@ async function handleRecordInsight({
   };
 
   try {
-    const note = await m.noteModel.createInsight(targetOrgId, input.content, provenance);
+    const note = m.noteModel.createInsight(targetOrgId, input.content, provenance);
 
     // C-07: invalidate the target org's stable system-prompt cache so the next
     // chat turn against that org sees the newly-recorded insight.

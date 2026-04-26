@@ -46,7 +46,7 @@ export function runMigrations(): void {
   const insertRow = db.prepare('INSERT INTO _migrations (id, name) VALUES (?, ?)');
 
   for (const file of files) {
-    const id = Number.parseInt(file.split('_', 1)[0]!, 10);
+    const id = Number.parseInt(file.split('_', 1)[0], 10);
     if (applied.has(id)) continue;
     const sql = readFileSync(join(MIGRATIONS_DIR, file), 'utf8');
     db.transaction(() => {

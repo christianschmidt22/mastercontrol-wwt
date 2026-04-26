@@ -1,5 +1,6 @@
 import { ExternalLink, FileText } from 'lucide-react';
 import { Tile } from '../Tile';
+import { TileEmptyState } from '../TileEmptyState';
 import type { Document } from '../../../types';
 
 interface UseDocumentsResult {
@@ -32,18 +33,10 @@ export function DocumentsTile({ orgId, _useDocuments }: DocumentsTileProps) {
       )}
 
       {!isLoading && docList.length === 0 && (
-        <div
-          style={{
-            border: '1px dashed var(--rule)',
-            borderRadius: 6,
-            padding: '16px',
-            textAlign: 'center',
-            fontSize: 13,
-            color: 'var(--ink-2)',
-          }}
-        >
-          No documents yet — add a link to start tracking.
-        </div>
+        <TileEmptyState
+          copy="No documents yet — add a link to start tracking."
+          ariaLive
+        />
       )}
 
       {docList.length > 0 && (

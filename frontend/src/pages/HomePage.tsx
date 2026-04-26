@@ -1,4 +1,4 @@
-import { useCallback, type CSSProperties } from 'react';
+import { useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQueries } from '@tanstack/react-query';
 import { Clock, Check, X, RefreshCw } from 'lucide-react';
@@ -265,7 +265,7 @@ interface NoteWithOrg extends Note {
   orgType: 'customer' | 'oem';
 }
 
-function RecentNotesWidget({ orgs, orgMap }: RecentNotesWidgetProps) {
+function RecentNotesWidget({ orgs, orgMap: _orgMap }: RecentNotesWidgetProps) {
   const navigate = useNavigate();
 
   const noteQueries = useQueries({
@@ -371,7 +371,7 @@ function RecentNotesWidget({ orgs, orgMap }: RecentNotesWidgetProps) {
                       display: '-webkit-box',
                       WebkitLineClamp: 2,
                       WebkitBoxOrient: 'vertical',
-                    } as CSSProperties
+                    }
                   }
                 >
                   {note.content}
@@ -502,7 +502,7 @@ function AgentInsightsWidget({ orgs, orgMap }: AgentInsightsWidgetProps) {
                       display: '-webkit-box',
                       WebkitLineClamp: 3,
                       WebkitBoxOrient: 'vertical',
-                    } as CSSProperties
+                    }
                   }
                 >
                   {note.content}
@@ -668,7 +668,7 @@ export function HomePage() {
           marginLeft: -3,
           marginBottom: 6,
           textWrap: 'balance',
-        } as CSSProperties}
+        }}
       >
         Today.
       </h1>

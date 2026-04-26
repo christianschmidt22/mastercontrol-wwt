@@ -338,7 +338,7 @@ export function seedDailyTaskReview(): SeedDailyTaskReviewResult {
   if (existing) {
     const schedules = reportScheduleModel.listByReport(existing.id);
     if (schedules.length > 0) {
-      return { created: false, report: existing, schedule: schedules[0]! };
+      return { created: false, report: existing, schedule: schedules[0] };
     }
     // The report exists but has no schedule — adopt the schedule via upsert
     // so subsequent calls remain idempotent.

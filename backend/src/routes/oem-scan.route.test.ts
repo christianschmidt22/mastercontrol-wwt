@@ -23,6 +23,8 @@ import express, { type Express } from 'express';
 import request from 'supertest';
 import { errorHandler } from '../middleware/errorHandler.js';
 import { db } from '../db/database.js';
+import type * as OrganizationMod from '../models/organization.model.js';
+import type * as SettingsMod from '../models/settings.model.js';
 
 // ---------------------------------------------------------------------------
 // Mock organizationModel and settingsModel.
@@ -38,7 +40,7 @@ const { mockOrgGet, mockSettingsGet } = vi.hoisted(() => ({
 }));
 
 vi.mock('../models/organization.model.js', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../models/organization.model.js')>();
+  const actual = await importOriginal<typeof OrganizationMod>();
   return {
     ...actual,
     organizationModel: {
@@ -49,7 +51,7 @@ vi.mock('../models/organization.model.js', async (importOriginal) => {
 });
 
 vi.mock('../models/settings.model.js', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../models/settings.model.js')>();
+  const actual = await importOriginal<typeof SettingsMod>();
   return {
     ...actual,
     settingsModel: {
@@ -160,8 +162,8 @@ describe('GET /api/oem/:id/documents/scan — happy path', () => {
     }
 
     // Directory should have mtime but no size
-    expect(dirEntries[0]!.size).toBeUndefined();
-    expect(dirEntries[0]!.name).toBe('subdir');
+    expect(dirEntries[0].size).toBeUndefined();
+    expect(dirEntries[0].name).toBe('subdir');
 
     // Confirm documents rows were upserted for the two files.
     const rows = db

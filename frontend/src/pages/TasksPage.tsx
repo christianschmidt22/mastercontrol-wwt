@@ -1,9 +1,12 @@
 import {
   useState,
   useCallback,
+  useEffect,
+  useRef,
   useId,
   type FormEvent,
   type CSSProperties,
+  type RefObject,
 } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Plus, RefreshCw } from 'lucide-react';
@@ -629,6 +632,7 @@ interface AddTaskFormProps {
   }) => void;
   onCancel: () => void;
   isCreating: boolean;
+  titleInputRef?: RefObject<HTMLInputElement>;
 }
 
 function AddTaskForm({
@@ -636,6 +640,7 @@ function AddTaskForm({
   onSubmit,
   onCancel,
   isCreating,
+  titleInputRef,
 }: AddTaskFormProps) {
   const [title, setTitle] = useState('');
   const [dueDate, setDueDate] = useState('');
@@ -702,11 +707,13 @@ function AddTaskForm({
         </label>
         <input
           id={titleId}
+          ref={titleInputRef}
           type="text"
           name="new-task-title"
           autoComplete="off"
           autoFocus
           required
+          aria-label="New task title"
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           placeholder="What needs to be done?"
@@ -931,6 +938,24 @@ export function TasksPage() {
   const { mutate: completeTask } = useCompleteTask();
 
   const [showAddForm, setShowAddForm] = useState(false);
+  const addTaskTitleRef = useRef<HTMLInputElement>(null);
+
+  // Ctrl+N / Cmd+N — open the add-task form and focus the title input.
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.key !== 'n') return;
+      const target = e.target as HTMLElement;
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') return;
+      e.preventDefault();
+      setShowAddForm(true);
+      // Focus happens after the form mounts; a rAF tick is sufficient.
+      requestAnimationFrame(() => {
+        addTaskTitleRef.current?.focus();
+      });
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   // Apply due filter client-side
   const rawTasks = tasksQuery.data ?? [];
@@ -1027,7 +1052,7 @@ export function TasksPage() {
           marginLeft: -3,
           marginBottom: 4,
           textWrap: 'balance',
-        } as CSSProperties}
+        }}
       >
         Tasks
       </h1>
@@ -1143,6 +1168,7 @@ export function TasksPage() {
             onSubmit={handleCreate}
             onCancel={() => setShowAddForm(false)}
             isCreating={isCreating}
+            titleInputRef={addTaskTitleRef}
           />
         ) : (
           <button
@@ -1236,7 +1262,7 @@ export function TasksPage() {
             >
               {isFiltered
                 ? 'No tasks match these filters.'
-                : 'No open tasks. Add one with ⌘N or the + Add task button above.'}
+                : 'No open tasks. Add one with Ctrl+N or the + Add task button above.'}
             </div>
           )}
 

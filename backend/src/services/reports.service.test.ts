@@ -26,6 +26,7 @@ import { mkdtempSync, readFileSync, statSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
+import type * as SettingsMod from '../models/settings.model.js';
 
 // ---------------------------------------------------------------------------
 // Mock @anthropic-ai/sdk — controls the response generateReport builds.
@@ -46,9 +47,7 @@ vi.mock('@anthropic-ai/sdk', () => {
 // resolveDefaultModel() for the model id.  Stub it so neither call hits
 // real DPAPI / settings rows.
 vi.mock('../models/settings.model.js', async (importOriginal) => {
-  const actual = await importOriginal<
-    typeof import('../models/settings.model.js')
-  >();
+  const actual = await importOriginal<typeof SettingsMod>();
   return {
     ...actual,
     settingsModel: {
@@ -222,9 +221,9 @@ describe('runReport — Anthropic failure', () => {
 
     const runs = reportRunModel.listBySchedule(scheduleId);
     expect(runs).toHaveLength(1);
-    expect(runs[0]!.status).toBe('failed');
-    expect(runs[0]!.error).toBe('upstream blew up');
-    expect(runs[0]!.finished_at).not.toBeNull();
+    expect(runs[0].status).toBe('failed');
+    expect(runs[0].error).toBe('upstream blew up');
+    expect(runs[0].finished_at).not.toBeNull();
   });
 });
 

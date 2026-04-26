@@ -1,5 +1,5 @@
 import type { Request, Response, NextFunction, RequestHandler } from 'express';
-import { z } from 'zod';
+import type { z } from 'zod';
 import { HttpError } from '../middleware/errorHandler.js';
 
 type ZodSchema = z.ZodTypeAny;

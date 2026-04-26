@@ -114,8 +114,8 @@ describe('ingestSourceModel.recordError and listErrors', () => {
     expect(relevant.length).toBe(2);
     // Newest first — "second error" (b.md) appears before "first error" (a.md)
     // since they are inserted in sequence and ordered by occurred_at DESC.
-    expect(relevant[0]!.path).toBe('/tmp/order-vault/b.md');
-    expect(relevant[1]!.path).toBe('/tmp/order-vault/a.md');
+    expect(relevant[0].path).toBe('/tmp/order-vault/b.md');
+    expect(relevant[1].path).toBe('/tmp/order-vault/a.md');
   });
 
   it('listErrors returns empty array when no errors exist for that source', () => {

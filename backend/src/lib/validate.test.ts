@@ -19,7 +19,7 @@ function makeRes(): Response {
 }
 
 function makeNext(): NextFunction {
-  return vi.fn() as unknown as NextFunction;
+  return vi.fn();
 }
 
 /**
@@ -114,7 +114,7 @@ describe('validateBody', () => {
 describe('validateQuery', () => {
   it('calls next() and stashes parsed value for valid query', () => {
     const mw = validateQuery(querySchema);
-    const req = makeReq({ query: { limit: '10' } } as unknown as Partial<Request>);
+    const req = makeReq({ query: { limit: '10' } });
     const res = makeRes();
     const next = makeNext();
 
@@ -127,7 +127,7 @@ describe('validateQuery', () => {
 
   it('produces 400 with field error for invalid query param', () => {
     const mw = validateQuery(querySchema);
-    const req = makeReq({ query: { limit: 'not-a-number' } } as unknown as Partial<Request>);
+    const req = makeReq({ query: { limit: 'not-a-number' } });
     const res = makeRes();
     const next = makeNext();
 
@@ -140,7 +140,7 @@ describe('validateQuery', () => {
 
   it('passes when optional param is absent', () => {
     const mw = validateQuery(querySchema);
-    const req = makeReq({ query: {} } as unknown as Partial<Request>);
+    const req = makeReq({ query: {} });
     const res = makeRes();
     const next = makeNext();
 
@@ -157,7 +157,7 @@ describe('validateQuery', () => {
 describe('validateParams', () => {
   it('calls next() and stashes parsed value for valid params', () => {
     const mw = validateParams(paramsSchema);
-    const req = makeReq({ params: { id: '42' } } as unknown as Partial<Request>);
+    const req = makeReq({ params: { id: '42' } });
     const res = makeRes();
     const next = makeNext();
 
@@ -170,7 +170,7 @@ describe('validateParams', () => {
 
   it('produces 400 with field error for invalid path param', () => {
     const mw = validateParams(paramsSchema);
-    const req = makeReq({ params: { id: 'not-a-number' } } as unknown as Partial<Request>);
+    const req = makeReq({ params: { id: 'not-a-number' } });
     const res = makeRes();
     const next = makeNext();
 
@@ -183,7 +183,7 @@ describe('validateParams', () => {
 
   it('error message prefix is "Invalid path params"', () => {
     const mw = validateParams(paramsSchema);
-    const req = makeReq({ params: { id: 'bad' } } as unknown as Partial<Request>);
+    const req = makeReq({ params: { id: 'bad' } });
     const res = makeRes();
     const next = makeNext();
 
@@ -195,7 +195,7 @@ describe('validateParams', () => {
 
   it('query error message prefix is "Invalid query params"', () => {
     const mw = validateQuery(querySchema);
-    const req = makeReq({ query: { limit: 'x' } } as unknown as Partial<Request>);
+    const req = makeReq({ query: { limit: 'x' } });
     const res = makeRes();
     const next = makeNext();
 

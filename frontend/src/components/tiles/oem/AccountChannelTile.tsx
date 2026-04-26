@@ -1,6 +1,7 @@
 import { Mail, Phone } from 'lucide-react';
 import { useState } from 'react';
 import { Tile } from '../Tile';
+import { TileEmptyState } from '../TileEmptyState';
 import type { Contact } from '../../../types';
 
 interface UseContactsResult {
@@ -138,18 +139,12 @@ export function AccountChannelTile({ orgId, _useContacts }: AccountChannelTilePr
       )}
 
       {!isLoading && all.length === 0 && (
-        <div
-          style={{
-            border: '1px dashed var(--rule)',
-            borderRadius: 6,
-            padding: '16px',
-            textAlign: 'center',
-            fontSize: 13,
-            color: 'var(--ink-2)',
-          }}
-        >
-          No contacts yet.
-        </div>
+        <TileEmptyState
+          copy="No contacts yet. Add the account team."
+          actionLabel="Add contact"
+          onAction={() => {}}
+          ariaLive
+        />
       )}
 
       {(accountTeam.length > 0 || channelTeam.length > 0) && (

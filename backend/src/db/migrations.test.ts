@@ -32,8 +32,8 @@ describe('runMigrations — initial apply', () => {
     expect(rows).toHaveLength(6);
     expect(rows.map((r) => r.id)).toEqual([1, 2, 3, 4, 5, 6]);
     // Sanity-check that names match the on-disk filenames.
-    expect(rows[0]!.name).toMatch(/^001_/);
-    expect(rows[5]!.name).toMatch(/^006_/);
+    expect(rows[0].name).toMatch(/^001_/);
+    expect(rows[5].name).toMatch(/^006_/);
   });
 });
 

@@ -1,4 +1,4 @@
-import type { ReactNode, HTMLAttributes, AriaAttributes, CSSProperties } from 'react';
+import type { ReactNode, CSSProperties } from 'react';
 import { useCallback } from 'react';
 import {
   DndContext,
@@ -67,7 +67,7 @@ function SortableTileSlot({
         layout={layoutEntry}
         onMove={(pos) => onMove(item.id, pos)}
         dragHandleProps={
-          { ...attributes, ...listeners } as HTMLAttributes<HTMLElement> & AriaAttributes
+          { ...attributes, ...listeners }
         }
       >
         {item.node}

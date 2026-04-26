@@ -64,7 +64,7 @@ const SECTION_TITLE_STYLE: React.CSSProperties = {
   letterSpacing: '-0.01em',
   color: 'var(--ink-1)',
   marginBottom: 16,
-  textWrap: 'balance' as React.CSSProperties['textWrap'],
+  textWrap: 'balance',
 };
 
 const SAVE_BTN_BASE: React.CSSProperties = {
@@ -218,10 +218,10 @@ function ApiKeySection() {
                 borderColor: error ? 'var(--accent)' : 'var(--rule)',
               }}
               onFocus={(e) => {
-                (e.target as HTMLInputElement).style.borderColor = 'var(--accent)';
+                (e.target).style.borderColor = 'var(--accent)';
               }}
               onBlur={(e) => {
-                (e.target as HTMLInputElement).style.borderColor =
+                (e.target).style.borderColor =
                   error ? 'var(--accent)' : 'var(--rule)';
               }}
             />
@@ -328,10 +328,10 @@ function DefaultModelSection() {
               onChange={handleChange}
               style={SELECT_STYLE}
               onFocus={(e) => {
-                (e.target as HTMLSelectElement).style.borderColor = 'var(--accent)';
+                (e.target).style.borderColor = 'var(--accent)';
               }}
               onBlur={(e) => {
-                (e.target as HTMLSelectElement).style.borderColor = 'var(--rule)';
+                (e.target).style.borderColor = 'var(--rule)';
               }}
             >
               {MODEL_OPTIONS.map((opt) => (
@@ -477,10 +477,10 @@ function NoteSourcesSection() {
                 className="mono"
                 style={INPUT_STYLE}
                 onFocus={(e) => {
-                  (e.target as HTMLInputElement).style.borderColor = 'var(--accent)';
+                  (e.target).style.borderColor = 'var(--accent)';
                 }}
                 onBlur={(e) => {
-                  (e.target as HTMLInputElement).style.borderColor = 'var(--rule)';
+                  (e.target).style.borderColor = 'var(--rule)';
                 }}
               />
             </FormField>
@@ -505,10 +505,10 @@ function NoteSourcesSection() {
                 className="mono"
                 style={INPUT_STYLE}
                 onFocus={(e) => {
-                  (e.target as HTMLInputElement).style.borderColor = 'var(--accent)';
+                  (e.target).style.borderColor = 'var(--accent)';
                 }}
                 onBlur={(e) => {
-                  (e.target as HTMLInputElement).style.borderColor = 'var(--rule)';
+                  (e.target).style.borderColor = 'var(--rule)';
                 }}
               />
             </FormField>

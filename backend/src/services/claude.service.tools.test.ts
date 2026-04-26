@@ -304,7 +304,7 @@ beforeEach(() => {
 function auditCallsFor(toolName: string): Array<Record<string, unknown>> {
   return (mockAuditAppend.mock.calls as Array<[Record<string, unknown>]>)
     .filter((c) => c[0]?.['tool_name'] === toolName)
-    .map((c) => c[0] as Record<string, unknown>);
+    .map((c) => c[0]);
 }
 
 /** Pull all SSE tool_result events. */

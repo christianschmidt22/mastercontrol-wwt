@@ -1,9 +1,41 @@
-import type { ReactNode } from 'react';
+import type { ReactNode, KeyboardEvent } from 'react';
+import { useCallback, useRef } from 'react';
 import { NavLink } from 'react-router-dom';
 import { Home, CheckSquare, BarChart2, Bot, Settings } from 'lucide-react';
 import { clsx } from 'clsx';
 import { ThemeToggle } from './ThemeToggle';
 import { useOrganizations } from '../../api/useOrganizations';
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns true when the event's target is a form input, textarea,
+ * contentEditable element, or a select — i.e. any context where arrow keys
+ * have built-in meaning and must not be intercepted.
+ */
+function isEditableTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  const tag = target.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true;
+  if (target.isContentEditable) return true;
+  return false;
+}
+
+/**
+ * Collects all focusable sidebar links/buttons in DOM order from a nav element.
+ * Excludes disabled buttons.
+ */
+function getSidebarFocusables(nav: HTMLElement): HTMLElement[] {
+  return Array.from(
+    nav.querySelectorAll<HTMLElement>('a[href], button:not([disabled])'),
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Sub-components
+// ---------------------------------------------------------------------------
 
 interface NavItemProps {
   to: string;
@@ -55,7 +87,13 @@ function Section({ heading, children }: SectionProps) {
   );
 }
 
+// ---------------------------------------------------------------------------
+// Sidebar
+// ---------------------------------------------------------------------------
+
 export function Sidebar() {
+  const navRef = useRef<HTMLElement | null>(null);
+
   const {
     data: customers,
     isLoading: customersLoading,
@@ -63,14 +101,101 @@ export function Sidebar() {
     refetch: refetchCustomers,
   } = useOrganizations('customer');
 
+  /**
+   * Global keydown handler mounted on <window> so pressing "/" from anywhere
+   * in the app focuses the first sidebar link (mirrors Slack / GitHub
+   * behaviour). Guard: don't hijack when focus is in an editable element.
+   */
+  const handleSlashKey = useCallback((e: globalThis.KeyboardEvent) => {
+    if (e.key !== '/') return;
+    if (isEditableTarget(e.target)) return;
+    if (!navRef.current) return;
+    const focusables = getSidebarFocusables(navRef.current);
+    if (focusables.length > 0) {
+      e.preventDefault();
+      focusables[0]!.focus();
+    }
+  }, []);
+
+  // Register / unregister the global "/" listener via ref callback so we
+  // don't need useEffect (avoids an exhaustive-deps lint warning on navRef).
+  const setNavRef = useCallback(
+    (node: HTMLElement | null) => {
+      navRef.current = node;
+      if (node) {
+        window.addEventListener('keydown', handleSlashKey);
+      } else {
+        window.removeEventListener('keydown', handleSlashKey);
+      }
+    },
+    [handleSlashKey],
+  );
+
+  /**
+   * Arrow / Home / End / Space keyboard handler attached to the <nav>.
+   * Only active when focus is already inside the sidebar.
+   */
+  const handleNavKeyDown = useCallback((e: KeyboardEvent<HTMLElement>) => {
+    // Never intercept when the event originates inside an editable element.
+    if (isEditableTarget(e.target)) return;
+
+    const nav = navRef.current;
+    if (!nav) return;
+
+    const focusables = getSidebarFocusables(nav);
+    if (focusables.length === 0) return;
+
+    const current = document.activeElement as HTMLElement;
+    const idx = focusables.indexOf(current);
+
+    switch (e.key) {
+      case 'ArrowDown': {
+        e.preventDefault();
+        const next = idx === -1 || idx === focusables.length - 1 ? 0 : idx + 1;
+        focusables[next]!.focus();
+        break;
+      }
+      case 'ArrowUp': {
+        e.preventDefault();
+        const prev = idx <= 0 ? focusables.length - 1 : idx - 1;
+        focusables[prev]!.focus();
+        break;
+      }
+      case 'Home': {
+        e.preventDefault();
+        focusables[0]!.focus();
+        break;
+      }
+      case 'End': {
+        e.preventDefault();
+        focusables[focusables.length - 1]!.focus();
+        break;
+      }
+      case ' ': {
+        // Space activates the focused element (links don't respond to Space by
+        // default; buttons already do, so this only adds value for <a> links).
+        if (current && current.tagName === 'A') {
+          e.preventDefault();
+          current.click();
+        }
+        break;
+      }
+      default:
+        break;
+    }
+  }, []);
+
   return (
     <nav
+      ref={setNavRef}
+      role="navigation"
       aria-label="Primary"
       className="flex flex-col gap-6 h-full"
       style={{
         padding: '20px 14px',
         borderRight: '1px solid var(--rule)',
       }}
+      onKeyDown={handleNavKeyDown}
     >
       {/* Brand */}
       <div

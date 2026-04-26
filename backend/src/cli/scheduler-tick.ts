@@ -24,7 +24,7 @@ import { runMigrations } from '../db/database.js';
 import { runMissedJobs } from '../services/scheduler.service.js';
 
 async function main(): Promise<void> {
-  await runMigrations();
+  runMigrations();
   await runMissedJobs();
 }
 

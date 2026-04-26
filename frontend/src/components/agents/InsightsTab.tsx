@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/exhaustive-deps -- allInsights is rebuilt every render (Phase-3 cleanup will memoize via useMemo with orgs+orgInsightsMap deps) */
 import { useState, useCallback, useId, useEffect, useRef } from 'react';
 import type { Note } from '../../types';
 import { useNotes, useConfirmInsight, useRejectInsight } from '../../api/useNotes';

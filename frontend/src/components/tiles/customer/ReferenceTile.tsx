@@ -1,11 +1,12 @@
 import { useState, useRef, useEffect, type ReactNode, type KeyboardEvent } from 'react';
 import { Building2, MapPin, Link as LinkIcon } from 'lucide-react';
 import { Tile } from '../Tile';
+import { TileEmptyState } from '../TileEmptyState';
 import type { Organization } from '../../../types';
 
 interface UseOrganizationResult {
   data: Organization | undefined;
-  isLoading: boolean;
+  isLoading?: boolean;
 }
 
 function useOrganizationStub(_orgId: number): UseOrganizationResult {
@@ -173,9 +174,18 @@ const ENTRIES: RefEntry[] = [
  */
 export function ReferenceTile({ orgId, _useOrganization }: ReferenceTileProps) {
   const useOrganization = _useOrganization ?? useOrganizationStub;
-  const { data: org } = useOrganization(orgId);
+  const { data: org, isLoading } = useOrganization(orgId);
 
   const [openEntry, setOpenEntry] = useState<string | null>(null);
+
+  /** True when org is loaded but carries no reference data across all three sections. */
+  const hasNoData =
+    !isLoading &&
+    !org?.metadata?.portal_url &&
+    !((org?.metadata?.locations as string | undefined)?.trim()) &&
+    !Object.entries(org?.metadata ?? {}).some(
+      ([k, v]) => k !== 'locations' && k !== 'portal_url' && v !== null && v !== '',
+    );
 
   const handleEntryKeyDown = (e: KeyboardEvent<HTMLButtonElement>, id: string) => {
     if (e.key === 'Enter' || e.key === ' ') {
@@ -189,6 +199,14 @@ export function ReferenceTile({ orgId, _useOrganization }: ReferenceTileProps) {
 
   return (
     <Tile title="Reference">
+      {hasNoData && (
+        <TileEmptyState
+          copy="No reference data yet. Profile fills in as you add contacts, locations, and portals."
+          ariaLive
+        />
+      )}
+
+      {!hasNoData && (
       <div
         style={{
           display: 'grid',
@@ -240,6 +258,7 @@ export function ReferenceTile({ orgId, _useOrganization }: ReferenceTileProps) {
           </div>
         ))}
       </div>
+      )}
     </Tile>
   );
 }

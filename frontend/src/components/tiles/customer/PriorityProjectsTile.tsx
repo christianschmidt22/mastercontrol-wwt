@@ -1,4 +1,5 @@
 import { Tile } from '../Tile';
+import { TileEmptyState } from '../TileEmptyState';
 import type { Project } from '../../../types';
 
 interface UseProjectsResult {
@@ -40,18 +41,12 @@ export function PriorityProjectsTile({ orgId, _useProjects }: PriorityProjectsTi
       )}
 
       {!isLoading && projects.length === 0 && (
-        <div
-          style={{
-            border: '1px dashed var(--rule)',
-            borderRadius: 6,
-            padding: '16px',
-            textAlign: 'center',
-            fontSize: 13,
-            color: 'var(--ink-2)',
-          }}
-        >
-          No active projects — add one to start tracking.
-        </div>
+        <TileEmptyState
+          copy="No projects on record. Add one when an engagement starts."
+          actionLabel="Add project"
+          onAction={() => {}}
+          ariaLive
+        />
       )}
 
       {projects.length > 0 && (
