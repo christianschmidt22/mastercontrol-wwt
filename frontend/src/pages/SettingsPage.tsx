@@ -23,7 +23,11 @@ import {
 import { NavLink } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 import { useSetting, useSetSetting } from '../api/useSettings';
+import { useIngestStatus } from '../api/useIngest';
 import { FormField } from '../components/forms/FormField';
+import { IngestStatusPanel } from '../components/ingest/IngestStatusPanel';
+import { SourcePathConfig } from '../components/ingest/SourcePathConfig';
+import { IngestErrorList } from '../components/ingest/IngestErrorList';
 
 // ─── Shared style tokens ────────────────────────────────────────────────────
 
@@ -609,7 +613,60 @@ function SchedulerSection() {
   );
 }
 
-// ─── Section 5: Agent Overrides ───────────────────────────────────────────────
+// ─── Section 5: Ingest ────────────────────────────────────────────────────────
+
+function IngestSection() {
+  const { data, isLoading } = useIngestStatus();
+  const sources = data?.source ? [data.source] : [];
+  const errors = data?.errors ?? [];
+
+  return (
+    <section aria-labelledby="section-ingest">
+      <h2 id="section-ingest" style={SECTION_TITLE_STYLE}>
+        Ingest
+      </h2>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+        <IngestStatusPanel />
+
+        <div style={CARD_STYLE}>
+          <h3
+            style={{
+              fontFamily: 'var(--body)',
+              fontSize: 13,
+              fontWeight: 500,
+              color: 'var(--ink-2)',
+              letterSpacing: '0.06em',
+              textTransform: 'uppercase',
+              marginBottom: 12,
+            }}
+          >
+            Configured Sources
+          </h3>
+          <SourcePathConfig sources={sources} isLoading={isLoading} />
+        </div>
+
+        <div style={CARD_STYLE}>
+          <h3
+            style={{
+              fontFamily: 'var(--body)',
+              fontSize: 13,
+              fontWeight: 500,
+              color: 'var(--ink-2)',
+              letterSpacing: '0.06em',
+              textTransform: 'uppercase',
+              marginBottom: 12,
+            }}
+          >
+            Recent Errors
+          </h3>
+          <IngestErrorList errors={errors} isLoading={isLoading} />
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// ─── Section 6: Agent Overrides ───────────────────────────────────────────────
 
 function AgentOverridesSection() {
   return (
@@ -718,6 +775,7 @@ export function SettingsPage() {
         <DefaultModelSection />
         <NoteSourcesSection />
         <SchedulerSection />
+        <IngestSection />
         <AgentOverridesSection />
       </div>
     </div>

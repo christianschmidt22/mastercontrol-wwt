@@ -2,6 +2,21 @@
 
 ## Phase 2 — In progress on branch `claude/laughing-ishizaka-8f06fa` (2026-04-25)
 
+- **WorkVault Ingest UI + per-error retry** (2026-04-26): backend adds
+  `POST /api/ingest/errors/:id/retry` (validates with `IngestErrorIdParamSchema`,
+  calls `retrySingleError()` in `ingest.service.ts` which re-scans the
+  specific file and deletes the error row on success, or marks it resolved if
+  the file no longer exists). Frontend adds `frontend/src/types/ingest.ts`
+  (hand-mirrored types), updates `useIngest.ts` with `useRetryIngestError`
+  (optimistic error-row removal + revert-on-error), and three new components
+  in `frontend/src/components/ingest/`: `IngestStatusPanel` (last scan time,
+  error count, "Scan Now" CTA), `SourcePathConfig` (source list with
+  middle-truncated paths and hover title), `IngestErrorList` (error rows with
+  per-row Retry button, `role="status"` + `aria-live="polite"`). Ingest
+  section wired into `SettingsPage.tsx` between Scheduler and Agent Overrides.
+  Backend: 390 → 394 tests. Frontend: 154 → 174 tests. Both workspaces
+  typecheck + lint clean.
+
 Five-stream parallel-agent batch off the verified Phase 1 baseline. Backend
 332 + frontend 43 = 375/375 tests green; both workspaces typecheck clean.
 

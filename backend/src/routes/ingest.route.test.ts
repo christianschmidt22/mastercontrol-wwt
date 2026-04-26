@@ -48,9 +48,11 @@ vi.mock('../models/settings.model.js', () => ({
 // Mock: ingest.service — avoid filesystem operations
 // ---------------------------------------------------------------------------
 const mockScanWorkvault = vi.fn();
+const mockRetrySingleError = vi.fn();
 
 vi.mock('../services/ingest.service.js', () => ({
   scanWorkvault: (...args: unknown[]) => mockScanWorkvault(...args),
+  retrySingleError: (...args: unknown[]) => mockRetrySingleError(...args),
 }));
 
 // ---------------------------------------------------------------------------
@@ -130,6 +132,41 @@ describe('POST /api/ingest/scan', () => {
       if (key === 'anthropic_api_key') return 'sk-ant-fake';
       return null;
     });
+  });
+});
+
+describe('POST /api/ingest/errors/:id/retry', () => {
+  it('returns 200 with { resolved: true, path_not_found: false } on success', async () => {
+    mockRetrySingleError.mockResolvedValueOnce({ resolved: true, path_not_found: false });
+
+    const res = await request(app).post('/api/ingest/errors/42/retry');
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ resolved: true, path_not_found: false });
+    expect(mockRetrySingleError).toHaveBeenCalledWith(42);
+  });
+
+  it('returns 200 with path_not_found: true when the file is gone', async () => {
+    mockRetrySingleError.mockResolvedValueOnce({ resolved: true, path_not_found: true });
+
+    const res = await request(app).post('/api/ingest/errors/7/retry');
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ resolved: true, path_not_found: true });
+  });
+
+  it('returns 404 when the error id is unknown', async () => {
+    const { HttpError } = await import('../middleware/errorHandler.js');
+    mockRetrySingleError.mockRejectedValueOnce(new HttpError(404, 'Ingest error 999 not found'));
+
+    const res = await request(app).post('/api/ingest/errors/999/retry');
+
+    expect(res.status).toBe(404);
+  });
+
+  it('returns 400 when the id param is not a number', async () => {
+    const res = await request(app).post('/api/ingest/errors/not-a-number/retry');
+    expect(res.status).toBe(400);
   });
 });
 

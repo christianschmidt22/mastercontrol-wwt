@@ -66,6 +66,14 @@ const insertErrorStmt = db.prepare<[number, string, string]>(
   `INSERT INTO ingest_errors (source_id, path, error) VALUES (?, ?, ?)`,
 );
 
+const getErrorStmt = db.prepare<[number], IngestError>(
+  'SELECT * FROM ingest_errors WHERE id = ?',
+);
+
+const deleteErrorStmt = db.prepare<[number]>(
+  'DELETE FROM ingest_errors WHERE id = ?',
+);
+
 // ---------------------------------------------------------------------------
 // Export
 // ---------------------------------------------------------------------------
@@ -116,5 +124,15 @@ export const ingestSourceModel = {
    */
   listErrors(sourceId: number, limit = 20): IngestError[] {
     return listErrorsStmt.all(sourceId, limit);
+  },
+
+  /** Fetch a single ingest_error row by id. Returns undefined if not found. */
+  getError(id: number): IngestError | undefined {
+    return getErrorStmt.get(id);
+  },
+
+  /** Delete an ingest_error row by id. No-op if the row doesn't exist. */
+  deleteError(id: number): void {
+    deleteErrorStmt.run(id);
   },
 };
