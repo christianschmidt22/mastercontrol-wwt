@@ -454,3 +454,97 @@ describe('POST /api/subagent/delegate-agentic', () => {
     expect(recent.body[0].error).toMatch(/503/);
   });
 });
+
+// ---------------------------------------------------------------------------
+// POST /api/subagent/delegate-sdk
+// ---------------------------------------------------------------------------
+
+// Mock the SDK service so no real CLI subprocess is invoked.
+// vi.mock is hoisted; the factory receives no outer scope, so we return a
+// plain vi.fn() here and configure it in each test via vi.mocked().
+vi.mock('../services/subagentSdk.service.js', () => ({
+  delegateViaSubscription: vi.fn(),
+}));
+
+// Import the mocked module so we can reconfigure it per-test.
+import { delegateViaSubscription } from '../services/subagentSdk.service.js';
+
+describe('POST /api/subagent/delegate-sdk', () => {
+  const SDK_BODY = {
+    task: 'List the top-level files',
+    tools: ['read_file'],
+    working_dir: os.tmpdir(),
+  };
+
+  const DEFAULT_SUCCESS = {
+    ok: true as const,
+    transcript: [{ kind: 'assistant_text' as const, text: 'done' }],
+    total_usage: { input_tokens: 5, output_tokens: 3, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 },
+    total_cost_usd: 0,
+    iterations: 1,
+    stopped_reason: 'end_turn' as const,
+  };
+
+  beforeEach(() => {
+    vi.mocked(delegateViaSubscription).mockResolvedValue(DEFAULT_SUCCESS);
+  });
+
+  it('returns 400 when tools array is empty', async () => {
+    const res = await request(app)
+      .post('/api/subagent/delegate-sdk')
+      .send({ task: 'hello', tools: [] });
+    expect(res.status).toBe(400);
+  });
+
+  it('returns 400 when tools contains an invalid tool name', async () => {
+    const res = await request(app)
+      .post('/api/subagent/delegate-sdk')
+      .send({ task: 'hello', tools: ['read_file', 'inject_sql'] });
+    expect(res.status).toBe(400);
+  });
+
+  it('returns 400 when max_iterations exceeds 50', async () => {
+    const res = await request(app)
+      .post('/api/subagent/delegate-sdk')
+      .send({ task: 'hello', tools: ['read_file'], max_iterations: 99 });
+    expect(res.status).toBe(400);
+  });
+
+  it('happy path: returns ok=true with transcript from the service', async () => {
+    vi.mocked(delegateViaSubscription).mockResolvedValue({
+      ok: true,
+      transcript: [{ kind: 'assistant_text', text: 'All files listed.' }],
+      total_usage: { input_tokens: 10, output_tokens: 5, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 },
+      total_cost_usd: 0,
+      iterations: 1,
+      stopped_reason: 'end_turn',
+    });
+
+    const res = await request(app)
+      .post('/api/subagent/delegate-sdk')
+      .send(SDK_BODY);
+
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+    expect(res.body.stopped_reason).toBe('end_turn');
+    expect(res.body.transcript[0].text).toBe('All files listed.');
+    expect(res.body.total_cost_usd).toBe(0);
+  });
+
+  it('returns ok=false (status 200) when service returns an auth error', async () => {
+    vi.mocked(delegateViaSubscription).mockResolvedValue({
+      ok: false,
+      error: 'Claude.ai subscription not authenticated. Run `claude /login` first to authorize MasterControl to use your subscription.',
+      transcript_so_far: [],
+      total_usage: { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 },
+    });
+
+    const res = await request(app)
+      .post('/api/subagent/delegate-sdk')
+      .send(SDK_BODY);
+
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(false);
+    expect(res.body.error).toMatch(/claude \/login/i);
+  });
+});

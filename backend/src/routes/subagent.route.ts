@@ -20,6 +20,7 @@ import {
   type UsagePeriodValue,
 } from '../schemas/subagent.schema.js';
 import { delegate, delegateAgentic, getSessionStart } from '../services/subagent.service.js';
+import { delegateViaSubscription } from '../services/subagentSdk.service.js';
 import { anthropicUsageModel } from '../models/anthropicUsage.model.js';
 
 export const subagentRouter = Router();
@@ -47,6 +48,21 @@ subagentRouter.post(
     try {
       const body = req.validatedBody as AgenticDelegateRequest;
       const result = await delegateAgentic(body);
+      res.json(result);
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// POST /api/subagent/delegate-sdk ----------------------------------------
+subagentRouter.post(
+  '/delegate-sdk',
+  validateBody(AgenticDelegateRequestSchema),
+  async (req, res, next) => {
+    try {
+      const body = req.validatedBody as AgenticDelegateRequest;
+      const result = await delegateViaSubscription(body);
       res.json(result);
     } catch (err) {
       next(err);
