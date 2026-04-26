@@ -36,10 +36,14 @@ agentsRouter.put('/configs/:id', validateBody(AgentConfigUpdateSchema), (req, re
   res.json(updated);
 });
 
-// GET /threads?org_id=
+// GET /threads?org_id=&limit=  — org_id is optional; omit for cross-org list
 agentsRouter.get('/threads', validateQuery(AgentThreadListQuerySchema), (req, res) => {
-  const { org_id } = req.validated as { org_id: number };
-  res.json(agentThreadModel.listFor(org_id));
+  const { org_id, limit } = req.validated as { org_id?: number; limit?: number };
+  if (org_id !== undefined) {
+    res.json(agentThreadModel.listFor(org_id));
+  } else {
+    res.json(agentThreadModel.listAll(limit ?? 50));
+  }
 });
 
 // POST /threads

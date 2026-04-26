@@ -348,8 +348,34 @@ describe('GET /api/agents/threads', () => {
     expect(titles).not.toContain('Org2 Thread');
   });
 
-  it('requires org_id — returns 400 when missing', async () => {
+  it('returns all threads across orgs when org_id is omitted', async () => {
+    const org1 = makeOrg();
+    const org2 = makeOrg();
+    makeThread(org1.id, 'CrossOrg A');
+    makeThread(org2.id, 'CrossOrg B');
+
     const res = await request(app).get('/api/agents/threads');
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body)).toBe(true);
+    const titles = (res.body as Array<{ title: string }>).map((t) => t.title);
+    expect(titles).toContain('CrossOrg A');
+    expect(titles).toContain('CrossOrg B');
+  });
+
+  it('respects ?limit= when no org_id given', async () => {
+    const org = makeOrg();
+    // Create 3 threads
+    makeThread(org.id, 'Limit T1');
+    makeThread(org.id, 'Limit T2');
+    makeThread(org.id, 'Limit T3');
+
+    const res = await request(app).get('/api/agents/threads?limit=2');
+    expect(res.status).toBe(200);
+    expect((res.body as unknown[]).length).toBeLessThanOrEqual(2);
+  });
+
+  it('rejects limit > 200 with 400', async () => {
+    const res = await request(app).get('/api/agents/threads?limit=201');
     expect(res.status).toBe(400);
   });
 });

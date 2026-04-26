@@ -39,7 +39,19 @@ export const NoteCreateSchema = z.object({
   provenance: NoteProvenanceSchema.optional(),
 });
 
+/** GET /api/notes/unconfirmed query params */
+export const UnconfirmedInsightsQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(200).optional(),
+});
+
+/** Shape returned by GET /api/notes/unconfirmed — Note + org fields */
+export const NoteWithOrgSchema = NoteSchema.extend({
+  org_name: z.string(),
+  org_type: z.string(),
+});
+
 export type NoteRole = z.infer<typeof NoteRoleSchema>;
 export type NoteProvenance = z.infer<typeof NoteProvenanceSchema>;
 export type Note = z.infer<typeof NoteSchema>;
 export type NoteCreate = z.infer<typeof NoteCreateSchema>;
+export type NoteWithOrg = z.infer<typeof NoteWithOrgSchema>;
