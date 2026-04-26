@@ -138,7 +138,6 @@ function ChipGroup<T extends string>({
                 color: active ? 'var(--ink-1)' : 'var(--ink-2)',
                 transition:
                   'background-color 150ms var(--ease), color 150ms var(--ease)',
-                outline: 'none',
               }}
               className="focus-visible:ring-2 focus-visible:ring-[--accent]"
             >

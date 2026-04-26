@@ -54,36 +54,42 @@
 
 ## P1 — should fix
 
-- **[`frontend/src/components/overlays/CommandPalette.tsx:321,484,540`]** **[focus-visible]**
+- **[`frontend/src/components/overlays/CommandPalette.tsx:321,484,540`]** **[focus-visible]** (FIXED in Round 9 audit pass)
   `outline: 'none'` on `role="option"` rows (`OrgRow`, `ActionRow`, and the combobox input). These elements are not focusable themselves — keyboard navigation uses `aria-activedescendant` rather than DOM focus on the rows, which is correct. The combobox input's `outline: 'none'` is the real issue: it strips the browser ring from the text field itself. The global `:focus-visible` rule in `index.css` should cover this since the input has no explicit `tabIndex=-1`, but the inline style overrides it. Remove `outline: 'none'` from the `<input>` style block and rely on the global rule.
 
-- **[`frontend/src/pages/TasksPage.tsx:141`]** **[focus-visible]**
+- **[`frontend/src/pages/TasksPage.tsx:141`]** **[focus-visible]** (FIXED in Round 9 audit pass)
   The ChipGroup `<button>` has `outline: 'none'` in the inline style but adds a Tailwind `focus-visible:ring-2 focus-visible:ring-[--accent]` class. The combined result is correct because Tailwind's `focus-visible:ring` uses `outline`-based ring and the inline `outline: 'none'` would strip it for pointer users who happen to Tab in. Same fix: remove the `outline: 'none'` inline style and rely on the global `:focus-visible` + the Tailwind class for the accent ring.
 
-- **[`frontend/src/components/overlays/CommandPalette.tsx:256`] [`frontend/src/pages/ReportsPage.tsx:311`]** **[CSS variable usage]**
+- **[`frontend/src/components/overlays/CommandPalette.tsx:256`] [`frontend/src/pages/ReportsPage.tsx:311`]** **[CSS variable usage]** (FIXED in Round 9 audit pass)
   Backdrop overlays use `rgba(14, 17, 22, 0.72)` — a hardcoded dark value that is correct in dark mode but does not adapt in light mode. In light mode the backdrop should still dim the warm-paper background, but `#0E1116` (the dark `--bg`) at 72% opacity over `#FAF7F2` creates a very dark overlay on an already-light background, which is fine perceptually but semantically inconsistent. A design-token-safe value would be `rgba(0,0,0,0.55)` (neutral black with moderate opacity) or a CSS custom property like `--overlay-bg`. This is a P1 because it only shows when the user is in light mode, and the visual result is still acceptable.
+  **Fix applied:** Replaced both instances with `rgba(0, 0, 0, 0.55)`.
 
-- **[`frontend/src/pages/SettingsPage.tsx:71`]** **[typography]**
+- **[`frontend/src/pages/SettingsPage.tsx:71`]** **[typography]** (FIXED in Round 9 audit pass)
   `SECTION_TITLE_STYLE` explicitly sets `textWrap: 'balance'` even though the global `index.css` rule already applies `text-wrap: balance` to all `h1`–`h3`. The redundancy is harmless but clutters the style object. Remove from the constant. Not committed because not P0 and involves careful testing that it does not affect existing snapshot tests.
 
 ---
 
 ## P2 — nice to have
 
-- **[`frontend/src/components/layout/Sidebar.tsx:327`]** **[iconography]**
+- **[`frontend/src/components/layout/Sidebar.tsx:327`]** **[iconography]** (FIXED in Round 9 audit pass)
   OEM section uses `<Bot>` icon for both the "OEM" nav entry and the "Agents" nav entry below it. Using the same icon for two conceptually different nav sections reduces glanceability. Consider `<Package>` or `<Server>` for OEM.
+  **Fix applied:** Changed OEM nav entry to use `<Package>` icon.
 
-- **[`frontend/src/pages/HomePage.tsx:673`]** **[typography]**
+- **[`frontend/src/pages/HomePage.tsx:673`]** **[typography]** (FIXED in Round 9 audit pass)
   The page-title `<h1>` "Today." sets `textWrap: 'balance'` inline. Redundant with global rule. No functional impact.
+  **Fix applied:** Removed the redundant `textWrap: 'balance'` inline style.
 
-- **[`frontend/src/pages/ReportsPage.tsx:961–968`]** **[heading hierarchy]**
+- **[`frontend/src/pages/ReportsPage.tsx:961–968`]** **[heading hierarchy]** (FIXED in Round 9 audit pass)
   `ReportRow` uses `<h3>` for the report name inside a `<ul role="list">`. There is no `h2` ancestor on the Reports page before the list — only the page `h1`. This creates a jump from h1 → h3. Consider either an `<h2>` section header above the list ("Your reports") or demoting the report name to a `<strong>`/`<p>` with display typography.
+  **Fix applied:** Added an `<h2>Your reports</h2>` section header (styled as a small uppercase label) above the list, fixing the h1 → h2 → h3 hierarchy.
 
-- **[`frontend/src/pages/ReportsPage.tsx:672`]** **[typography]**
+- **[`frontend/src/pages/ReportsPage.tsx:672`]** **[typography]** (DEFERRED — acceptable as-is)
   The `ReportForm` "Output destination" label uses a `<span>` with `labelStyle` instead of a `<label>`. The associated field is a read-only `<p>` (not an interactive control), so a `<label>` technically isn't required, but using a descriptive `<p>` with a bold `<dt>` within a `<dl>` would be more semantically precise.
+  **Rationale for deferral:** The field is non-interactive; the `<span>` with label styles is presentationally correct. Converting to a `<dl>`/`<dt>` pattern is a structural refactor that affects more than the 10-line threshold. No a11y violation.
 
-- **[`frontend/src/components/agents/InsightsTab.tsx:125`] [`frontend/src/components/agents/TemplatesTab.tsx:339`]** **[vermilion budget]**
+- **[`frontend/src/components/agents/InsightsTab.tsx:125`] [`frontend/src/components/agents/TemplatesTab.tsx:339`]** **[vermilion budget]** (DEFERRED — agents/ directory off-limits)
   `accentColor: 'var(--accent)'` on checkboxes in InsightsTab and TemplatesTab. The DESIGN.md vermilion budget restricts rest-state uses to the active sidebar entry. Checkboxes in an open selection UI are a transient interactive state (not rest), so this is defensible. However, the current system uses `accentColor: 'var(--ink-3)'` on checkboxes in HomePage, TasksPage, and ReportsPage for consistency. InsightsTab and TemplatesTab deviate. Standardise to `var(--ink-3)` for consistency across the app.
+  **Rationale for deferral:** `frontend/src/components/agents/` is the sibling agent's surface area and is off-limits for this pass. Follow up in the next round or after the sibling agent's work lands.
 
 ---
 

@@ -667,7 +667,6 @@ export function HomePage() {
           letterSpacing: '-0.02em',
           marginLeft: -3,
           marginBottom: 6,
-          textWrap: 'balance',
         }}
       >
         Today.

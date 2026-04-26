@@ -308,7 +308,7 @@ function Dialog({ open, onClose, titleId, title, children, wide }: DialogProps) 
       style={{
         position: 'fixed',
         inset: 0,
-        background: 'rgba(14, 17, 22, 0.72)',
+        background: 'rgba(0, 0, 0, 0.55)',
         zIndex: 900,
         display: 'flex',
         alignItems: 'center',
@@ -1319,6 +1319,20 @@ export function ReportsPage() {
         )}
 
         {reports.length > 0 && (
+          <>
+          <h2
+            style={{
+              fontFamily: 'var(--body)',
+              fontSize: 11,
+              fontWeight: 600,
+              letterSpacing: '0.08em',
+              textTransform: 'uppercase',
+              color: 'var(--ink-3)',
+              margin: '0 0 4px',
+            }}
+          >
+            Your reports
+          </h2>
           <ul
             role="list"
             data-testid="reports-list"
@@ -1339,6 +1353,7 @@ export function ReportsPage() {
               />
             ))}
           </ul>
+          </>
         )}
       </div>
 

@@ -253,7 +253,7 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
       style={{
         position: 'fixed',
         inset: 0,
-        background: 'rgba(14, 17, 22, 0.72)',
+        background: 'rgba(0, 0, 0, 0.55)',
         zIndex: 100,
         display: 'flex',
         alignItems: 'flex-start',
@@ -318,7 +318,6 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
               color: 'var(--ink-1)',
               background: 'transparent',
               border: 'none',
-              outline: 'none',
               width: '100%',
               lineHeight: 1.3,
               caretColor: 'var(--accent)',

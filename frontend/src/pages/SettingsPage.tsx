@@ -68,7 +68,6 @@ const SECTION_TITLE_STYLE: React.CSSProperties = {
   letterSpacing: '-0.01em',
   color: 'var(--ink-1)',
   marginBottom: 16,
-  textWrap: 'balance',
 };
 
 const SAVE_BTN_BASE: React.CSSProperties = {

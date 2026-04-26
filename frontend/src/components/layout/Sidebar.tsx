@@ -1,7 +1,7 @@
 import type { ReactNode, KeyboardEvent } from 'react';
 import { useCallback, useRef } from 'react';
 import { NavLink } from 'react-router-dom';
-import { Home, CheckSquare, BarChart2, Bot, Settings } from 'lucide-react';
+import { Home, CheckSquare, BarChart2, Bot, Package, Settings } from 'lucide-react';
 import { clsx } from 'clsx';
 import { ThemeToggle } from './ThemeToggle';
 import { useOrganizations } from '../../api/useOrganizations';
@@ -324,7 +324,7 @@ export function Sidebar() {
 
       {/* OEM + Agents */}
       <Section heading="OEM">
-        <NavItem to="/oem" icon={<Bot size={16} strokeWidth={1.5} />} label="OEM" />
+        <NavItem to="/oem" icon={<Package size={16} strokeWidth={1.5} />} label="OEM" />
       </Section>
 
       <Section heading="AI">
