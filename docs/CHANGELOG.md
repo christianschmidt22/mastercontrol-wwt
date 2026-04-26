@@ -1,43 +1,141 @@
 # Changelog
 
-## Phase 2 — In progress on branch `claude/laughing-ishizaka-8f06fa` (2026-04-25)
+## Phase 2 — Merged ✓ (2026-04-26)
 
-Five-stream parallel-agent batch off the verified Phase 1 baseline. Backend
-332 + frontend 43 = 375/375 tests green; both workspaces typecheck clean.
+Phase 2 ships in two five-stream parallel-agent batches off the verified
+Phase 1 baseline, merged onto `main` as commit `3650106` together with the
+ESLint v9 setup contributed by a parallel OpenAI Codex CLI session. 11 of
+12 plan steps (`docs/plans/phase-2.md`) shipped; only Step 12 (manual
+browser walkthrough) remains.
 
-- **Migration framework** (R-014): `_migrations` table + numbered SQL files;
-  `runMigrations()` replaces `initSchema()`. Six migrations seeded:
-  `001_initial.sql` (Phase 1 schema baseline), `002_indexes.sql` (R-015),
-  `003_schema_harden.sql` (R-019: `note_mentions.source/confidence`,
-  `contacts.updated_at`, `documents.updated_at`, cross-org task triggers),
-  `004_audit.sql` (placeholder), `005_ingest.sql` (R-023 dual-source columns
-  + `ingest_sources` + `ingest_errors`), `006_reports.sql` (`reports`,
+Verification on Windows + Node 24.15.0 from the consolidated `main`:
+
+- `npm install` — 514 packages clean.
+- `npm run typecheck` — both workspaces clean.
+- `npm run lint` — both workspaces clean (`max-warnings 0`).
+- `npm run test` — **385 backend + 43 frontend = 428/428 green.** Backend
+  suite runs in ~9 s with the `:memory:` + savepoint pattern (R-018).
+- `npm run dev` — backend `http://127.0.0.1:3001`, frontend `http://127.0.0.1:5173`.
+  Live probes: `/api/health` ok, `/api/reports` returns the seeded Daily
+  Task Review, `/api/ingest/status` returns an empty source state,
+  `/api/oem/:id/documents/scan` returns clean 404 for missing orgs.
+
+### Batch 1 — `acf1b99` `feat(phase2): batch 1` + `094068c` `fix(phase2): smoke-test catches`
+
+Five Opus 4.7 agents in parallel.
+
+- **Migration framework** (R-014): `_migrations` table + numbered SQL
+  files; `runMigrations()` replaces `initSchema()`. Six migrations seeded:
+  `001_initial.sql` (Phase 1 schema baseline, `IF NOT EXISTS` stripped),
+  `002_indexes.sql` (R-015), `003_schema_harden.sql` (R-019:
+  `note_mentions.source/confidence`, `contacts.updated_at`,
+  `documents.updated_at`, cross-org task triggers), `004_audit.sql`
+  (placeholder), `005_ingest.sql` (R-023 dual-source columns +
+  `ingest_sources` + `ingest_errors`), `006_reports.sql` (`reports`,
   `report_schedules`, `report_runs` with `UNIQUE(schedule_id, fire_time)`).
-- **Reports module** (Step 5): models, service (`runReport`,
-  `seedDailyTaskReview`, `DAILY_TASK_REVIEW_TEMPLATE`), zod schemas, route
-  (`/api/reports` + `run-now` + `runs` history). Output written to
+- **Reports module** (Step 5): models (`reportRunModel.create` uses
+  `INSERT OR IGNORE` so concurrent ticks for the same fire-time silently
+  collapse), service (`runReport`, `seedDailyTaskReview`,
+  `DAILY_TASK_REVIEW_TEMPLATE`), zod schemas, route (`/api/reports` +
+  `run-now` + `runs` history). Output written to
   `<cwd>/reports/<report-id>/<run-id>.md` with sha256 + 200-char summary.
 - **Scheduler** (Step 6, ADR-0004): `node-cron` + `cron-parser` in-process,
   `runMissedJobs()` catch-up at startup (clamps pre-epoch results to null),
-  `startInProcessScheduler()`, `scheduler:tick` CLI for the future Windows
-  Task Scheduler hourly safety net.
+  `startInProcessScheduler()`, `scheduler:tick` CLI for the Windows Task
+  Scheduler hourly safety net. Per-iteration `try/catch` in
+  `runMissedJobs()` contains failures so a fresh-DB / no-API-key boot
+  doesn't escalate to a top-level startup warning.
 - **Four new agent tools** (Step 7, R-021): `search_notes`,
   `list_documents`, `read_document` (via `resolveSafePath` + 1 MiB cap +
   `<untrusted_document>` envelope per R-026), `create_task` (service-layer
-  cross-org guard backstops the DB trigger). All log to `agent_tool_audit`.
-  `tools_enabled` filter in `agent_configs` honored per-section/per-org.
+  cross-org guard backstops the DB trigger). All log to
+  `agent_tool_audit`. `tools_enabled` filter in `agent_configs` honored
+  per-section/per-org.
 - **Reports frontend page** (Step 9): real implementation replacing the
   Phase 1 placeholder. List view with humanized cron + last/next run +
-  status; modal create/edit form with multi-select target orgs and inline
-  cron-shape validation; History drawer (Dialog) showing the last 20 runs
-  with relative timestamps + duration + output_path. TanStack Query hooks
-  (`useReports`, `useReportRuns`, `useIngest`); Field Notes aesthetic
-  preserved (vermilion only as transient signals per R-008).
-- **Integration + verification fixes**: wired `index.ts` to mount
-  `reportsRouter`, call `runMissedJobs()` + `startInProcessScheduler()` +
-  `seedDailyTaskReview()` at startup. Fixed root `npm test` to cover both
-  workspaces. Added explicit `cleanup()` in `frontend/src/test/setup.ts`
-  (RTL auto-cleanup is gated on `globals: true`).
+  status; modal create/edit form with multi-select target orgs and
+  inline cron-shape validation; History drawer (Dialog) showing the last
+  20 runs with relative timestamps + duration + output_path. TanStack
+  Query hooks (`useReports`, `useReportRuns`, `useIngest`); Field Notes
+  aesthetic preserved (vermilion only as transient signals per R-008).
+- **Integration + verification fixes** (`094068c`): wired `index.ts` to
+  mount `reportsRouter`, call `runMissedJobs()` +
+  `startInProcessScheduler()` + `seedDailyTaskReview()` at startup. Fixed
+  root `npm test` to cover both workspaces. Added explicit `cleanup()`
+  in `frontend/src/test/setup.ts` (RTL auto-cleanup is gated on
+  `globals: true`). Five real bugs caught during the install + verify
+  loop: `req.params.id` typing, `vi.mock` factory hoist, cron-parser
+  pre-epoch clamp, `mockReturnValueOnce` colliding with
+  `buildSystemPrompt`, RTL cleanup registration.
+
+### Batch 2 — `7782e11` `feat(phase2): batch 2`
+
+Five Sonnet 4.6 agents in parallel.
+
+- **Ingest pipeline** (Step 3): `scanWorkvault(opts)` walk → hash →
+  reconcile loop. Five reconciliation cases tested: insert, update
+  (mtime advanced), touch (sha256 unchanged), conflict (sha256 differs
+  at unchanged mtime → `ingest_errors` row + sibling note with
+  `conflict_of_note_id`), tombstone (file removed → `deleted_at` set).
+  Frontmatter parser stamps a `file_id: <uuid>` into files that lack
+  one — the one mutation the scanner is allowed to perform on
+  WorkVault files. All file-system reads go through `resolveSafePath`.
+- **Mention extraction** (Step 3c, R-021/R-026): Haiku 4.5 with
+  `tools: []` and `<untrusted_document src="…">…</untrusted_document>`
+  wrapping. Confidence ≥ 0.5 filter. Wired as a fire-and-forget hook
+  on `POST /api/notes` for `role='user'` and `role='imported'`.
+- **WorkVault writer** (Step 4, R-025): `writeNote(note)` with
+  server-derived filename, safe-path containment, and collision refusal
+  if the computed path is already owned by a different note. Tested
+  with real tmp dirs + in-memory DB. Not yet wired into a route — will
+  light up when the user is ready for live WorkVault round-tripping.
+- **OEM docs scan endpoint** (Step 8): `GET /api/oem/:id/documents/scan`
+  walks the OEM's configured OneDrive folder (shallow), classifies
+  files+dirs, upserts new files into `documents` with
+  `source='onedrive_scan'`. Manual rows are never overwritten via
+  `INSERT … WHERE NOT EXISTS`.
+- **Architecture and ops docs** (Steps 10 + 11): `docs/ARCHITECTURE.md`
+  refreshed (§ Schema migration policy, § Scheduler architecture, new §
+  Ingest pipeline, plus incidental staleness fixes). New
+  `docs/ops/scheduler-install.md` — Windows Task Scheduler install
+  one-pager with two `Register-ScheduledTask` blocks (Backend at logon
+  + Scheduler Tick hourly), verification, uninstall, and four
+  troubleshooting bullets.
+
+Three real bugs caught during integration: frontmatter regex left a
+leading `\n` on bodies separated from FM by a blank line (which
+`stampFileId` writes); `ingest_errors ORDER BY occurred_at DESC` was
+unstable for same-second inserts (added `id DESC` tiebreaker);
+`oem-scan` happy-path test mocked `organizationModel.get` but the
+`documents` FK to `organizations` is a real DB constraint, so the
+upsert silently failed under the route's best-effort try/catch.
+
+### Codex parallel session — `2359ee4` `chore(lint): add ESLint v9 flat config + lint cleanup`
+
+A parallel OpenAI Codex CLI session contributed an ESLint v9 flat-config
+setup (`backend/eslint.config.js`, `frontend/eslint.config.js`,
+`typescript-eslint` + `eslint-plugin-react-hooks` deps, root
+`npm run lint` script) plus a Phase 1 lint-fix sweep. Committed on main
+ahead of the Phase 2 merge. The `AGENTS.md` they generated was factually
+wrong (referenced a `Codex.service.ts` that doesn't exist, a fictional
+`Codex-sonnet-4-6` model, the dropped `agent` org type) and was replaced
+with a small redirect stub pointing to `CLAUDE.md`. `.claude/worktrees/`
+added to `.gitignore`.
+
+### Merge — `3650106` `merge: integrate Phase 2 (batches 1+2) with Codex lint cleanup`
+
+Worktree branch `claude/laughing-ishizaka-8f06fa` merged into `main`.
+Conflicts: `claude.service.ts`, `note.model.ts`, both `package.json`s
+auto-merged cleanly at the line level; `package-lock.json` regenerated
+via `npm install` to reflect the union of new deps (`node-cron`,
+`cron-parser` from batch 1 + `typescript-eslint`,
+`eslint-plugin-react-hooks` from Codex). Lint follow-through against
+the new ESLint config: 38 issues across the new Phase 2 code resolved
+via auto-fix + manual fixes. Notable: restored the
+`as unknown as Anthropic.Tool` cast in `buildWebSearchTool` that Codex's
+auto-cleanup removed prematurely — the SDK's `Anthropic.Tool` requires
+`input_schema`, which the native `web_search_20250305` tool shape
+doesn't provide.
 
 ## Phase 1 — Feature complete + audited + tested (2026-04-25)
 
