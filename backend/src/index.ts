@@ -1,6 +1,6 @@
 import express from 'express';
 import cors from 'cors';
-import { initSchema } from './db/database.js';
+import { runMigrations } from './db/database.js';
 import { warmDpapi } from './models/settings.model.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { organizationsRouter } from './routes/organizations.route.js';
@@ -11,8 +11,14 @@ import { notesRouter } from './routes/notes.route.js';
 import { tasksRouter } from './routes/tasks.route.js';
 import { agentsRouter } from './routes/agents.route.js';
 import { settingsRouter } from './routes/settings.route.js';
+import { reportsRouter } from './routes/reports.route.js';
+import { seedDailyTaskReview } from './services/reports.service.js';
+import {
+  runMissedJobs,
+  startInProcessScheduler,
+} from './services/scheduler.service.js';
 
-initSchema();
+runMigrations();
 
 // R-013: explicit allowlist of origins. Backend is loopback-only (R-001), so
 // only the local Vite dev server and the production frontend served on the
@@ -67,6 +73,7 @@ app.use('/api/notes', notesRouter);
 app.use('/api/tasks', tasksRouter);
 app.use('/api/agents', agentsRouter);
 app.use('/api/settings', settingsRouter);
+app.use('/api/reports', reportsRouter);
 
 app.use(errorHandler);
 

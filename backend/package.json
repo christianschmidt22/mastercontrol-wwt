@@ -9,14 +9,17 @@
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "scheduler:tick": "tsx src/cli/scheduler-tick.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
     "@primno/dpapi": "^1.1.0",
     "better-sqlite3": "^12.9.0",
     "cors": "^2.8.5",
+    "cron-parser": "^4.9.0",
     "express": "^4.21.2",
+    "node-cron": "^3.0.3",
     "zod": "^3.24.3"
   },
   "devDependencies": {
@@ -24,6 +27,7 @@
     "@types/cors": "^2.8.17",
     "@types/express": "^5.0.1",
     "@types/node": "^22.15.3",
+    "@types/node-cron": "^3.0.11",
     "@types/supertest": "^6.0.2",
     "@vitest/ui": "^2.1.0",
     "supertest": "^7.0.0",

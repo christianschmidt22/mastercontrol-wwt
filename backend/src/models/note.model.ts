@@ -89,6 +89,22 @@ const listRecentConfirmedStmt = db.prepare<[number, number], NoteRow>(
 );
 
 // ---------------------------------------------------------------------------
+// search (Phase 2 — used by the agent `search_notes` tool)
+//
+// LIKE-based substring scan over `content`. Optional org filter. Bound to
+// 10 rows so the agent gets a reasonable signal without blowing the context.
+// A proper FTS5 virtual table is a Phase 3 upgrade (per phase-2 plan § Step 7
+// open question 5).
+// ---------------------------------------------------------------------------
+const searchStmt = db.prepare<[string, number | null, number | null], NoteRow>(
+  `SELECT * FROM notes
+   WHERE content LIKE '%' || ? || '%'
+     AND (? IS NULL OR organization_id = ?)
+   ORDER BY created_at DESC
+   LIMIT 10`,
+);
+
+// ---------------------------------------------------------------------------
 // notes_unified VIEW queries (R-005)
 // ---------------------------------------------------------------------------
 
@@ -147,6 +163,16 @@ export const noteModel = {
   listRecent: (orgId: number, limit: number, opts: NoteListOpts = {}): Note[] => {
     const stmt = opts.confirmedOnly ? listRecentConfirmedStmt : listRecentStmt;
     return stmt.all(orgId, limit).map(hydrate);
+  },
+
+  /**
+   * Phase 2: substring search backing the `search_notes` agent tool. Returns
+   * up to 10 matching notes. If `orgId` is provided, results are scoped to
+   * that org; otherwise the search runs across all orgs.
+   */
+  search: (query: string, orgId?: number | null): Note[] => {
+    const filterOrg = orgId ?? null;
+    return searchStmt.all(query, filterOrg, filterOrg).map(hydrate);
   },
 
   get: (id: number): Note | undefined => {

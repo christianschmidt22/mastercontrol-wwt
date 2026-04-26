@@ -1,11 +1,52 @@
 # Changelog
 
+## Phase 2 — In progress on branch `claude/laughing-ishizaka-8f06fa` (2026-04-25)
+
+Five-stream parallel-agent batch off the verified Phase 1 baseline. Backend
+332 + frontend 43 = 375/375 tests green; both workspaces typecheck clean.
+
+- **Migration framework** (R-014): `_migrations` table + numbered SQL files;
+  `runMigrations()` replaces `initSchema()`. Six migrations seeded:
+  `001_initial.sql` (Phase 1 schema baseline), `002_indexes.sql` (R-015),
+  `003_schema_harden.sql` (R-019: `note_mentions.source/confidence`,
+  `contacts.updated_at`, `documents.updated_at`, cross-org task triggers),
+  `004_audit.sql` (placeholder), `005_ingest.sql` (R-023 dual-source columns
+  + `ingest_sources` + `ingest_errors`), `006_reports.sql` (`reports`,
+  `report_schedules`, `report_runs` with `UNIQUE(schedule_id, fire_time)`).
+- **Reports module** (Step 5): models, service (`runReport`,
+  `seedDailyTaskReview`, `DAILY_TASK_REVIEW_TEMPLATE`), zod schemas, route
+  (`/api/reports` + `run-now` + `runs` history). Output written to
+  `<cwd>/reports/<report-id>/<run-id>.md` with sha256 + 200-char summary.
+- **Scheduler** (Step 6, ADR-0004): `node-cron` + `cron-parser` in-process,
+  `runMissedJobs()` catch-up at startup (clamps pre-epoch results to null),
+  `startInProcessScheduler()`, `scheduler:tick` CLI for the future Windows
+  Task Scheduler hourly safety net.
+- **Four new agent tools** (Step 7, R-021): `search_notes`,
+  `list_documents`, `read_document` (via `resolveSafePath` + 1 MiB cap +
+  `<untrusted_document>` envelope per R-026), `create_task` (service-layer
+  cross-org guard backstops the DB trigger). All log to `agent_tool_audit`.
+  `tools_enabled` filter in `agent_configs` honored per-section/per-org.
+- **Reports frontend page** (Step 9): real implementation replacing the
+  Phase 1 placeholder. List view with humanized cron + last/next run +
+  status; modal create/edit form with multi-select target orgs and inline
+  cron-shape validation; History drawer (Dialog) showing the last 20 runs
+  with relative timestamps + duration + output_path. TanStack Query hooks
+  (`useReports`, `useReportRuns`, `useIngest`); Field Notes aesthetic
+  preserved (vermilion only as transient signals per R-008).
+- **Integration + verification fixes**: wired `index.ts` to mount
+  `reportsRouter`, call `runMissedJobs()` + `startInProcessScheduler()` +
+  `seedDailyTaskReview()` at startup. Fixed root `npm test` to cover both
+  workspaces. Added explicit `cleanup()` in `frontend/src/test/setup.ts`
+  (RTL auto-cleanup is gated on `globals: true`).
+
 ## Phase 1 — Feature complete + audited + tested (2026-04-25)
 
 All commits on branch `claude/great-tesla-6c5416` off `main`. Verification
-(npm install + typecheck + lint + test + browser smoke) is documented in
-[`VERIFICATION.md`](VERIFICATION.md) and pending — Node wasn't available in
-the sandboxed shell that produced these commits.
+(npm install + typecheck + test) was completed on Node 24.15.0 — see the
+**Phase 1 — Verified ✓** entry near the bottom of this file (commit
+`e3b73e6`, 278/278 tests green). The narrative below tracks the build
+order; the verification entry tracks the bugs caught in the install + run
+loop.
 
 ---
 
