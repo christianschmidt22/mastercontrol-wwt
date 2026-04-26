@@ -1,6 +1,3 @@
--- This file is a documentation snapshot only. The authoritative schema is
--- assembled by running the numbered migrations in backend/src/db/migrations/.
---
 -- MasterControl schema (source of truth) — Phase 1, v0.4
 -- Single `organizations` table with type discriminator + JSON metadata.
 -- Run on startup; CREATE IF NOT EXISTS so repeated boots are safe.
@@ -14,13 +11,13 @@
 --   R-005: notes_unified VIEW exposes assistant turns from agent_messages
 --          to the notes feed without duplicating storage.
 
-CREATE TABLE IF NOT EXISTS settings (
+CREATE TABLE settings (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL,
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE IF NOT EXISTS organizations (
+CREATE TABLE organizations (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   type TEXT NOT NULL CHECK(type IN ('customer', 'oem')),
   name TEXT NOT NULL,
@@ -28,9 +25,9 @@ CREATE TABLE IF NOT EXISTS organizations (
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
-CREATE INDEX IF NOT EXISTS idx_orgs_type ON organizations(type);
+CREATE INDEX idx_orgs_type ON organizations(type);
 
-CREATE TABLE IF NOT EXISTS contacts (
+CREATE TABLE contacts (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   organization_id INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
   name TEXT NOT NULL,
@@ -40,9 +37,9 @@ CREATE TABLE IF NOT EXISTS contacts (
   role TEXT,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
-CREATE INDEX IF NOT EXISTS idx_contacts_org ON contacts(organization_id);
+CREATE INDEX idx_contacts_org ON contacts(organization_id);
 
-CREATE TABLE IF NOT EXISTS projects (
+CREATE TABLE projects (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   organization_id INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
   name TEXT NOT NULL,
@@ -53,9 +50,9 @@ CREATE TABLE IF NOT EXISTS projects (
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
-CREATE INDEX IF NOT EXISTS idx_projects_org ON projects(organization_id);
+CREATE INDEX idx_projects_org ON projects(organization_id);
 
-CREATE TABLE IF NOT EXISTS documents (
+CREATE TABLE documents (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   organization_id INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
   kind TEXT NOT NULL CHECK(kind IN ('link', 'file')),
@@ -64,9 +61,9 @@ CREATE TABLE IF NOT EXISTS documents (
   source TEXT NOT NULL DEFAULT 'manual' CHECK(source IN ('manual', 'onedrive_scan')),
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
-CREATE INDEX IF NOT EXISTS idx_documents_org ON documents(organization_id);
+CREATE INDEX idx_documents_org ON documents(organization_id);
 
-CREATE TABLE IF NOT EXISTS notes (
+CREATE TABLE notes (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   organization_id INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
   content TEXT NOT NULL,
@@ -85,18 +82,18 @@ CREATE TABLE IF NOT EXISTS notes (
   confirmed INTEGER NOT NULL DEFAULT 1 CHECK(confirmed IN (0, 1)),
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
-CREATE INDEX IF NOT EXISTS idx_notes_org_created ON notes(organization_id, created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_notes_unconfirmed ON notes(organization_id, created_at DESC)
+CREATE INDEX idx_notes_org_created ON notes(organization_id, created_at DESC);
+CREATE INDEX idx_notes_unconfirmed ON notes(organization_id, created_at DESC)
   WHERE confirmed = 0;
 
-CREATE TABLE IF NOT EXISTS note_mentions (
+CREATE TABLE note_mentions (
   note_id INTEGER NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
   mentioned_org_id INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
   PRIMARY KEY (note_id, mentioned_org_id)
 );
-CREATE INDEX IF NOT EXISTS idx_mentions_org ON note_mentions(mentioned_org_id);
+CREATE INDEX idx_mentions_org ON note_mentions(mentioned_org_id);
 
-CREATE TABLE IF NOT EXISTS tasks (
+CREATE TABLE tasks (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   organization_id INTEGER REFERENCES organizations(id) ON DELETE CASCADE,
   contact_id INTEGER REFERENCES contacts(id) ON DELETE CASCADE,
@@ -106,10 +103,10 @@ CREATE TABLE IF NOT EXISTS tasks (
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   completed_at DATETIME
 );
-CREATE INDEX IF NOT EXISTS idx_tasks_status_due ON tasks(status, due_date);
-CREATE INDEX IF NOT EXISTS idx_tasks_org ON tasks(organization_id);
+CREATE INDEX idx_tasks_status_due ON tasks(status, due_date);
+CREATE INDEX idx_tasks_org ON tasks(organization_id);
 
-CREATE TABLE IF NOT EXISTS agent_configs (
+CREATE TABLE agent_configs (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   section TEXT NOT NULL CHECK(section IN ('customer', 'oem')),
   organization_id INTEGER REFERENCES organizations(id) ON DELETE CASCADE,
@@ -123,22 +120,22 @@ CREATE TABLE IF NOT EXISTS agent_configs (
   -- rows would both succeed. Uniqueness is enforced via partial indexes below.
 );
 -- R-004: exactly one archetype per section (org_id IS NULL).
-CREATE UNIQUE INDEX IF NOT EXISTS uq_agent_configs_archetype
+CREATE UNIQUE INDEX uq_agent_configs_archetype
   ON agent_configs(section) WHERE organization_id IS NULL;
 -- R-004: exactly one override per (section, org).
-CREATE UNIQUE INDEX IF NOT EXISTS uq_agent_configs_override
+CREATE UNIQUE INDEX uq_agent_configs_override
   ON agent_configs(section, organization_id) WHERE organization_id IS NOT NULL;
 
-CREATE TABLE IF NOT EXISTS agent_threads (
+CREATE TABLE agent_threads (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   organization_id INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
   title TEXT,
   started_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   last_message_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
-CREATE INDEX IF NOT EXISTS idx_threads_org ON agent_threads(organization_id);
+CREATE INDEX idx_threads_org ON agent_threads(organization_id);
 
-CREATE TABLE IF NOT EXISTS agent_messages (
+CREATE TABLE agent_messages (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   thread_id INTEGER NOT NULL REFERENCES agent_threads(id) ON DELETE CASCADE,
   role TEXT NOT NULL CHECK(role IN ('user', 'assistant', 'tool')),
@@ -146,7 +143,7 @@ CREATE TABLE IF NOT EXISTS agent_messages (
   tool_calls TEXT,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
-CREATE INDEX IF NOT EXISTS idx_messages_thread ON agent_messages(thread_id, created_at);
+CREATE INDEX idx_messages_thread ON agent_messages(thread_id, created_at);
 
 -- R-022: agent_tool_audit — every tool call (web_search, record_insight, and
 -- future Phase 2 tools) writes a row here so the user can review what the
@@ -156,7 +153,7 @@ CREATE INDEX IF NOT EXISTS idx_messages_thread ON agent_messages(thread_id, crea
 --   'rejected' — server-side allowlist or safety check blocked the call
 --   'error'    — tool execution threw / returned an error
 -- Rows cascade-delete when their thread is deleted.
-CREATE TABLE IF NOT EXISTS agent_tool_audit (
+CREATE TABLE agent_tool_audit (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   thread_id INTEGER NOT NULL REFERENCES agent_threads(id) ON DELETE CASCADE,
   tool_name TEXT NOT NULL,
@@ -165,7 +162,7 @@ CREATE TABLE IF NOT EXISTS agent_tool_audit (
   status TEXT NOT NULL CHECK(status IN ('ok','rejected','error')),
   occurred_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
-CREATE INDEX IF NOT EXISTS idx_audit_thread ON agent_tool_audit(thread_id, occurred_at);
+CREATE INDEX idx_audit_thread ON agent_tool_audit(thread_id, occurred_at);
 
 -- R-005: notes_unified VIEW. The org's notes feed reads from this view so that
 -- assistant chat messages appear in the timeline without being duplicated as
@@ -178,7 +175,7 @@ CREATE INDEX IF NOT EXISTS idx_audit_thread ON agent_tool_audit(thread_id, occur
 -- treat the view as a flat list without colliding with real notes ids when
 -- showing detail/edit affordances. Real notes get their own id; assistant-
 -- mirrored rows get an id well above any expected SQLite autoincrement.
-CREATE VIEW IF NOT EXISTS notes_unified AS
+CREATE VIEW notes_unified AS
   SELECT
     id,
     organization_id,

@@ -390,22 +390,24 @@ export function InsightsTab({ onCountChange }: { onCountChange?: (n: number) => 
   );
 
   // Flatten + sort newest first
-  const orgMap = new Map<number, string>(
-    (orgs ?? []).map((o) => [o.id, o.name]),
-  );
-
-  const allInsights: InsightWithOrg[] = [];
+  const allInsights: InsightWithOrg[] = useMemo(() => {
+    const orgMap = new Map<number, string>(
+      (orgs ?? []).map((o) => [o.id, o.name]),
+    );
+    const result: InsightWithOrg[] = [];
   for (const [orgId, notes] of orgInsightsMap) {
     const orgName = orgMap.get(orgId) ?? `Org #${orgId}`;
     for (const note of notes) {
-      allInsights.push({ note, orgId, orgName });
+      result.push({ note, orgId, orgName });
     }
   }
-  allInsights.sort(
-    (a, b) =>
-      new Date(b.note.created_at).getTime() -
-      new Date(a.note.created_at).getTime(),
-  );
+    result.sort(
+      (a, b) =>
+        new Date(b.note.created_at).getTime() -
+        new Date(a.note.created_at).getTime(),
+    );
+    return result;
+  }, [orgInsightsMap, orgs]);
 
   // Notify parent of count — run in effect to avoid setState-in-render
   const currentCount = allInsights.length;

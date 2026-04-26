@@ -36,9 +36,9 @@
                           (Anthropic-managed)
 ```
 
-Single process per tier. No Docker, no microservices. Phase 2 adds a
-Windows Service wrapper around the backend so it survives laptop suspend
-and runs `runMissedJobs()` on every startup.
+Single process per tier. No Docker, no microservices. Phase 2 adds
+in-process `node-cron` scheduling and a `runMissedJobs()` catch-up call
+on every startup so jobs fired during laptop suspend are not dropped.
 
 ## Process boundaries
 - **One backend process** owns all SQLite access. Better-sqlite3 is
@@ -276,45 +276,122 @@ hides until first use — accept that risk for v1.
 
 ## Schema migration policy
 
-Phase 1 uses `CREATE IF NOT EXISTS` only — there is no migration
-system. For incompatible changes (Phase 1 → Phase 2 will need at least
-one), the policy is:
+Phase 2 replaced the Phase 1 `CREATE IF NOT EXISTS` bootstrap with a
+versioned migration runner (R-014). The design is hand-rolled with no
+third-party migration library.
 
-1. Stop the backend.
-2. Delete `database/mastercontrol.db*` (the user has authorized this for
-   the Phase 1 cutover; future incompatible changes need a fresh
-   approval each time).
-3. Restart — `initSchema()` recreates fresh.
+**How it works**: [`runMigrations()`](../backend/src/db/database.ts)
+runs synchronously at process start (before the HTTP server binds) and
+at the top of the `scheduler:tick` CLI.
 
-This is acceptable because we are pre-data; Phase 1 ships with no
-production data. Phase 2 introduces a real migration framework
-(`better-sqlite3-migrations` or hand-rolled `_migrations` table) before
-the WorkVault ingest lands, since user notes must not be wipeable.
+1. It creates `_migrations(id, name, applied_at)` with `CREATE TABLE IF
+   NOT EXISTS` — this single table is the bootstrap anchor and is the
+   only place `IF NOT EXISTS` is still used.
+2. It reads all `*.sql` files in
+   [`backend/src/db/migrations/`](../backend/src/db/migrations/) sorted
+   lexicographically (files are named `NNN_description.sql`).
+3. For each file it extracts the numeric prefix as the migration `id`.
+   If that `id` already exists in `_migrations`, the file is skipped.
+   Otherwise the SQL runs in a transaction and a row is inserted into
+   `_migrations`.
+
+`backend/src/db/schema.sql` is now a documentation snapshot only; the
+authoritative schema is assembled by running the numbered migrations in
+order.
+
+**Test path**: tests share the same `runMigrations()` function via a
+`:memory:` SQLite setup. There is no separate test-bootstrap path — the
+in-memory DB goes through the identical migration sequence the production
+DB does, so schema drift between environments is impossible.
 
 ## Scheduler architecture (Phase 2)
 
 The user's laptop is suspended whenever it's closed. Scheduled jobs that
-fire-and-forget would silently drop. The fix has three parts:
+fire-and-forget would silently drop. The solution is Task Scheduler only —
+no Windows Service, no `node-windows`, no `nssm` (see
+[ADR-0004](adr/0004-task-scheduler-not-windows-service.md)). The approach
+has three parts:
 
-1. **Catch-up at startup**: the backend's scheduler module computes,
-   for each enabled schedule, the most recent fire-time prior to `now`.
-   If `last_run_at` is earlier than that fire-time, the job runs
-   immediately and `last_run_at` updates. Idempotency is keyed on
-   `(schedule_id, fire_time)` so two startups in a row don't double-fire.
+1. **Catch-up at startup**: [`runMissedJobs()`](../backend/src/services/scheduler.service.ts)
+   runs before the HTTP server binds. For each enabled `report_schedules`
+   row it computes the most-recent fire-time prior to `now`. If
+   `last_run_at` is earlier than that fire-time, the job runs immediately
+   and `last_run_at` is updated. Idempotency is enforced by
+   `UNIQUE(schedule_id, fire_time)` in `report_runs` — a second call for
+   the same fire-time is a silent no-op. Each schedule iteration is
+   wrapped in its own try/catch so a failure on one job (e.g., a fresh DB
+   with no Anthropic key configured) does not escalate to a top-level boot
+   error.
 
-2. **Live in-process scheduler**: `node-cron` ticks for each enabled
-   schedule while the process is awake. Standard pattern.
+2. **Live in-process scheduler**: `node-cron` registers one tick per
+   enabled schedule while the process is awake. Standard cron pattern;
+   each tick calls `runReport(scheduleId, fireTime)`.
 
-3. **Service supervision**: the backend runs as a Windows Service
-   (`node-windows` or `nssm`). A Windows Task Scheduler entry created
-   once at install time pings `/health` every 5 minutes during a logged-in
-   session and starts the service if it's not running. This is the
-   watchdog — it does not wake the machine; it only ensures the backend
-   is alive when the OS is.
+3. **Windows Task Scheduler safety net**: two entries are registered once
+   via a PowerShell script (`docs/ops/scheduler-install.md`):
+   - `MasterControl Backend` — trigger: *At logon*. Starts the Express
+     backend.
+   - `MasterControl Scheduler Tick` — trigger: *Repeat every 1 hour*.
+     Runs `npm run --prefix C:\mastercontrol\backend scheduler:tick`,
+     which imports the same `runMissedJobs()` function, connects the DB,
+     fires any missed jobs, then exits. This is the hourly safety net for
+     the case where the backend crashed between logon triggers.
 
-The combination tolerates: laptop closed during a fire-time (catch-up
-runs it on next wake), service crash (watchdog restarts), reboot
-(install option starts at logon).
+The combination tolerates: laptop suspend during a fire-time (catch-up
+runs it on next wake), backend crash (hourly tick catches up), reboot
+(logon trigger restarts the backend). No admin elevation is required at
+install time.
+
+## Ingest pipeline (Phase 2)
+
+The ingest pipeline ([`backend/src/services/ingest.service.ts`](../backend/src/services/ingest.service.ts))
+walks the configured WorkVault root, hashes file content, and reconciles
+the results against the `notes` table. The design principle is that the
+file is the source of truth; the DB row is an index (see
+[ADR-0002](adr/0002-mtime-wins-on-ingest.md)).
+
+### Walk → hash → reconcile loop
+
+For each `.md` / `.txt` file discovered under the WorkVault root:
+
+1. `resolveSafePath` (R-024) verifies the path stays inside the root.
+   Escapees are logged to `ingest_errors` and skipped.
+2. `fs.statSync` reads `mtime`. YAML frontmatter is parsed for a
+   `file_id` UUID; one is generated and written back if absent (the only
+   write the scanner ever makes to WorkVault files).
+3. `content_sha256` is computed over the file body (frontmatter stripped).
+
+### Reconciliation matrix
+
+For each file, the scanner looks up `notes WHERE file_id = ?`:
+
+| Condition | Action |
+|-----------|--------|
+| No DB row | **Insert** — `role='imported'`, `confirmed=1`, `last_seen_at=now()`. Trigger mention extraction. |
+| Row exists; disk `mtime` > `last_seen_at` | **Update** — content, `content_sha256`, `file_mtime`, `last_seen_at`. Trigger mention extraction. |
+| Row exists; `mtime` ≤ `last_seen_at`; `sha256` matches | **Touch** — `last_seen_at` only. No Anthropic call. |
+| Row exists; `mtime` ≤ `last_seen_at`; `sha256` differs | **Conflict** — log to `ingest_errors`; insert a new note row with `conflict_of_note_id` pointing to the original. Do not overwrite. |
+| Row exists but file absent from disk | **Tombstone** — set `deleted_at=now()`. No hard delete. |
+
+After the full scan, any note whose `last_seen_at` predates `scan_start`
+and whose `deleted_at` is null is also tombstoned.
+
+### Mention extraction
+
+Called for every inserted or updated note. Uses a non-streaming Anthropic
+call on `claude-haiku-4-5` (cheapest viable model for classification):
+
+- `tools: []` — no tools enabled on untrusted-content passes (R-021).
+- Content is wrapped in
+  `<untrusted_document src="note:{id}">…</untrusted_document>` (R-026).
+- The system prompt provides the current org name list and asks for a JSON
+  array of `{name, confidence}` objects.
+- Results with `confidence < 0.5` are discarded. Accepted mentions are
+  upserted into `note_mentions` with `source='ai_auto'`.
+
+The same `extractMentions()` function is called inline from the note-save
+route (`POST /api/notes`) so manually authored notes are also scanned on
+write.
 
 ## Things explicitly not done (and why)
 
@@ -325,9 +402,10 @@ runs it on next wake), service crash (watchdog restarts), reboot
   app. Add it when something demands it.
 - **No DB connection pool.** better-sqlite3 is synchronous and serves a
   single Node process; pooling makes no sense here.
-- **No CI / test pipeline yet.** Phase 1 verifies via `npm run typecheck`
-  + `npm run lint` + manual exercise. Vitest is installed for when a
-  testable unit emerges (likely the cron next-fire-time math first).
+- **No CI / test pipeline.** `npm run test` (Vitest) covers models,
+  routes, services, and migration correctness against per-test `:memory:`
+  SQLite files. There is no remote CI runner — local test runs are the
+  gate.
 
 ## Open architectural questions
 - See [`PRD.md` § Open Questions](PRD.md#open-questions-residual--non-blocking).

@@ -1,6 +1,6 @@
 import express from 'express';
 import cors from 'cors';
-import { initSchema } from './db/database.js';
+import { runMigrations } from './db/database.js';
 import { warmDpapi } from './models/settings.model.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { organizationsRouter } from './routes/organizations.route.js';
@@ -11,8 +11,16 @@ import { notesRouter } from './routes/notes.route.js';
 import { tasksRouter } from './routes/tasks.route.js';
 import { agentsRouter } from './routes/agents.route.js';
 import { settingsRouter } from './routes/settings.route.js';
+import { reportsRouter } from './routes/reports.route.js';
+import { ingestRouter } from './routes/ingest.route.js';
+import { oemScanRouter } from './routes/oem-scan.route.js';
+import { seedDailyTaskReview } from './services/reports.service.js';
+import {
+  runMissedJobs,
+  startInProcessScheduler,
+} from './services/scheduler.service.js';
 
-initSchema();
+runMigrations();
 
 // R-013: explicit allowlist of origins. Backend is loopback-only (R-001), so
 // only the local Vite dev server and the production frontend served on the
@@ -67,6 +75,9 @@ app.use('/api/notes', notesRouter);
 app.use('/api/tasks', tasksRouter);
 app.use('/api/agents', agentsRouter);
 app.use('/api/settings', settingsRouter);
+app.use('/api/reports', reportsRouter);
+app.use('/api/ingest', ingestRouter);
+app.use('/api/oem', oemScanRouter);
 
 app.use(errorHandler);
 
@@ -78,6 +89,35 @@ try {
 } catch (err) {
   console.warn(
     '[mastercontrol] warmDpapi failed at boot — DPAPI unavailable, API key will be stored without encryption.',
+    err instanceof Error ? err.message : String(err),
+  );
+}
+
+// Phase 2 startup sequence: seed default reports, catch up any missed
+// scheduler runs (e.g. machine was suspended past a cron fire-time), then
+// register the in-process node-cron jobs. Each step is best-effort; logging
+// the failure is preferable to refusing to boot the HTTP server.
+try {
+  seedDailyTaskReview();
+} catch (err) {
+  console.warn(
+    '[mastercontrol] seedDailyTaskReview failed — Reports page will start empty.',
+    err instanceof Error ? err.message : String(err),
+  );
+}
+try {
+  await runMissedJobs();
+} catch (err) {
+  console.warn(
+    '[mastercontrol] runMissedJobs failed at boot — missed schedules will not be caught up until the next tick.',
+    err instanceof Error ? err.message : String(err),
+  );
+}
+try {
+  startInProcessScheduler();
+} catch (err) {
+  console.warn(
+    '[mastercontrol] startInProcessScheduler failed — scheduled reports will not fire from this process.',
     err instanceof Error ? err.message : String(err),
   );
 }

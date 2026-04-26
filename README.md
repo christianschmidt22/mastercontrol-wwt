@@ -6,8 +6,10 @@ per org so you can ask questions, draft follow-ups, and do research without
 leaving the record. Runs entirely on your local machine — no cloud sync, no
 auth, no SaaS dependency — at `http://localhost:5173`.
 
-**Status**: Phase 1 feature-complete. Awaiting `npm install` + typecheck +
-smoke test before the branch merges.
+**Status**: Phase 1 verified ✓ on Node 24.15 (278/278 tests green, 2026-04-25,
+commit `e3b73e6`). Phase 2 in progress on this branch — migration framework,
+reports module, scheduler, four new agent tools (`search_notes`,
+`list_documents`, `read_document`, `create_task`), and the Reports page.
 
 ---
 

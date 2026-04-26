@@ -3,6 +3,7 @@ import { noteModel } from '../models/note.model.js';
 import { NoteCreateSchema } from '../schemas/note.schema.js';
 import { validateBody } from '../lib/validate.js';
 import { bumpOrgVersion } from '../services/claude.service.js';
+import { extractMentions } from '../services/mention.service.js';
 import { HttpError } from '../middleware/errorHandler.js';
 
 export const notesRouter = Router();
@@ -15,13 +16,28 @@ notesRouter.post('/', validateBody(NoteCreateSchema), (req, res) => {
     role?: 'user' | 'assistant' | 'agent_insight' | 'imported';
     thread_id?: number | null;
   };
+  const role = input.role ?? 'user';
   const note = noteModel.create({
     organization_id: input.organization_id,
     content: input.content,
-    role: input.role ?? 'user',
+    role,
     thread_id: input.thread_id ?? null,
   });
   bumpOrgVersion(input.organization_id);
+
+  // Best-effort cross-org mention extraction. Fire-and-forget — note save
+  // returns immediately; the Anthropic call happens out-of-band. Only for
+  // user-authored or imported content; assistant + agent_insight rows are
+  // already produced by the agent runtime which has its own context.
+  if (role === 'user' || role === 'imported') {
+    void extractMentions(note.id, input.content).catch((err: unknown) => {
+      console.warn('[notes] extractMentions failed (non-fatal)', {
+        note_id: note.id,
+        message: err instanceof Error ? err.message : String(err),
+      });
+    });
+  }
+
   res.status(201).json(note);
 });
 
