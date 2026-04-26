@@ -32,7 +32,7 @@ The user is an account executive who will live in this app 6+ hours a day. Densi
 - **Mono — JetBrains Mono** (free). Uses: cron expressions, file paths, raw JSON metadata viewer, anything code-ish.
 - **Numbers**: `font-variant-numeric: tabular-nums` everywhere counts, timestamps, currency, or dates appear in vertically aligned columns.
 - **Wrap rules**: `text-wrap: balance` on `<h1>`–`<h3>`. `text-wrap: pretty` on body paragraphs. Notes column max-width 70ch.
-- **Per Vercel guidelines**: curly quotes `"` `"`, ellipsis `…` not `...`, non-breaking spaces in `10&nbsp;MB`, brand names, `⌘&nbsp;K`.
+- **Per Vercel guidelines**: curly quotes `"` `"`, ellipsis `…` not `...`, non-breaking spaces in `10&nbsp;MB`, brand names. Keyboard shortcuts use the Windows form (`Ctrl+K`, `Ctrl+Enter`); Mac glyphs (`⌘`, `⌥`, `⇧`) are not used in copy.
 
 ## Color
 
@@ -178,7 +178,7 @@ Contacts is its own first-class tile (Q-4 / R-012) — call-time reference frequ
 - **Chat composer** (below):
   - **Single-input writing surface, not a tweet box.** 24px Switzer Light. Multi-line `<textarea>`. Auto-grows to 12 lines max, then scrolls.
   - Placeholder: `Ask the {customer name} agent…` (24px, `--ink-3`).
-  - **Submit**: ⌘/Ctrl+Enter. Enter alone inserts newline (writer-tool convention).
+  - **Submit**: `Ctrl+Enter` (handler accepts `metaKey || ctrlKey` so Mac users hitting ⌘+Enter still work; the visible hint is the Windows form). Enter alone inserts newline (writer-tool convention).
   - **During streaming**: muted "Stop" affordance materializes near the composer; submit button shows spinner + label `Streaming…`.
   - When stream ends, the assistant message is mirrored into the notes feed above with a small `agent` label.
 

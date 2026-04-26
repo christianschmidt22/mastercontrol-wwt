@@ -1236,7 +1236,7 @@ export function TasksPage() {
             >
               {isFiltered
                 ? 'No tasks match these filters.'
-                : 'No open tasks. Add one with ⌘N or the + Add task button above.'}
+                : 'No open tasks. Add one with the + Add task button above.'}
             </div>
           )}
 

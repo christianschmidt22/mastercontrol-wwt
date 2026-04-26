@@ -291,7 +291,7 @@ export function ChatTile({ orgId, orgName, threadId }: ChatTileProps) {
                   color: 'var(--ink-2)',
                 }}
               >
-                &#8984; Enter
+                Ctrl + Enter
               </kbd>{' '}
               to send
             </span>
