@@ -133,4 +133,30 @@ describe('runMissedJobs', () => {
 
     expect(runReportMock).not.toHaveBeenCalled();
   });
+
+  it('contains a per-schedule failure: continues the loop and does not throw to caller', async () => {
+    // Two schedules; the first throws (e.g. API key missing), the second
+    // must still be invoked. runMissedJobs must not propagate the throw —
+    // runReport already records the failure on the report_runs row, and a
+    // top-level throw would noisy up startup logs every boot until the user
+    // configures a key.
+    getEnabledMock.mockReturnValue([
+      { id: 1, report_id: 1, cron_expr: '0 7 * * *', enabled: 1,
+        next_run_at: null, last_run_at: null, created_at: 'x' },
+      { id: 2, report_id: 2, cron_expr: '0 8 * * *', enabled: 1,
+        next_run_at: null, last_run_at: null, created_at: 'x' },
+    ]);
+    getMostRecentCronTimeMock.mockReturnValue(1_700_000_000);
+    runReportMock
+      .mockRejectedValueOnce(new Error('API key not configured'))
+      .mockResolvedValueOnce(undefined);
+
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    await expect(runMissedJobs()).resolves.toBeUndefined();
+    expect(runReportMock).toHaveBeenCalledTimes(2);
+    expect(warnSpy).toHaveBeenCalled();
+
+    warnSpy.mockRestore();
+  });
 });

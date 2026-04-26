@@ -45,7 +45,19 @@ export async function runMissedJobs(): Promise<void> {
       // Already ran for this fire-time (or later); nothing to catch up.
       continue;
     }
-    await runReport(s.id, mostRecentFireTime);
+    // runReport already records the failure on the report_runs row. We catch
+    // here so one failing schedule doesn't abort catch-up for the rest of the
+    // loop, and so a fresh-DB / no-API-key boot doesn't escalate to a
+    // top-level warning every time.
+    try {
+      await runReport(s.id, mostRecentFireTime);
+    } catch (err) {
+      console.warn('[scheduler] missed-job runReport failed', {
+        schedule_id: s.id,
+        fire_time: mostRecentFireTime,
+        message: err instanceof Error ? err.message : String(err),
+      });
+    }
   }
 }
 
