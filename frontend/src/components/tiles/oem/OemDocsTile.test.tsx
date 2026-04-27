@@ -2,7 +2,7 @@
  * OemDocsTile.test.tsx
  *
  * Tests for the OemDocsTile empty-state rendering.
- * This tile has no data fetch — it always renders the empty state.
+ * This tile has no data fetch — it always renders the Phase 2 empty state.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -11,11 +11,11 @@ import React from 'react';
 import { OemDocsTile } from './OemDocsTile';
 
 describe('OemDocsTile', () => {
-  it('renders the empty-state copy', () => {
+  it('renders the Phase 2 empty-state copy', () => {
     render(<OemDocsTile />);
     expect(
       screen.getByText(
-        'No documents on record. Open the documents folder to start tracking.',
+        'OEM document scan lands in Phase 2 — check back after WorkVault ingest.',
       ),
     ).toBeInTheDocument();
   });
@@ -27,7 +27,15 @@ describe('OemDocsTile', () => {
 
   it('renders the tile title "Documents"', () => {
     render(<OemDocsTile />);
-    // The Tile header renders the title
     expect(screen.getByText('Documents')).toBeInTheDocument();
+  });
+
+  it('does not render the old placeholder copy', () => {
+    render(<OemDocsTile />);
+    expect(
+      screen.queryByText(
+        'No documents on record. Open the documents folder to start tracking.',
+      ),
+    ).toBeNull();
   });
 });

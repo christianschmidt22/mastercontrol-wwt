@@ -9,7 +9,8 @@ export function OemDocsTile() {
   return (
     <Tile title="Documents">
       <TileEmptyState
-        copy="No documents on record. Open the documents folder to start tracking."
+        copy="OEM document scan lands in Phase 2 — check back after WorkVault ingest."
+        ariaLive
       />
     </Tile>
   );

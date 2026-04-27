@@ -1,12 +1,14 @@
 /**
  * OemQuickLinksTile.test.tsx
  *
- * Tests for the OemQuickLinksTile empty-state and data-view rendering.
- * Hook injection via the _useDocuments prop — no real network calls.
+ * Tests for the OemQuickLinksTile empty-state, data-view rendering, and
+ * inline add-link form. Hook injection via _useDocuments / _useCreateDocument
+ * props — no real network calls.
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import React from 'react';
 import { OemQuickLinksTile } from './OemQuickLinksTile';
 import type { Document } from '../../../types';
@@ -93,5 +95,85 @@ describe('OemQuickLinksTile — data view', () => {
     );
     expect(screen.getByText('Cisco Partner Portal')).toBeInTheDocument();
     expect(screen.queryByText('Datasheet.pdf')).toBeNull();
+  });
+});
+
+// ── Inline add form ───────────────────────────────────────────────────────────
+
+describe('OemQuickLinksTile — inline add form', () => {
+  it('clicking Add link opens the form; Cancel collapses it and clears fields', async () => {
+    const user = userEvent.setup();
+    render(<OemQuickLinksTile orgId={20} _useDocuments={makeHook([])} />);
+
+    await user.click(screen.getByRole('button', { name: 'Add link' }));
+
+    expect(screen.getByLabelText('Label')).toBeInTheDocument();
+    expect(screen.getByLabelText('URL')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(screen.queryByLabelText('Label')).toBeNull();
+  });
+
+  it('shows validation error in aria-live region when label is empty on submit', async () => {
+    const user = userEvent.setup();
+    render(<OemQuickLinksTile orgId={20} _useDocuments={makeHook([])} />);
+
+    await user.click(screen.getByRole('button', { name: 'Add link' }));
+    await user.type(screen.getByLabelText('URL'), 'https://partners.cisco.com');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    expect(screen.getByText('Label is required.')).toBeInTheDocument();
+  });
+
+  it('save calls mutate with the expected payload', async () => {
+    const user = userEvent.setup();
+    const mutate = vi.fn();
+    const hook = () => ({ mutate, isPending: false });
+    render(
+      <OemQuickLinksTile
+        orgId={20}
+        _useDocuments={makeHook([])}
+        _useCreateDocument={hook}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Add link' }));
+    await user.type(screen.getByLabelText('Label'), 'NetApp Support');
+    await user.type(screen.getByLabelText('URL'), 'https://support.netapp.com');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    expect(mutate).toHaveBeenCalledOnce();
+    expect(mutate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        organization_id: 20,
+        kind: 'link',
+        label: 'NetApp Support',
+        url_or_path: 'https://support.netapp.com',
+      }),
+      expect.any(Object),
+    );
+  });
+
+  it('optimistically inserts new link into the list before server responds', async () => {
+    const user = userEvent.setup();
+    render(
+      <OemQuickLinksTile
+        orgId={20}
+        _useDocuments={makeHook([linkDoc])}
+      />,
+    );
+
+    expect(screen.getByText('Cisco Partner Portal')).toBeInTheDocument();
+    expect(screen.queryByText('NetApp Support')).toBeNull();
+
+    await user.click(screen.getByRole('button', { name: 'Add link' }));
+    await user.type(screen.getByLabelText('Label'), 'NetApp Support');
+    await user.type(screen.getByLabelText('URL'), 'https://support.netapp.com');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    // New link appears immediately
+    expect(screen.getByText('NetApp Support')).toBeInTheDocument();
+    // Existing link is still present
+    expect(screen.getByText('Cisco Partner Portal')).toBeInTheDocument();
   });
 });
