@@ -4,7 +4,8 @@ Personal CRM for a single account executive at WWT. Local-only, browser at
 `http://localhost:5173`, SQLite, embedded per-org Claude agents.
 
 Authoritative spec: [`docs/PRD.md`](docs/PRD.md). Cross-cutting design:
-[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md). Visual / UX direction:
+[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md). Vault/file placement:
+[`docs/VAULT.md`](docs/VAULT.md). Visual / UX direction:
 [`docs/DESIGN.md`](docs/DESIGN.md). Schema source of truth:
 [`backend/src/db/schema.sql`](backend/src/db/schema.sql).
 
@@ -44,6 +45,8 @@ mastercontrol/
 - **Thread** — persisted (org, session) conversation.
 - **Insight** — a note authored by an agent via `record_insight` tool.
   Cross-org learning persists this way.
+- **Vault** — OneDrive-backed user file tree under
+  `settings.mastercontrol_root`; see [`docs/VAULT.md`](docs/VAULT.md).
 
 Full data model: [`schema.sql`](backend/src/db/schema.sql) and
 [`PRD.md` § Data Model](docs/PRD.md#data-model). Information architecture
@@ -102,7 +105,7 @@ Full data model: [`schema.sql`](backend/src/db/schema.sql) and
 - Branch from `main`: `feature/<topic>`, `fix/<topic>`, `docs/<topic>`.
 - Commit format: `type(scope): short description`.
 - Never commit `.env`, `database/*.db*`, `node_modules/`, build output, or
-  any WorkVault content.
+  any WorkVault or MasterControl vault content.
 - PRs explain the WHY.
 
 ## Dev Commands
@@ -126,12 +129,18 @@ npm run lint                # both workspaces
   `C:\Users\schmichr\OneDrive - WWT\Documents\redqueen\WorkVault` is
   read-only until Phase 2 ingestion lands. Don't touch it without
   explicit go-ahead.
+- The OneDrive MasterControl vault is user data, not repo source. Do not
+  commit it. When creating durable markdown/files for the user, follow
+  [`docs/VAULT.md`](docs/VAULT.md) and index useful artifacts with
+  `documents` rows.
 
 ## Doc Maintenance
 - [`docs/PRD.md`](docs/PRD.md) — product changes.
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — cross-cutting design.
 - [`docs/DESIGN.md`](docs/DESIGN.md) — visual / UX direction; update when
   changing the aesthetic, palette, type, or motion language.
+- [`docs/VAULT.md`](docs/VAULT.md) — placement contract for markdown,
+  reports, research outputs, legacy WorkVault material, and agent exports.
 - `docs/adr/<n>-<topic>.md` — significant tech choices.
 - This file — stack, layer rules, glossary, dev commands.
 

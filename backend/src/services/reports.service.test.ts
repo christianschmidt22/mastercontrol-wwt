@@ -27,6 +27,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import type * as SettingsMod from '../models/settings.model.js';
+import { settingsModel } from '../models/settings.model.js';
 
 // ---------------------------------------------------------------------------
 // Mock @anthropic-ai/sdk — controls the response generateReport builds.
@@ -87,6 +88,12 @@ beforeEach(() => {
   originalCwd = process.cwd();
   tmpRoot = mkdtempSync(path.join(tmpdir(), 'mc-reports-test-'));
   process.chdir(tmpRoot);
+  // Route report output to tmpRoot via the vault root setting.
+  vi.mocked(settingsModel.get).mockImplementation((key: string) => {
+    if (key === 'anthropic_api_key') return 'sk-ant-mock-key';
+    if (key === 'mastercontrol_root') return tmpRoot;
+    return null;
+  });
   mockMessagesCreate.mockReset();
 });
 
@@ -158,8 +165,9 @@ describe('runReport — happy path', () => {
     expect(run.summary!.length).toBeLessThanOrEqual(200);
     expect(run.finished_at).not.toBeNull();
 
-    // Schedule's last_run_at advanced.
+    // Schedule run markers advanced.
     expect(reportScheduleModel.get(scheduleId)?.last_run_at).toBe(fireTime);
+    expect(reportScheduleModel.get(scheduleId)?.next_run_at).toBeGreaterThan(fireTime);
   });
 
   it('truncates summary at exactly 200 characters even when the output is longer', async () => {
@@ -260,6 +268,7 @@ describe('seedDailyTaskReview', () => {
     expect(result.report.prompt_template).toBe(DAILY_TASK_REVIEW_TEMPLATE);
     expect(result.schedule.cron_expr).toBe('0 7 * * *');
     expect(result.schedule.enabled).toBe(true);
+    expect(result.schedule.next_run_at).toBeTypeOf('number');
   });
 
   it('a second call returns the existing rows without duplicating', () => {
@@ -277,5 +286,16 @@ describe('seedDailyTaskReview', () => {
     // Only one schedule attached.
     const schedules = reportScheduleModel.listByReport(first.report.id);
     expect(schedules).toHaveLength(1);
+  });
+
+  it('backfills next_run_at on an existing scheduled Daily Task Review', () => {
+    const first = seedDailyTaskReview();
+    reportScheduleModel.updateNextRun(first.schedule.id, null);
+
+    const second = seedDailyTaskReview();
+
+    expect(second.created).toBe(false);
+    expect(second.schedule.id).toBe(first.schedule.id);
+    expect(second.schedule.next_run_at).toBeTypeOf('number');
   });
 });
