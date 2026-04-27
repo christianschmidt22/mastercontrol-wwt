@@ -350,6 +350,58 @@ describe('GET /api/notes/cross-org-insights', () => {
 });
 
 // ---------------------------------------------------------------------------
+// GET /api/notes/recent
+// ---------------------------------------------------------------------------
+
+describe('GET /api/notes/recent', () => {
+  it('returns user notes joined with org_name', async () => {
+    const org = makeOrg({ name: 'Recent Org Alpha', type: 'customer' });
+    makeNote(org.id, { content: 'Alpha recent note', role: 'user' });
+
+    const res = await request(app).get('/api/notes/recent');
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body)).toBe(true);
+
+    const row = (res.body as Array<{ content: string; org_name: string; org_type: string }>)
+      .find((n) => n.content === 'Alpha recent note');
+    expect(row).toBeDefined();
+    expect(row!.org_name).toBe('Recent Org Alpha');
+    expect(row!.org_type).toBe('customer');
+  });
+
+  it('does NOT include agent_insight notes', async () => {
+    const org = makeOrg();
+    noteModel.createInsight(org.id, 'Insight must not appear in recent', {
+      tool: 'record_insight',
+      source_thread_id: 1,
+      source_org_id: org.id,
+    });
+
+    const res = await request(app).get('/api/notes/recent');
+    expect(res.status).toBe(200);
+
+    const contents = (res.body as Array<{ content: string }>).map((n) => n.content);
+    expect(contents).not.toContain('Insight must not appear in recent');
+  });
+
+  it('respects ?limit= parameter', async () => {
+    const org = makeOrg();
+    for (let i = 0; i < 5; i++) {
+      makeNote(org.id, { content: `Limit test note ${i}` });
+    }
+
+    const res = await request(app).get('/api/notes/recent?limit=2');
+    expect(res.status).toBe(200);
+    expect((res.body as unknown[]).length).toBeLessThanOrEqual(2);
+  });
+
+  it('rejects limit > 50 with 400', async () => {
+    const res = await request(app).get('/api/notes/recent?limit=51');
+    expect(res.status).toBe(400);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Notes feed inclusion/exclusion via GET /api/organizations/:id/notes
 // ---------------------------------------------------------------------------
 

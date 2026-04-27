@@ -5,6 +5,7 @@ export type {
   Organization,
   OrganizationCreate,
   OrganizationUpdate,
+  OrgWithLastTouched,
 } from './organization';
 
 export type {

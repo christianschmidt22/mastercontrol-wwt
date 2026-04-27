@@ -1,12 +1,23 @@
 import { Router } from 'express';
 import { noteModel } from '../models/note.model.js';
-import { NoteCreateSchema, UnconfirmedInsightsQuerySchema, CrossOrgInsightsQuerySchema } from '../schemas/note.schema.js';
+import {
+  NoteCreateSchema,
+  RecentNotesQuerySchema,
+  UnconfirmedInsightsQuerySchema,
+  CrossOrgInsightsQuerySchema,
+} from '../schemas/note.schema.js';
 import { validateBody, validateQuery } from '../lib/validate.js';
 import { bumpOrgVersion } from '../services/claude.service.js';
 import { extractMentions } from '../services/mention.service.js';
 import { HttpError } from '../middleware/errorHandler.js';
 
 export const notesRouter = Router();
+
+// GET /recent?limit=10 — most recent user/assistant notes joined with org_name
+notesRouter.get('/recent', validateQuery(RecentNotesQuerySchema), (req, res) => {
+  const { limit } = req.validated as { limit?: number };
+  res.json(noteModel.listRecentWithOrg(limit ?? 10));
+});
 
 // GET /unconfirmed?limit=N — aggregator: all unconfirmed agent_insight notes across orgs
 notesRouter.get('/unconfirmed', validateQuery(UnconfirmedInsightsQuerySchema), (req, res) => {

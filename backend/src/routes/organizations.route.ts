@@ -9,12 +9,33 @@ import {
   OrganizationUpdateSchema,
   OrgTypeQuerySchema,
   OrgNotesQuerySchema,
+  OrgLastTouchedQuerySchema,
+  RecentOrgsQuerySchema,
 } from '../schemas/organization.schema.js';
 import { validateBody, validateQuery } from '../lib/validate.js';
 import { bumpOrgVersion } from '../services/claude.service.js';
 import { HttpError } from '../middleware/errorHandler.js';
 
 export const organizationsRouter = Router();
+
+// GET /recent?limit=20 — all orgs with last-touched timestamp, sorted desc
+organizationsRouter.get('/recent', validateQuery(RecentOrgsQuerySchema), (req, res) => {
+  const { limit } = req.validated as { limit?: number };
+  res.json(organizationModel.listRecentWithLastTouched(limit ?? 20));
+});
+
+// GET /last-touched?type=customer|oem
+// Returns { [orgId]: lastTouchedISO } map for the sidebar's per-org activity dots.
+// Must be registered before /:id so "last-touched" isn't consumed as an id param.
+organizationsRouter.get('/last-touched', validateQuery(OrgLastTouchedQuerySchema), (req, res) => {
+  const { type } = req.validated as { type: 'customer' | 'oem' };
+  const rows = organizationModel.listLastTouched(type);
+  const result: Record<string, string> = {};
+  for (const row of rows) {
+    result[String(row.id)] = row.last_touched;
+  }
+  res.json(result);
+});
 
 // GET /?type=customer|oem
 organizationsRouter.get('/', validateQuery(OrgTypeQuerySchema), (req, res) => {

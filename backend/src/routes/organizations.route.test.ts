@@ -308,6 +308,55 @@ describe('GET /api/organizations/:id/notes', () => {
 });
 
 // ---------------------------------------------------------------------------
+// GET /api/organizations/recent
+// ---------------------------------------------------------------------------
+
+describe('GET /api/organizations/recent', () => {
+  it('returns all orgs with id, name, type, and last_touched fields', async () => {
+    const org = makeOrg({ name: 'Recent Org Beta', type: 'oem' });
+
+    const res = await request(app).get('/api/organizations/recent');
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body)).toBe(true);
+
+    const found = (
+      res.body as Array<{ id: number; name: string; type: string; last_touched: string }>
+    ).find((o) => o.id === org.id);
+    expect(found).toBeDefined();
+    expect(found!.name).toBe('Recent Org Beta');
+    expect(found!.type).toBe('oem');
+    expect(found!.last_touched).toBeTruthy();
+  });
+
+  it('last_touched advances when a note is added', async () => {
+    const org = makeOrg({ name: 'Touch Org' });
+    makeNote(org.id, { content: 'Touch this org via note' });
+
+    const res = await request(app).get('/api/organizations/recent');
+    expect(res.status).toBe(200);
+
+    const found = (res.body as Array<{ id: number; last_touched: string }>)
+      .find((o) => o.id === org.id);
+    expect(found).toBeDefined();
+    // Should NOT be the epoch default since a note exists
+    expect(found!.last_touched.startsWith('1970')).toBe(false);
+  });
+
+  it('respects ?limit= parameter', async () => {
+    for (let i = 0; i < 5; i++) makeOrg();
+
+    const res = await request(app).get('/api/organizations/recent?limit=2');
+    expect(res.status).toBe(200);
+    expect((res.body as unknown[]).length).toBeLessThanOrEqual(2);
+  });
+
+  it('rejects limit > 100 with 400', async () => {
+    const res = await request(app).get('/api/organizations/recent?limit=101');
+    expect(res.status).toBe(400);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Full CRUD round-trip (create → list → get → update → delete)
 // ---------------------------------------------------------------------------
 

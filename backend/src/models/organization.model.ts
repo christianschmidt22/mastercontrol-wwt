@@ -26,6 +26,84 @@ export interface OrganizationInput {
   metadata?: Record<string, unknown>;
 }
 
+// ---------------------------------------------------------------------------
+// GET /api/organizations/recent — orgs with last-touched timestamp
+// ---------------------------------------------------------------------------
+
+export interface OrgWithLastTouched {
+  id: number;
+  name: string;
+  type: OrgType;
+  last_touched: string;
+}
+
+interface OrgWithLastTouchedRow {
+  id: number;
+  name: string;
+  type: OrgType;
+  last_touched: string;
+}
+
+/**
+ * Returns all orgs ordered by the most recent activity (latest note or agent
+ * thread message), descending. `last_touched` is an ISO date string; orgs with
+ * no activity return '1970-01-01'. Used by GET /api/organizations/recent.
+ *
+ * The CASE picks the greater of MAX(note timestamp) vs MAX(thread timestamp)
+ * per org — safe aggregate SQL that avoids the non-deterministic 2-arg MAX()
+ * behaviour in a GROUP BY context.
+ */
+const listRecentWithLastTouchedStmt = db.prepare<[number], OrgWithLastTouchedRow>(
+  `SELECT
+     o.id,
+     o.name,
+     o.type,
+     CASE
+       WHEN COALESCE(MAX(n.created_at), '1970-01-01') >= COALESCE(MAX(t.last_message_at), '1970-01-01')
+       THEN COALESCE(MAX(n.created_at), '1970-01-01')
+       ELSE COALESCE(MAX(t.last_message_at), '1970-01-01')
+     END AS last_touched
+   FROM organizations o
+   LEFT JOIN notes n ON n.organization_id = o.id
+   LEFT JOIN agent_threads t ON t.organization_id = o.id
+   GROUP BY o.id
+   ORDER BY last_touched DESC
+   LIMIT ?`,
+);
+
+// ---------------------------------------------------------------------------
+// GET /api/organizations/last-touched?type= — per-org activity map for sidebar
+// ---------------------------------------------------------------------------
+
+export interface OrgLastTouchedRow {
+  id: number;
+  last_touched: string;
+}
+
+/**
+ * Returns { id, last_touched } for every org of the given type.
+ * last_touched is the greater of the org's latest note created_at and its
+ * latest agent thread last_message_at, formatted as ISO-8601 UTC.
+ * Falls back to '1970-01-01T00:00:00Z' for orgs with no activity.
+ *
+ * Uses correlated subqueries so each org always produces exactly one row,
+ * eliminating the Cartesian-product risk of a raw LEFT JOIN with GROUP BY.
+ */
+const listLastTouchedByTypeStmt = db.prepare<[OrgType], OrgLastTouchedRow>(
+  `SELECT
+     o.id,
+     strftime('%Y-%m-%dT%H:%M:%SZ',
+       CASE
+         WHEN COALESCE((SELECT MAX(n.created_at) FROM notes n WHERE n.organization_id = o.id), '1970-01-01')
+              >= COALESCE((SELECT MAX(t.last_message_at) FROM agent_threads t WHERE t.organization_id = o.id), '1970-01-01')
+         THEN COALESCE((SELECT MAX(n.created_at) FROM notes n WHERE n.organization_id = o.id), '1970-01-01')
+         ELSE COALESCE((SELECT MAX(t.last_message_at) FROM agent_threads t WHERE t.organization_id = o.id), '1970-01-01')
+       END
+     ) AS last_touched
+   FROM organizations o
+   WHERE o.type = ?`,
+);
+
 const listByTypeStmt = db.prepare<[OrgType], OrgRow>(
   'SELECT * FROM organizations WHERE type = ? ORDER BY name COLLATE NOCASE'
 );
@@ -59,4 +137,20 @@ export const organizationModel = {
     return row ? hydrate(row) : undefined;
   },
   remove: (id: number): boolean => deleteStmt.run(id).changes > 0,
+
+  /**
+   * GET /api/organizations/recent — all orgs with last_touched, sorted desc.
+   * `last_touched` is the max of the org's latest note or latest agent thread
+   * message timestamp, defaulting to '1970-01-01' when neither exists.
+   */
+  listRecentWithLastTouched: (limit: number): OrgWithLastTouched[] =>
+    listRecentWithLastTouchedStmt.all(limit),
+
+  /**
+   * GET /api/organizations/last-touched?type=
+   * Returns { id, last_touched } for every org of the given type.
+   * Used by the sidebar to show per-org recent-activity dots.
+   */
+  listLastTouched: (type: OrgType): OrgLastTouchedRow[] =>
+    listLastTouchedByTypeStmt.all(type),
 };

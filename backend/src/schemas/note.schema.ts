@@ -39,6 +39,11 @@ export const NoteCreateSchema = z.object({
   provenance: NoteProvenanceSchema.optional(),
 });
 
+/** GET /api/notes/recent query params — limit clamped to max 50 */
+export const RecentNotesQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(50).optional(),
+});
+
 /** GET /api/notes/unconfirmed query params */
 export const UnconfirmedInsightsQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(200).optional(),

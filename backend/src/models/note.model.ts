@@ -228,6 +228,32 @@ export interface NoteWithOrg {
   created_at: string;
 }
 
+// ---------------------------------------------------------------------------
+// GET /api/notes/recent — most recent user/assistant notes across all orgs
+// ---------------------------------------------------------------------------
+
+const listRecentWithOrgStmt = db.prepare<[number], NoteWithOrgRow>(
+  `SELECT
+     n.id,
+     n.organization_id,
+     o.name  AS org_name,
+     o.type  AS org_type,
+     n.content,
+     n.ai_response,
+     n.source_path,
+     n.file_mtime,
+     n.role,
+     n.thread_id,
+     n.provenance,
+     n.confirmed,
+     n.created_at
+   FROM notes n
+   JOIN organizations o ON o.id = n.organization_id
+   WHERE n.role IN ('user', 'assistant')
+   ORDER BY n.created_at DESC
+   LIMIT ?`,
+);
+
 const listUnconfirmedAcrossOrgsStmt = db.prepare<[number], NoteWithOrgRow>(
   `SELECT
      n.id,
@@ -532,6 +558,13 @@ export const noteModel = {
     );
     return hydrate(getStmt.get(Number(result.lastInsertRowid))!);
   },
+
+  /**
+   * GET /api/notes/recent — most recent user/assistant notes across all orgs,
+   * joined with org name + type for display. Limit capped at 50 by the route.
+   */
+  listRecentWithOrg: (limit: number): NoteWithOrg[] =>
+    listRecentWithOrgStmt.all(limit).map(hydrateWithOrg),
 
   /** Aggregator: return all unconfirmed agent_insight notes across all orgs,
    *  joined with the org's name and type. Used by GET /api/notes/unconfirmed. */
