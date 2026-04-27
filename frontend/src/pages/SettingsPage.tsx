@@ -2,37 +2,25 @@
  * SettingsPage — Phase 1
  *
  * Sections:
- *   1. AI Credentials  — Anthropic API key (password field)
- *   2. Default Model   — <select> backed by 'default_model' setting
- *   3. Note Sources    — WorkVault root + OneDrive root paths
- *   4. Background Scheduler — read-only Phase-2 placeholder
- *   5. Agent Overrides — one-line nav link to /agents
+ *   1. Anthropic API Key          — masked display, Edit toggle, Save / Cancel
+ *   2. Personal Anthropic API Key — same masked / edit pattern
+ *   3. Default Model              — <select>, saves immediately on change
+ *   4. Theme                      — Light / Dark / System radios, syncs Zustand + DOM + backend
+ *   5. Paths                      — read-only WorkVault + OneDrive display
  *
- * Design: DESIGN.md "Field Notes" aesthetic.
- * A11y: every input has <label htmlFor>, aria-live status, focus-visible rings.
- * Warn on unsaved navigation: beforeunload listener when any section is dirty.
+ * Design: DESIGN.md "Field Notes" aesthetic. Fraunces h1/h2, Switzer body.
+ * A11y: explicit <label htmlFor> on every input, <fieldset>/<legend> for radios,
+ *       aria-live on save confirmation, focus-visible rings, disabled attr when not dirty.
  */
 
-import {
-  type FormEvent,
-  type ChangeEvent,
-  useEffect,
-  useRef,
-  useState,
-} from 'react';
-import { NavLink } from 'react-router-dom';
-import { Loader2 } from 'lucide-react';
+import { type ChangeEvent, type CSSProperties, useEffect, useRef, useState } from 'react';
+import { Loader2, Pencil } from 'lucide-react';
 import { useSetting, useSetSetting } from '../api/useSettings';
-import { useIngestStatus } from '../api/useIngest';
-import { FormField } from '../components/forms/FormField';
-import { IngestStatusPanel } from '../components/ingest/IngestStatusPanel';
-import { SourcePathConfig } from '../components/ingest/SourcePathConfig';
-import { IngestErrorList } from '../components/ingest/IngestErrorList';
-import { AuthModeSection } from '../components/agents/AuthModeSection';
+import { useUiStore, type Theme } from '../store/useUiStore';
 
-// ─── Shared style tokens ────────────────────────────────────────────────────
+// ─── Style tokens ──────────────────────────────────────────────────────────────
 
-const INPUT_STYLE: React.CSSProperties = {
+const INPUT_STYLE: CSSProperties = {
   fontFamily: 'var(--body)',
   fontSize: 14,
   color: 'var(--ink-1)',
@@ -41,230 +29,348 @@ const INPUT_STYLE: React.CSSProperties = {
   borderRadius: 6,
   padding: '8px 12px',
   width: '100%',
+  boxSizing: 'border-box',
   transition: 'border-color 150ms var(--ease)',
 };
 
-const SELECT_STYLE: React.CSSProperties = {
-  ...INPUT_STYLE,
-  // Explicit background/color required for dark-mode native selects
-  // (Vercel guideline: never rely on UA default for form control colours)
-  backgroundColor: 'var(--bg)',
-  color: 'var(--ink-1)',
-  appearance: 'auto',
-  cursor: 'pointer',
-};
-
-const CARD_STYLE: React.CSSProperties = {
+const CARD_STYLE: CSSProperties = {
   border: '1px solid var(--rule)',
   borderRadius: 8,
   padding: 32,
   background: 'var(--bg)',
 };
 
-const SECTION_TITLE_STYLE: React.CSSProperties = {
+const SECTION_H2: CSSProperties = {
   fontFamily: 'var(--display)',
   fontWeight: 500,
-  fontSize: 24,
+  fontSize: 22,
   lineHeight: 1.1,
   letterSpacing: '-0.01em',
   color: 'var(--ink-1)',
-  marginBottom: 16,
+  margin: '0 0 16px',
 };
 
-const SAVE_BTN_BASE: React.CSSProperties = {
+const LABEL_STYLE: CSSProperties = {
   fontFamily: 'var(--body)',
   fontSize: 13,
   fontWeight: 500,
-  padding: '8px 18px',
-  borderRadius: 6,
-  cursor: 'pointer',
-  border: '1px solid var(--rule)',
-  background: 'var(--bg-2)',
   color: 'var(--ink-1)',
-  display: 'inline-flex',
-  alignItems: 'center',
-  gap: 6,
-  transition: 'opacity 150ms var(--ease), background-color 150ms var(--ease)',
+  letterSpacing: '0.01em',
+  display: 'block',
+  marginBottom: 6,
 };
 
-// ─── Status pill ─────────────────────────────────────────────────────────────
+const HELPER_STYLE: CSSProperties = {
+  fontFamily: 'var(--body)',
+  fontSize: 12,
+  color: 'var(--ink-2)',
+  lineHeight: 1.5,
+  margin: '6px 0 0',
+};
 
-interface StatusPillProps {
-  /** Epoch ms of when "Saved" happened, or null if not yet saved */
-  savedAt: number | null;
+const ERROR_STYLE: CSSProperties = {
+  fontFamily: 'var(--body)',
+  fontSize: 12,
+  color: 'var(--accent)',
+  lineHeight: 1.5,
+  margin: '6px 0 0',
+};
+
+// ─── useBeforeUnloadGuard ─────────────────────────────────────────────────────
+
+function useBeforeUnloadGuard(isDirty: boolean) {
+  useEffect(() => {
+    if (!isDirty) return;
+    function handle(e: BeforeUnloadEvent) {
+      e.preventDefault();
+      e.returnValue = '';
+    }
+    window.addEventListener('beforeunload', handle);
+    return () => window.removeEventListener('beforeunload', handle);
+  }, [isDirty]);
 }
 
-function StatusPill({ savedAt }: StatusPillProps) {
-  const [label, setLabel] = useState('');
+// ─── SavedBadge ───────────────────────────────────────────────────────────────
 
-  useEffect(() => {
-    if (savedAt === null) {
-      setLabel('');
-      return;
-    }
-
-    function tick() {
-      if (savedAt === null) return;
-      const diffMs = Date.now() - savedAt;
-      const diffSec = Math.floor(diffMs / 1000);
-      if (diffSec < 5) {
-        setLabel('Saved');
-      } else if (diffSec < 60) {
-        setLabel(`Saved ${diffSec}s ago`);
-      } else {
-        const diffMin = Math.floor(diffSec / 60);
-        setLabel(`Saved ${diffMin}m ago`);
-      }
-    }
-
-    tick();
-    const id = setInterval(tick, 5000);
-    return () => clearInterval(id);
-  }, [savedAt]);
-
-  // Auto-dismiss the "Saved" text after 3 s
+function SavedBadge({ savedAt }: { savedAt: number | null }) {
   const [visible, setVisible] = useState(false);
+
   useEffect(() => {
     if (savedAt === null) {
       setVisible(false);
       return;
     }
     setVisible(true);
-    const id = setTimeout(() => setVisible(false), 3000);
-    return () => clearTimeout(id);
+    const t = setTimeout(() => setVisible(false), 3000);
+    return () => clearTimeout(t);
   }, [savedAt]);
 
   return (
     <span
       aria-live="polite"
       style={{
+        fontFamily: 'var(--body)',
         fontSize: 12,
         color: 'var(--ink-2)',
-        fontFamily: 'var(--body)',
+        opacity: visible ? 1 : 0,
+        transition: 'opacity 240ms var(--ease)',
         minHeight: 18,
         display: 'inline-block',
-        transition: 'opacity 240ms var(--ease)',
-        opacity: visible ? 1 : 0,
       }}
     >
-      {label}
+      Saved
     </span>
   );
 }
 
-// ─── Section 1: AI Credentials ───────────────────────────────────────────────
+// ─── MaskedKeySection ─────────────────────────────────────────────────────────
+// Reused for both Anthropic API Key and Personal Anthropic API Key sections.
 
-function ApiKeySection() {
-  const { data: existing } = useSetting('anthropic_api_key');
+interface MaskedKeySectionProps {
+  settingKey: string;
+  sectionId: string;
+  title: string;
+  inputId: string;
+  helperText: string;
+  saveLabel: string;
+}
+
+function MaskedKeySection({
+  settingKey,
+  sectionId,
+  title,
+  inputId,
+  helperText,
+  saveLabel,
+}: MaskedKeySectionProps) {
+  const { data: existing } = useSetting(settingKey);
   const setSetting = useSetSetting();
 
-  const [value, setValue] = useState('');
-  const [dirty, setDirty] = useState(false);
-  const [savedAt, setSavedAt] = useState<number | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState('');
   const [error, setError] = useState('');
+  const [savedAt, setSavedAt] = useState<number | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  const dirty = editing && draft.trim() !== '';
+  const isPending = setSetting.isPending;
 
   useBeforeUnloadGuard(dirty);
 
-  // Mark dirty when user types
-  function handleChange(e: ChangeEvent<HTMLInputElement>) {
-    setValue(e.target.value);
-    setDirty(true);
+  useEffect(() => {
+    if (editing) inputRef.current?.focus();
+  }, [editing]);
+
+  const maskedValue = existing?.value ?? '—';
+
+  function startEditing() {
+    setDraft('');
+    setError('');
+    setEditing(true);
+  }
+
+  function cancelEditing() {
+    setEditing(false);
+    setDraft('');
     setError('');
   }
 
-  async function handleSubmit(e: FormEvent) {
-    e.preventDefault();
-    if (!value.trim()) {
+  async function handleSave() {
+    if (!draft.trim()) {
       setError('API key is required.');
       inputRef.current?.focus();
       return;
     }
     setError('');
     try {
-      await setSetting.mutateAsync({ key: 'anthropic_api_key', value: value.trim() });
-      setValue('');
-      setDirty(false);
+      await setSetting.mutateAsync({ key: settingKey, value: draft.trim() });
+      setEditing(false);
+      setDraft('');
       setSavedAt(Date.now());
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Save failed. Try again.');
     }
   }
 
-  const isPending = setSetting.isPending;
-
   return (
-    <section aria-labelledby="section-ai-credentials">
-      <h2 id="section-ai-credentials" style={SECTION_TITLE_STYLE}>
-        AI Credentials
+    <section aria-labelledby={sectionId}>
+      <h2 id={sectionId} style={SECTION_H2}>
+        {title}
       </h2>
+
       <div style={CARD_STYLE}>
-        <form onSubmit={(e) => void handleSubmit(e)} noValidate>
-          <FormField
-            id="anthropic_api_key"
-            label="Anthropic API key"
-            helper="Stored locally and DPAPI-encrypted on Windows. Never sent to the frontend after save."
-            error={error}
-          >
+        {!editing ? (
+          /* ── Display mode ──────────────────────────────────────────── */
+          <div>
+            <label htmlFor={inputId} style={LABEL_STYLE}>
+              {title}
+            </label>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <input
+                id={inputId}
+                type="text"
+                readOnly
+                value={maskedValue}
+                style={{
+                  fontFamily: 'var(--mono)',
+                  fontSize: 13,
+                  color: 'var(--ink-2)',
+                  background: 'var(--bg-2)',
+                  border: '1px solid var(--rule)',
+                  borderRadius: 6,
+                  padding: '8px 12px',
+                  flex: '1 1 0',
+                  minWidth: 0,
+                  cursor: 'default',
+                }}
+              />
+              <button
+                type="button"
+                onClick={startEditing}
+                aria-label={`Edit ${title}`}
+                style={{
+                  fontFamily: 'var(--body)',
+                  fontSize: 13,
+                  fontWeight: 500,
+                  padding: '8px 16px',
+                  borderRadius: 6,
+                  cursor: 'pointer',
+                  border: '1px solid var(--rule)',
+                  background: 'var(--bg)',
+                  color: 'var(--ink-1)',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  whiteSpace: 'nowrap',
+                  flexShrink: 0,
+                  transition: 'border-color 150ms var(--ease)',
+                }}
+              >
+                <Pencil size={13} strokeWidth={1.5} aria-hidden="true" />
+                Edit
+              </button>
+            </div>
+            <p style={HELPER_STYLE}>{helperText}</p>
+            <div style={{ marginTop: 8 }}>
+              <SavedBadge savedAt={savedAt} />
+            </div>
+          </div>
+        ) : (
+          /* ── Edit mode ─────────────────────────────────────────────── */
+          <div>
+            <label htmlFor={inputId} style={LABEL_STYLE}>
+              {title}
+            </label>
             <input
-              id="anthropic_api_key"
+              id={inputId}
               ref={inputRef}
               type="password"
               autoComplete="off"
               spellCheck={false}
-              name="anthropic_api_key"
-              placeholder={existing?.value ?? 'sk-ant-…'}
-              value={value}
-              onChange={handleChange}
-              aria-describedby={error ? 'anthropic_api_key-error' : 'anthropic_api_key-helper'}
+              name={inputId}
+              placeholder="sk-ant-…"
+              value={draft}
+              onChange={(e: ChangeEvent<HTMLInputElement>) => {
+                setDraft(e.target.value);
+                if (error) setError('');
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') cancelEditing();
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  void handleSave();
+                }
+              }}
+              aria-describedby={error ? `${inputId}-error` : undefined}
+              aria-invalid={error ? true : undefined}
               style={{
                 ...INPUT_STYLE,
                 borderColor: error ? 'var(--accent)' : 'var(--rule)',
               }}
               onFocus={(e) => {
-                (e.target).style.borderColor = 'var(--accent)';
+                e.target.style.borderColor = 'var(--accent)';
               }}
               onBlur={(e) => {
-                (e.target).style.borderColor =
-                  error ? 'var(--accent)' : 'var(--rule)';
+                e.target.style.borderColor = error ? 'var(--accent)' : 'var(--rule)';
               }}
             />
-          </FormField>
 
-          <div style={{ marginTop: 16, display: 'flex', alignItems: 'center', gap: 12 }}>
-            <button
-              type="submit"
-              disabled={isPending || !dirty}
-              style={{
-                ...SAVE_BTN_BASE,
-                opacity: isPending || !dirty ? 0.5 : 1,
-                cursor: isPending || !dirty ? 'default' : 'pointer',
-              }}
-            >
-              {isPending && (
-                <Loader2
-                  size={14}
-                  strokeWidth={1.5}
-                  aria-hidden="true"
-                  className="animate-spin"
-                />
-              )}
-              {isPending ? 'Saving…' : 'Save API Key'}
-            </button>
-            <StatusPill savedAt={savedAt} />
+            {error ? (
+              <p id={`${inputId}-error`} role="alert" style={ERROR_STYLE}>
+                {error}
+              </p>
+            ) : (
+              <p style={HELPER_STYLE}>{helperText}</p>
+            )}
+
+            <div style={{ marginTop: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
+              {/* Save — vermilion border + text when dirty, per DESIGN.md vermilion budget */}
+              <button
+                type="button"
+                onClick={() => void handleSave()}
+                disabled={!dirty || isPending}
+                style={{
+                  fontFamily: 'var(--body)',
+                  fontSize: 13,
+                  fontWeight: 500,
+                  padding: '8px 18px',
+                  borderRadius: 6,
+                  cursor: !dirty || isPending ? 'default' : 'pointer',
+                  border: `1px solid ${dirty ? 'var(--accent)' : 'var(--rule)'}`,
+                  background: 'var(--bg)',
+                  color: dirty ? 'var(--accent)' : 'var(--ink-2)',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  transition: 'border-color 150ms var(--ease), color 150ms var(--ease)',
+                  opacity: isPending ? 0.6 : 1,
+                }}
+              >
+                {isPending && (
+                  <Loader2
+                    size={14}
+                    strokeWidth={1.5}
+                    aria-hidden="true"
+                    className="animate-spin"
+                  />
+                )}
+                {isPending ? 'Saving…' : saveLabel}
+              </button>
+
+              {/* Cancel — hairline border only, no fill */}
+              <button
+                type="button"
+                onClick={cancelEditing}
+                disabled={isPending}
+                style={{
+                  fontFamily: 'var(--body)',
+                  fontSize: 13,
+                  fontWeight: 400,
+                  padding: '8px 16px',
+                  borderRadius: 6,
+                  cursor: isPending ? 'default' : 'pointer',
+                  border: '1px solid var(--rule)',
+                  background: 'transparent',
+                  color: 'var(--ink-2)',
+                  transition: 'color 150ms var(--ease)',
+                }}
+              >
+                Cancel
+              </button>
+            </div>
           </div>
-        </form>
+        )}
       </div>
     </section>
   );
 }
 
-// ─── Section 2: Default Model ─────────────────────────────────────────────────
+// ─── DefaultModelSection ──────────────────────────────────────────────────────
 
 const MODEL_OPTIONS = [
   { value: 'claude-sonnet-4-6', label: 'claude-sonnet-4-6 (recommended)' },
-  { value: 'claude-opus-4-7',   label: 'claude-opus-4-7' },
-  { value: 'claude-haiku-4-5',  label: 'claude-haiku-4-5' },
+  { value: 'claude-opus-4-7', label: 'claude-opus-4-7' },
+  { value: 'claude-haiku-4-5', label: 'claude-haiku-4-5' },
 ] as const;
 
 type ModelValue = (typeof MODEL_OPTIONS)[number]['value'];
@@ -273,477 +379,248 @@ function DefaultModelSection() {
   const { data: existing } = useSetting('default_model');
   const setSetting = useSetSetting();
 
-  const resolvedExisting = (existing?.value ?? 'claude-sonnet-4-6') as ModelValue;
-
   const [selected, setSelected] = useState<ModelValue>('claude-sonnet-4-6');
-  const [dirty, setDirty] = useState(false);
   const [savedAt, setSavedAt] = useState<number | null>(null);
   const [error, setError] = useState('');
 
-  useBeforeUnloadGuard(dirty);
-
-  // Sync once the query resolves
+  // Sync local state once server response lands
   useEffect(() => {
-    if (existing?.value && !dirty) {
+    if (existing?.value) {
       const v = existing.value as ModelValue;
-      if (MODEL_OPTIONS.some((o) => o.value === v)) {
-        setSelected(v);
-      }
+      if (MODEL_OPTIONS.some((o) => o.value === v)) setSelected(v);
     }
-  }, [existing?.value, dirty]);
+  }, [existing?.value]);
 
-  function handleChange(e: ChangeEvent<HTMLSelectElement>) {
-    setSelected(e.target.value as ModelValue);
-    setDirty(true);
-    setError('');
-  }
-
-  async function handleSubmit(e: FormEvent) {
-    e.preventDefault();
+  async function handleChange(e: ChangeEvent<HTMLSelectElement>) {
+    const next = e.target.value as ModelValue;
+    setSelected(next);
     setError('');
     try {
-      await setSetting.mutateAsync({ key: 'default_model', value: selected });
-      setDirty(false);
+      await setSetting.mutateAsync({ key: 'default_model', value: next });
       setSavedAt(Date.now());
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Save failed. Try again.');
+      setError(err instanceof Error ? err.message : 'Save failed.');
     }
   }
-
-  const isPending = setSetting.isPending;
 
   return (
     <section aria-labelledby="section-default-model">
-      <h2 id="section-default-model" style={SECTION_TITLE_STYLE}>
+      <h2 id="section-default-model" style={SECTION_H2}>
         Default Model
       </h2>
       <div style={CARD_STYLE}>
-        <form onSubmit={(e) => void handleSubmit(e)} noValidate>
-          <FormField
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <label htmlFor="default_model" style={LABEL_STYLE}>
+            Model
+          </label>
+          <select
             id="default_model"
-            label="Model"
-            error={error}
-            helper={`Currently: ${resolvedExisting}`}
+            name="default_model"
+            value={selected}
+            onChange={(e) => void handleChange(e)}
+            disabled={setSetting.isPending}
+            style={{
+              ...INPUT_STYLE,
+              backgroundColor: 'var(--bg)',
+              color: 'var(--ink-1)',
+              appearance: 'auto',
+              cursor: setSetting.isPending ? 'wait' : 'pointer',
+            }}
+            onFocus={(e) => {
+              e.target.style.borderColor = 'var(--accent)';
+            }}
+            onBlur={(e) => {
+              e.target.style.borderColor = 'var(--rule)';
+            }}
           >
-            <select
-              id="default_model"
-              name="default_model"
-              value={selected}
-              onChange={handleChange}
-              style={SELECT_STYLE}
-              onFocus={(e) => {
-                (e.target).style.borderColor = 'var(--accent)';
-              }}
-              onBlur={(e) => {
-                (e.target).style.borderColor = 'var(--rule)';
-              }}
-            >
-              {MODEL_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
-          </FormField>
-
-          <div style={{ marginTop: 16, display: 'flex', alignItems: 'center', gap: 12 }}>
-            <button
-              type="submit"
-              disabled={isPending || !dirty}
-              style={{
-                ...SAVE_BTN_BASE,
-                opacity: isPending || !dirty ? 0.5 : 1,
-                cursor: isPending || !dirty ? 'default' : 'pointer',
-              }}
-            >
-              {isPending && (
-                <Loader2
-                  size={14}
-                  strokeWidth={1.5}
-                  aria-hidden="true"
-                  className="animate-spin"
-                />
-              )}
-              {isPending ? 'Saving…' : 'Save Model'}
-            </button>
-            <StatusPill savedAt={savedAt} />
-          </div>
-        </form>
+            {MODEL_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+          <p style={HELPER_STYLE}>Saves immediately. Applied to all new agent conversations.</p>
+          {error && (
+            <p role="alert" style={ERROR_STYLE}>
+              {error}
+            </p>
+          )}
+        </div>
+        <div style={{ marginTop: 8 }}>
+          <SavedBadge savedAt={savedAt} />
+        </div>
       </div>
     </section>
   );
 }
 
-// ─── Section 3: Note Sources ──────────────────────────────────────────────────
+// ─── ThemeSection ─────────────────────────────────────────────────────────────
 
-function NoteSourcesSection() {
-  const { data: existingWorkvault } = useSetting('workvault_root');
-  const { data: existingOnedrive }  = useSetting('onedrive_root');
+const THEME_OPTIONS: Array<{ value: Theme; label: string }> = [
+  { value: 'light', label: 'Light' },
+  { value: 'dark', label: 'Dark' },
+  { value: 'system', label: 'System' },
+];
+
+/**
+ * Apply theme class to document root synchronously.
+ * 'system' removes both classes, deferring to prefers-color-scheme.
+ */
+export function applyThemeToDocument(theme: Theme): void {
+  const root = document.documentElement;
+  root.classList.remove('light', 'dark');
+  if (theme === 'light') root.classList.add('light');
+  else if (theme === 'dark') root.classList.add('dark');
+}
+
+function ThemeSection() {
+  const { theme, setTheme } = useUiStore();
   const setSetting = useSetSetting();
+  const [error, setError] = useState('');
 
-  const [workvault, setWorkvault] = useState('');
-  const [onedrive,  setOnedrive]  = useState('');
-  const [dirty, setDirty] = useState(false);
-  const [savedAt, setSavedAt] = useState<number | null>(null);
-  const [errors, setErrors] = useState<{ workvault?: string; onedrive?: string }>({});
-
-  const workvaultRef = useRef<HTMLInputElement>(null);
-  const onedriveRef  = useRef<HTMLInputElement>(null);
-
-  useBeforeUnloadGuard(dirty);
-
-  // Sync once queries resolve
-  useEffect(() => {
-    if (existingWorkvault?.value && !dirty) {
-      setWorkvault(existingWorkvault.value);
-    }
-  }, [existingWorkvault?.value, dirty]);
-
-  useEffect(() => {
-    if (existingOnedrive?.value && !dirty) {
-      setOnedrive(existingOnedrive.value);
-    }
-  }, [existingOnedrive?.value, dirty]);
-
-  function handleWorkvaultChange(e: ChangeEvent<HTMLInputElement>) {
-    setWorkvault(e.target.value);
-    setDirty(true);
-    setErrors((prev) => ({ ...prev, workvault: undefined }));
-  }
-
-  function handleOnedriveChange(e: ChangeEvent<HTMLInputElement>) {
-    setOnedrive(e.target.value);
-    setDirty(true);
-    setErrors((prev) => ({ ...prev, onedrive: undefined }));
-  }
-
-  async function handleSubmit(e: FormEvent) {
-    e.preventDefault();
-    const newErrors: { workvault?: string; onedrive?: string } = {};
-
-    if (!workvault.trim()) {
-      newErrors.workvault = 'WorkVault root path is required.';
-    }
-
-    if (Object.keys(newErrors).length > 0) {
-      setErrors(newErrors);
-      if (newErrors.workvault) workvaultRef.current?.focus();
-      else if (newErrors.onedrive) onedriveRef.current?.focus();
-      return;
-    }
-
-    setErrors({});
+  async function handleChange(next: Theme) {
+    // Synchronous: update Zustand (persists to localStorage) + DOM class
+    setTheme(next);
+    applyThemeToDocument(next);
+    setError('');
+    // Async: persist to backend settings for cross-device / settings-page restore
     try {
-      // Fire both mutations in sequence; show one combined confirmation
-      await setSetting.mutateAsync({ key: 'workvault_root', value: workvault.trim() });
-      if (onedrive.trim()) {
-        await setSetting.mutateAsync({ key: 'onedrive_root', value: onedrive.trim() });
-      }
-      setDirty(false);
-      setSavedAt(Date.now());
+      await setSetting.mutateAsync({ key: 'theme', value: next });
     } catch (err) {
-      setErrors({
-        workvault: err instanceof Error ? err.message : 'Save failed. Try again.',
-      });
+      setError(err instanceof Error ? err.message : 'Save failed.');
     }
   }
 
-  const isPending = setSetting.isPending;
-
   return (
-    <section aria-labelledby="section-note-sources">
-      <h2 id="section-note-sources" style={SECTION_TITLE_STYLE}>
-        Note Sources
+    <section aria-labelledby="section-theme">
+      <h2 id="section-theme" style={SECTION_H2}>
+        Theme
       </h2>
       <div style={CARD_STYLE}>
-        <form onSubmit={(e) => void handleSubmit(e)} noValidate>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-            <FormField
-              id="workvault_root"
-              label="WorkVault root"
-              error={errors.workvault}
-              helper="Read-only until Phase 2 ingestion. MasterControl will scan this folder to import and tag notes by org."
-            >
-              <input
-                id="workvault_root"
-                ref={workvaultRef}
-                type="text"
-                name="workvault_root"
-                inputMode="url"
-                autoComplete="off"
-                spellCheck={false}
-                placeholder={
-                  existingWorkvault?.value ??
-                  'C:\\Users\\schmichr\\OneDrive - WWT\\Documents\\redqueen\\WorkVault'
-                }
-                value={workvault}
-                onChange={handleWorkvaultChange}
-                className="mono"
-                style={INPUT_STYLE}
-                onFocus={(e) => {
-                  (e.target).style.borderColor = 'var(--accent)';
-                }}
-                onBlur={(e) => {
-                  (e.target).style.borderColor = 'var(--rule)';
-                }}
-              />
-            </FormField>
-
-            <FormField
-              id="onedrive_root"
-              label="OneDrive root"
-              error={errors.onedrive}
-              helper="Used by the OEM page to list project documents from your OneDrive folder in Phase 2."
-            >
-              <input
-                id="onedrive_root"
-                ref={onedriveRef}
-                type="text"
-                name="onedrive_root"
-                inputMode="url"
-                autoComplete="off"
-                spellCheck={false}
-                placeholder={existingOnedrive?.value ?? 'C:\\Users\\schmichr\\OneDrive - WWT'}
-                value={onedrive}
-                onChange={handleOnedriveChange}
-                className="mono"
-                style={INPUT_STYLE}
-                onFocus={(e) => {
-                  (e.target).style.borderColor = 'var(--accent)';
-                }}
-                onBlur={(e) => {
-                  (e.target).style.borderColor = 'var(--rule)';
-                }}
-              />
-            </FormField>
-          </div>
-
-          <div style={{ marginTop: 20, display: 'flex', alignItems: 'center', gap: 12 }}>
-            <button
-              type="submit"
-              disabled={isPending || !dirty}
-              style={{
-                ...SAVE_BTN_BASE,
-                opacity: isPending || !dirty ? 0.5 : 1,
-                cursor: isPending || !dirty ? 'default' : 'pointer',
-              }}
-            >
-              {isPending && (
-                <Loader2
-                  size={14}
-                  strokeWidth={1.5}
-                  aria-hidden="true"
-                  className="animate-spin"
-                />
-              )}
-              {isPending ? 'Saving…' : 'Save Paths'}
-            </button>
-            <StatusPill savedAt={savedAt} />
-          </div>
-        </form>
-      </div>
-    </section>
-  );
-}
-
-// ─── Section 4: Background Scheduler ─────────────────────────────────────────
-
-function SchedulerSection() {
-  return (
-    <section aria-labelledby="section-scheduler">
-      <h2 id="section-scheduler" style={SECTION_TITLE_STYLE}>
-        Background Scheduler
-      </h2>
-      <div style={CARD_STYLE}>
-        <dl
-          style={{
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 12,
-            margin: 0,
-          }}
-        >
-          {(
-            [
-              ['Status',   'Not configured (Phase 2)'],
-              ['Next run', '—'],
-              ['Last run', '—'],
-            ] as const
-          ).map(([term, detail]) => (
-            <div key={term} style={{ display: 'flex', gap: 16, alignItems: 'baseline' }}>
-              <dt
+        <fieldset style={{ border: 'none', margin: 0, padding: 0 }}>
+          <legend style={LABEL_STYLE}>Color scheme</legend>
+          <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap', marginTop: 2 }}>
+            {THEME_OPTIONS.map((opt) => (
+              <label
+                key={opt.value}
+                htmlFor={`theme-${opt.value}`}
                 style={{
-                  fontFamily: 'var(--body)',
-                  fontSize: 13,
-                  fontWeight: 500,
-                  color: 'var(--ink-2)',
-                  minWidth: 80,
-                  flexShrink: 0,
-                }}
-              >
-                {term}
-              </dt>
-              <dd
-                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
                   fontFamily: 'var(--body)',
                   fontSize: 14,
                   color: 'var(--ink-1)',
-                  margin: 0,
+                  cursor: 'pointer',
                 }}
               >
-                {detail}
-              </dd>
-            </div>
-          ))}
-        </dl>
-        <p
-          style={{
-            marginTop: 20,
-            fontSize: 12,
-            color: 'var(--ink-2)',
-            fontFamily: 'var(--body)',
-            lineHeight: 1.5,
-          }}
-        >
-          Scheduled reports run via the Phase 2 Windows Service. Configure
-          when reports launch.
-        </p>
+                <input
+                  type="radio"
+                  id={`theme-${opt.value}`}
+                  name="theme"
+                  value={opt.value}
+                  checked={theme === opt.value}
+                  onChange={() => void handleChange(opt.value)}
+                  style={{ accentColor: 'var(--accent)', cursor: 'pointer' }}
+                />
+                {opt.label}
+              </label>
+            ))}
+          </div>
+        </fieldset>
+        {error && (
+          <p role="alert" style={{ ...ERROR_STYLE, marginTop: 12 }}>
+            {error}
+          </p>
+        )}
       </div>
     </section>
   );
 }
 
-// ─── Section 5: Ingest ────────────────────────────────────────────────────────
+// ─── PathsSection ─────────────────────────────────────────────────────────────
 
-function IngestSection() {
-  const { data, isLoading } = useIngestStatus();
-  const sources = data?.source ? [data.source] : [];
-  const errors = data?.errors ?? [];
+function PathsSection() {
+  const { data: workvaultData } = useSetting('workvault_path');
+  const { data: onedriveData } = useSetting('onedrive_path');
+
+  const workvaultPath = workvaultData?.value ?? '—';
+  const onedrivePath = onedriveData?.value ?? '—';
+
+  const readOnlyInputStyle: CSSProperties = {
+    fontFamily: 'var(--mono)',
+    fontSize: 13,
+    color: 'var(--ink-2)',
+    background: 'var(--bg-2)',
+    border: '1px solid var(--rule)',
+    borderRadius: 6,
+    padding: '8px 12px',
+    width: '100%',
+    boxSizing: 'border-box',
+    cursor: 'default',
+  };
 
   return (
-    <section aria-labelledby="section-ingest">
-      <h2 id="section-ingest" style={SECTION_TITLE_STYLE}>
-        Ingest
-      </h2>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-        <IngestStatusPanel />
-
-        <div style={CARD_STYLE}>
-          <h3
-            style={{
-              fontFamily: 'var(--body)',
-              fontSize: 13,
-              fontWeight: 500,
-              color: 'var(--ink-2)',
-              letterSpacing: '0.06em',
-              textTransform: 'uppercase',
-              marginBottom: 12,
-            }}
-          >
-            Configured Sources
-          </h3>
-          <SourcePathConfig sources={sources} isLoading={isLoading} />
-        </div>
-
-        <div style={CARD_STYLE}>
-          <h3
-            style={{
-              fontFamily: 'var(--body)',
-              fontSize: 13,
-              fontWeight: 500,
-              color: 'var(--ink-2)',
-              letterSpacing: '0.06em',
-              textTransform: 'uppercase',
-              marginBottom: 12,
-            }}
-          >
-            Recent Errors
-          </h3>
-          <IngestErrorList errors={errors} isLoading={isLoading} />
-        </div>
-      </div>
-    </section>
-  );
-}
-
-// ─── Section 6: Agent Overrides ───────────────────────────────────────────────
-
-function AgentOverridesSection() {
-  return (
-    <section aria-labelledby="section-agent-overrides">
-      <h2 id="section-agent-overrides" style={SECTION_TITLE_STYLE}>
-        Agent Overrides
+    <section aria-labelledby="section-paths">
+      <h2 id="section-paths" style={SECTION_H2}>
+        Paths
       </h2>
       <div style={CARD_STYLE}>
-        <p
-          style={{
-            fontFamily: 'var(--body)',
-            fontSize: 14,
-            color: 'var(--ink-2)',
-            lineHeight: 1.6,
-          }}
-        >
-          Per-section system-prompt templates and per-org overrides live in{' '}
-          <NavLink
-            to="/agents"
-            style={({ isActive }) => ({
-              color: isActive ? 'var(--accent)' : 'var(--ink-1)',
-              textDecoration: 'underline',
-              textUnderlineOffset: 3,
-              fontFamily: 'var(--body)',
-              fontSize: 14,
-            })}
-          >
-            Agents
-          </NavLink>
-          .
-        </p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <label htmlFor="workvault_path" style={LABEL_STYLE}>
+              WorkVault
+            </label>
+            <input
+              id="workvault_path"
+              type="text"
+              readOnly
+              value={workvaultPath}
+              style={readOnlyInputStyle}
+            />
+            <p style={HELPER_STYLE}>Path-backed ingestion lands in Phase 2.</p>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <label htmlFor="onedrive_path" style={LABEL_STYLE}>
+              OneDrive
+            </label>
+            <input
+              id="onedrive_path"
+              type="text"
+              readOnly
+              value={onedrivePath}
+              style={readOnlyInputStyle}
+            />
+            <p style={HELPER_STYLE}>Path-backed ingestion lands in Phase 2.</p>
+          </div>
+        </div>
       </div>
     </section>
   );
 }
 
-// ─── beforeunload guard ────────────────────────────────────────────────────────
-
-/**
- * Attaches a beforeunload listener while isDirty is true.
- * Called directly by each form section so the guard is scoped to that section.
- */
-function useBeforeUnloadGuard(isDirty: boolean) {
-  useEffect(() => {
-    if (!isDirty) return;
-
-    function handleBeforeUnload(e: BeforeUnloadEvent) {
-      e.preventDefault();
-      // Modern spec: returnValue must be set (even empty string) to show dialog
-      e.returnValue = '';
-    }
-
-    window.addEventListener('beforeunload', handleBeforeUnload);
-    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-  }, [isDirty]);
-}
-
-// PersonalSubscriptionSection has been replaced by AuthModeSection (imported above)
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export function SettingsPage() {
   return (
     <div style={{ maxWidth: 640 }}>
-      {/* Page header — matches CustomerPage convention */}
+      {/* Eyebrow — matches CustomerPageHeader convention */}
       <p
         style={{
+          fontFamily: 'var(--body)',
           fontSize: 11,
+          fontWeight: 600,
           letterSpacing: '0.08em',
           textTransform: 'uppercase',
           color: 'var(--ink-3)',
-          fontWeight: 500,
-          marginBottom: 8,
-          fontFamily: 'var(--body)',
+          margin: '0 0 8px',
         }}
       >
         Settings
       </p>
+
+      {/* h1 — Fraunces 56px, slight left hang per DESIGN.md */}
       <h1
         style={{
           fontFamily: 'var(--display)',
@@ -751,34 +628,44 @@ export function SettingsPage() {
           fontWeight: 500,
           lineHeight: 1.02,
           letterSpacing: '-0.02em',
-          marginLeft: -3,
-          marginBottom: 8,
-          textWrap: 'balance' as React.CSSProperties['textWrap'],
+          margin: '0 0 8px -3px',
+          color: 'var(--ink-1)',
         }}
       >
         Settings
       </h1>
-      <p
-        style={{
-          color: 'var(--ink-2)',
-          fontSize: 15,
-          fontFamily: 'var(--body)',
-          marginBottom: 40,
-          lineHeight: 1.5,
-        }}
-      >
-        Per-app preferences and credentials
-      </p>
 
-      {/* Sections */}
+      {/* Hairline divider */}
+      <div
+        aria-hidden="true"
+        style={{ height: 1, background: 'var(--rule)', margin: '20px 0 32px' }}
+      />
+
+      {/* Sections — 40px gap */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 40 }}>
-        <ApiKeySection />
+        <MaskedKeySection
+          settingKey="anthropic_api_key"
+          sectionId="section-anthropic-api-key"
+          title="Anthropic API Key"
+          inputId="anthropic_api_key"
+          helperText="Stored encrypted via Windows DPAPI. Never logged. Never returned in plaintext from the server."
+          saveLabel="Save API Key"
+        />
+
+        <MaskedKeySection
+          settingKey="personal_anthropic_api_key"
+          sectionId="section-personal-anthropic-api-key"
+          title="Personal Anthropic API Key"
+          inputId="personal_anthropic_api_key"
+          helperText="Used by the subscription-login subagent flow. Optional — only set this if you want subagents to run on your Max subscription instead of the metered API."
+          saveLabel="Save Personal API Key"
+        />
+
         <DefaultModelSection />
-        <NoteSourcesSection />
-        <SchedulerSection />
-        <IngestSection />
-        <AgentOverridesSection />
-        <AuthModeSection />
+
+        <ThemeSection />
+
+        <PathsSection />
       </div>
     </div>
   );
