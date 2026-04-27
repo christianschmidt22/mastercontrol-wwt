@@ -660,14 +660,15 @@ function ReportForm({
         )}
       </div>
 
-      <div>
-        <span style={labelStyle}>Output destination</span>
-        <p
+      <dl style={{ margin: 0 }}>
+        <dt style={labelStyle}>Output destination</dt>
+        <dd
           style={{
             fontFamily: 'var(--mono)',
             fontSize: 12,
             color: 'var(--ink-3)',
             margin: 0,
+            marginInlineStart: 0,
             padding: '6px 8px',
             border: '1px dashed var(--rule)',
             borderRadius: 4,
@@ -677,8 +678,8 @@ function ReportForm({
           {initial
             ? `C:\\mastercontrol\\reports\\${initial.id}\\`
             : 'C:\\mastercontrol\\reports\\<id>\\  (assigned on save)'}
-        </p>
-      </div>
+        </dd>
+      </dl>
 
       <div
         style={{

@@ -72,6 +72,8 @@ export const AgenticDelegateRequestSchema = z
     system: z.string().max(50_000).optional(),
     /** Short label for the activity feed (≤140 chars). */
     task_summary: z.string().max(140).optional(),
+    /** Optional per-call cost cap in USD. Positive, max $100. Omit to disable. */
+    max_cost_usd: z.number().positive().max(100).optional(),
   })
   .strict();
 

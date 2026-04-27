@@ -84,6 +84,8 @@ export interface AgenticDelegateRequest {
   max_tokens?: number;
   system?: string;
   task_summary?: string;
+  /** Optional per-call USD cost cap (positive, max $100). Omit to disable. */
+  max_cost_usd?: number;
 }
 
 export type TranscriptEntry =

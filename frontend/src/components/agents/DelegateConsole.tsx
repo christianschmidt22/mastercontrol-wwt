@@ -197,6 +197,14 @@ export function DelegateConsole() {
   const [maxIterations, setMaxIterations] = useState(25);
   const [maxTokens, setMaxTokens] = useState(4096);
   const [systemPrompt, setSystemPrompt] = useState('');
+  const [maxCostUsd, setMaxCostUsd] = useState<string>('');
+
+  // Validate the optional cost cap field.
+  const maxCostUsdNum = maxCostUsd !== '' ? parseFloat(maxCostUsd) : undefined;
+  const maxCostUsdError =
+    maxCostUsdNum !== undefined && (isNaN(maxCostUsdNum) || maxCostUsdNum <= 0 || maxCostUsdNum > 100)
+      ? 'Must be a positive number ≤ 100'
+      : null;
 
   // Prefer streaming transcript/result; fall back to JSON mutation data.
   const isPending = isStreaming || apikeyMutation.isPending || sdkMutation.isPending;
@@ -229,6 +237,9 @@ export function DelegateConsole() {
   const handleRun = useCallback(() => {
     if (!task.trim() || isPending || subscriptionBlocked) return;
 
+    const validMaxCostUsd =
+      maxCostUsdNum !== undefined && !maxCostUsdError ? maxCostUsdNum : undefined;
+
     const input = {
       task: task.trim(),
       working_dir: workingDir.trim() || undefined,
@@ -237,6 +248,7 @@ export function DelegateConsole() {
       max_iterations: maxIterations,
       max_tokens: maxTokens,
       system: systemPrompt.trim() || undefined,
+      max_cost_usd: validMaxCostUsd,
     };
 
     // Reset streaming state for the new run.
@@ -303,7 +315,7 @@ export function DelegateConsole() {
       }
       setIsStreaming(false);
     });
-  }, [task, isPending, subscriptionBlocked, workingDir, tools, model, maxIterations, maxTokens, systemPrompt, authMode, qc]);
+  }, [task, isPending, subscriptionBlocked, workingDir, tools, model, maxIterations, maxTokens, systemPrompt, maxCostUsdNum, maxCostUsdError, authMode, qc]);
 
   // Cancel in-flight stream when the component unmounts.
   const handleAbort = () => {
@@ -760,6 +772,61 @@ export function DelegateConsole() {
                   }}
                 />
               </div>
+
+              {/* max_cost_usd */}
+              <div>
+                <label
+                  htmlFor="delegate-max-cost"
+                  style={{
+                    display: 'block',
+                    fontSize: 12,
+                    fontWeight: 600,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.07em',
+                    color: 'var(--ink-3)',
+                    fontFamily: 'var(--body)',
+                    marginBottom: 6,
+                  }}
+                >
+                  Max cost ($USD)
+                </label>
+                <input
+                  id="delegate-max-cost"
+                  type="number"
+                  min={0.000001}
+                  max={100}
+                  step={0.01}
+                  value={maxCostUsd}
+                  onChange={(e) => setMaxCostUsd(e.target.value)}
+                  placeholder="No cap"
+                  disabled={isPending}
+                  aria-describedby={maxCostUsdError ? 'delegate-max-cost-error' : undefined}
+                  style={{
+                    width: 110,
+                    padding: '7px 10px',
+                    fontSize: 13,
+                    fontFamily: 'var(--mono)',
+                    color: 'var(--ink-1)',
+                    background: 'var(--bg)',
+                    border: `1px solid ${maxCostUsdError ? 'var(--accent)' : 'var(--rule)'}`,
+                    borderRadius: 6,
+                  }}
+                />
+                {maxCostUsdError && (
+                  <p
+                    id="delegate-max-cost-error"
+                    role="alert"
+                    style={{
+                      margin: '4px 0 0',
+                      fontSize: 12,
+                      fontFamily: 'var(--body)',
+                      color: 'var(--accent)',
+                    }}
+                  >
+                    {maxCostUsdError}
+                  </p>
+                )}
+              </div>
             </div>
           )}
         </div>
@@ -778,7 +845,7 @@ export function DelegateConsole() {
             <button
               type="button"
               onClick={handleRun}
-              disabled={!task.trim() || isPending || subscriptionBlocked}
+              disabled={!task.trim() || isPending || subscriptionBlocked || maxCostUsdError !== null}
               aria-label={isPending ? 'Running…' : 'Run agent task'}
               style={{
                 padding: '10px 24px',
@@ -786,10 +853,10 @@ export function DelegateConsole() {
                 fontWeight: 600,
                 fontFamily: 'var(--body)',
                 color: '#fff',
-                background: !task.trim() || isPending || subscriptionBlocked ? 'var(--ink-3)' : 'var(--accent)',
+                background: !task.trim() || isPending || subscriptionBlocked || maxCostUsdError !== null ? 'var(--ink-3)' : 'var(--accent)',
                 border: 'none',
                 borderRadius: 6,
-                cursor: !task.trim() || isPending || subscriptionBlocked ? 'not-allowed' : 'pointer',
+                cursor: !task.trim() || isPending || subscriptionBlocked || maxCostUsdError !== null ? 'not-allowed' : 'pointer',
                 transition: 'background 200ms var(--ease), opacity 200ms var(--ease)',
               }}
             >

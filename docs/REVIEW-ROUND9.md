@@ -83,13 +83,13 @@
   `ReportRow` uses `<h3>` for the report name inside a `<ul role="list">`. There is no `h2` ancestor on the Reports page before the list — only the page `h1`. This creates a jump from h1 → h3. Consider either an `<h2>` section header above the list ("Your reports") or demoting the report name to a `<strong>`/`<p>` with display typography.
   **Fix applied:** Added an `<h2>Your reports</h2>` section header (styled as a small uppercase label) above the list, fixing the h1 → h2 → h3 hierarchy.
 
-- **[`frontend/src/pages/ReportsPage.tsx:672`]** **[typography]** (DEFERRED — acceptable as-is)
+- **[`frontend/src/pages/ReportsPage.tsx:672`]** **[typography]** (FIXED in Round 10 — semantic `<dl>/<dt>/<dd>` pattern)
   The `ReportForm` "Output destination" label uses a `<span>` with `labelStyle` instead of a `<label>`. The associated field is a read-only `<p>` (not an interactive control), so a `<label>` technically isn't required, but using a descriptive `<p>` with a bold `<dt>` within a `<dl>` would be more semantically precise.
-  **Rationale for deferral:** The field is non-interactive; the `<span>` with label styles is presentationally correct. Converting to a `<dl>`/`<dt>` pattern is a structural refactor that affects more than the 10-line threshold. No a11y violation.
+  **Fix applied:** Replaced the outer `<div>` + `<span>`/`<p>` with a `<dl>`/`<dt>`/`<dd>` structure. `<dt>` carries `labelStyle`, `<dd>` carries the mono path text with `marginInlineStart: 0` to suppress browser default indent.
 
-- **[`frontend/src/components/agents/InsightsTab.tsx:125`] [`frontend/src/components/agents/TemplatesTab.tsx:339`]** **[vermilion budget]** (DEFERRED — agents/ directory off-limits)
-  `accentColor: 'var(--accent)'` on checkboxes in InsightsTab and TemplatesTab. The DESIGN.md vermilion budget restricts rest-state uses to the active sidebar entry. Checkboxes in an open selection UI are a transient interactive state (not rest), so this is defensible. However, the current system uses `accentColor: 'var(--ink-3)'` on checkboxes in HomePage, TasksPage, and ReportsPage for consistency. InsightsTab and TemplatesTab deviate. Standardise to `var(--ink-3)` for consistency across the app.
-  **Rationale for deferral:** `frontend/src/components/agents/` is the sibling agent's surface area and is off-limits for this pass. Follow up in the next round or after the sibling agent's work lands.
+- **[`frontend/src/components/agents/InsightsTab.tsx:125`] [`frontend/src/components/agents/TemplatesTab.tsx:339`]** **[vermilion budget]** (FIXED in Round 10)
+  `accentColor: 'var(--accent)'` on checkboxes in InsightsTab and TemplatesTab. The DESIGN.md vermilion budget restricts rest-state uses to the active sidebar entry. Checkboxes in an open selection UI are a transient interactive state (not rest), so this is defensible. However, the current system uses `accentColor: 'var(--ink-3)'` on checkboxes in HomePage, TasksPage, and ReportsPage for consistency. InsightsTab and TemplatesTab deviate.
+  **Fix applied:** Changed `accentColor: 'var(--accent)'` → `accentColor: 'var(--ink-3)'` in both components, matching the rest of the app.
 
 ---
 

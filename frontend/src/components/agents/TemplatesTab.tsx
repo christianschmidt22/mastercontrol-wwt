@@ -336,7 +336,7 @@ function TemplateCard({ section, config }: SectionCardProps) {
                   style={{
                     width: 15,
                     height: 15,
-                    accentColor: 'var(--accent)',
+                    accentColor: 'var(--ink-3)',
                     cursor: tool.phase2 ? 'not-allowed' : 'pointer',
                     flexShrink: 0,
                   }}

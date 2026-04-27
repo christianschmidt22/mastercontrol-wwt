@@ -452,6 +452,30 @@ export async function delegateAgentic(
         };
       }
 
+      // -- Per-call cost cap check (checked after natural completion so a
+      //    run that ends on its own always succeeds; cap only aborts loops
+      //    that would continue via tool use).
+      if (input.max_cost_usd !== undefined && totalCostMicros / 1_000_000 > input.max_cost_usd) {
+        const spentUsd = (totalCostMicros / 1_000_000).toFixed(4);
+        const budgetUsd = input.max_cost_usd.toFixed(2);
+        const abortError = `Max cost exceeded ($${spentUsd} of $${budgetUsd} budget)`;
+        anthropicUsageModel.record({
+          source: 'delegate',
+          model,
+          input_tokens: 0,
+          output_tokens: 0,
+          cost_usd_micros: 0,
+          task_summary: input.task_summary ?? null,
+          error: abortError,
+        });
+        return {
+          ok: false,
+          error: abortError,
+          transcript_so_far: transcript,
+          total_usage: totalUsage,
+        };
+      }
+
       // -- Execute tool calls and build tool_result user message
       const toolResultContents: Anthropic.Messages.ToolResultBlockParam[] = [];
 

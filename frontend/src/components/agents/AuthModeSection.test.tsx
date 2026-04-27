@@ -135,3 +135,71 @@ describe('AuthModeSection — Re-check button', () => {
     );
   });
 });
+
+// ---------------------------------------------------------------------------
+// Loading state
+// ---------------------------------------------------------------------------
+
+describe('AuthModeSection — loading state', () => {
+  it('shows "Checking…" in status pill when isLoading is true', () => {
+    mockIsLoading = true;
+    renderSection();
+    expect(screen.getByRole('status')).toHaveTextContent(/checking/i);
+  });
+
+  it('disables the Re-check button while loading', () => {
+    mockIsLoading = true;
+    renderSection();
+    expect(screen.getByRole('button', { name: /re-check/i })).toBeDisabled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Both modes set
+// ---------------------------------------------------------------------------
+
+describe('AuthModeSection — both modes configured', () => {
+  it('shows Authenticated when both subscription and api_key_configured are true', () => {
+    mockStatus = { subscription_authenticated: true, api_key_configured: true };
+    renderSection();
+    expect(screen.getByRole('status')).toHaveTextContent(/authenticated/i);
+  });
+
+  it('hides the login instructions when subscription is authenticated', () => {
+    mockStatus = { subscription_authenticated: true, api_key_configured: true };
+    renderSection();
+    expect(screen.queryByText(/claude \/login/)).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// API-key card — save button dirty state
+// ---------------------------------------------------------------------------
+
+describe('AuthModeSection — API-key card save button', () => {
+  it('Save Key button is disabled before any text is typed', () => {
+    renderSection();
+    expect(screen.getByRole('button', { name: /save key/i })).toBeDisabled();
+  });
+
+  it('Save Key button enables after typing a value into the API key input', () => {
+    renderSection();
+    const input = screen.getByLabelText(/personal anthropic api key/i);
+    fireEvent.change(input, { target: { value: 'sk-ant-test123' } });
+    expect(screen.getByRole('button', { name: /save key/i })).not.toBeDisabled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// A11y — section structure
+// ---------------------------------------------------------------------------
+
+describe('AuthModeSection — a11y', () => {
+  it('section element is labelled by its heading via aria-labelledby', () => {
+    renderSection();
+    const heading = screen.getByRole('heading', { name: /delegation authentication/i });
+    expect(heading.id).toBe('section-delegation-auth');
+    const section = heading.closest('section');
+    expect(section).toHaveAttribute('aria-labelledby', 'section-delegation-auth');
+  });
+});

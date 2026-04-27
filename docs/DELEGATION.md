@@ -149,6 +149,7 @@ Response shape:
 Hard limits:
 - `max_iterations` — default 25, hard cap 50
 - `max_tokens` — hard cap 8192 per turn
+- `max_cost_usd` — optional per-call USD cost cap (positive number, max $100). After each turn the cumulative cost is compared against this value. If it is exceeded the loop aborts immediately (before executing any pending tool calls) and returns `{ ok: false, error: 'Max cost exceeded ($X.XXXX of $Y.YY budget)', transcript_so_far, total_usage }`. The abort is also written to `anthropic_usage_events` with the error string so runaway spend is fully auditable. If the model reaches `end_turn` naturally the cap is not applied to that final turn (the run succeeds). Omitting `max_cost_usd` disables enforcement entirely.
 - `bash` is **opt-in**: only enabled if explicitly listed in `tools`
 - `bash` stdout/stderr capped at 50 KB each, default timeout 60s, hard cap 600s
 - file paths constrained to the working directory via `assertSafeRelPath`

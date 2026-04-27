@@ -69,7 +69,7 @@ function InsightRow({
           style={{
             width: 15,
             height: 15,
-            accentColor: 'var(--accent)',
+            accentColor: 'var(--ink-3)',
             cursor: 'pointer',
           }}
         />
