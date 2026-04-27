@@ -2,6 +2,85 @@
 
 ## Phase 2 — In progress on branch `claude/laughing-ishizaka-8f06fa` (2026-04-25)
 
+### Checkpoint `phase2-checkpoint-4` — 2026-04-27 morning
+
+**A focused product polish round.** With Fairview + C.H. Robinson seeded
+and the per-org chat / cross-org insights surface live, this round
+chased the rough edges that kept the dashboard from feeling finished:
+the customer + OEM dashboards needed inline-add flows, the home page
+agent-insights widget was throwing on empty arrays, the OEM page was an
+empty-state, the Tasks page lacked filters and inline complete, the
+sidebar didn't communicate which org had fresh activity, and the agents
++ settings pages needed real configuration UIs.
+
+Six SDK delegations on the user's Max subscription ran in parallel for
+the bulk of this round; Tasks F + L + K + H + I shipped end-to-end (J
+hit max_iterations after the backend half landed and the frontend
+widgets were deferred). Three subsequent commits cleaned up regressions
+the agents introduced (AuthModeSection dropped from SettingsPage,
+Threads/Insights/Delegate tabs dropped from AgentsPage) and wired the
+final backend half (POST + DELETE `/api/agents/configs`) so the
+override Add/Delete UI works end-to-end.
+
+Backend **535** tests · frontend **429** tests · both workspaces
+typecheck + lint clean. Five-org seed visible on first boot:
+Fairview Health Services + C.H. Robinson (customer), Cisco + NetApp
++ Nutanix (oem) with cross-org `note_mentions` populating both the
+customer-side cross-org insights panel and the OEM-side mentioned-by
+panel.
+
+- **OEM seed migration** (`0b4d486`): `012_seed_oem_partners.sql` —
+  3 OEMs · 7 contacts · 12 notes · 3 threads · 2 cross-refs. 4 of the
+  notes are `agent_insight` rows (3 confirmed, 1 unconfirmed) so the
+  inline accept/dismiss flow has data to drive.
+- **Tasks page polish** (`1ae1708`): inline-add at top (vermilion
+  Save when open), inline complete checkbox per row with optimistic
+  slide-out animation respecting `prefers-reduced-motion`, four
+  filter pills (All / Today / This week / Overdue) with
+  `role=radiogroup` + arrow-key nav + filter-specific empty states.
+  Suite 5 → 18.
+- **Backend `/notes/recent` + `/organizations/recent`** (`74d98eb`):
+  two aggregator endpoints for the home page enrichment widgets.
+  Joined query against `notes`, `organizations`, and `agent_threads`
+  for the last-touched-per-org map. Frontend widgets pending —
+  endpoints + types are ready for the next round.
+- **OEM tile inline-add** (`8ab77ac`): mirrors the customer-tile
+  polish across `AccountChannelTile` (contacts) and
+  `OemQuickLinksTile` (links). Esc cancels, Enter saves, optimistic
+  insert, Save vermilion only when dirty. `OemDocsTile` empty-state
+  copy bumped to "OEM document scan lands in Phase 2 — check back
+  after WorkVault ingest." +10 tests.
+- **Sidebar polish** (`daf4ead`): per-org vermilion activity dot
+  when latest note or agent thread message landed in the last 48
+  hours, sourced from a new `useOrgLastTouched(type)` hook hitting
+  `/api/organizations/last-touched?type=...`. Refetches every 60s.
+  Active-route treatment tightened: 2px var(--accent) left border
+  + var(--bg-2) background + `aria-current='page'`. Empty
+  customer-list hint copy. +27 sidebar tests + 6 backend route tests.
+- **AgentsPage Phase 1** (`453a584` then restored to its full shape
+  by `910ec13`): the original 4-tab structure (Templates / Threads /
+  Insights queue / Delegate) is preserved, with the Templates panel
+  now hosting the new `AgentSectionEditor` (Customer/OEM sub-strip
+  + variable reference panel + tools toggles + model picker + dirty-
+  gated Save) and `AgentOverridesPanel` (per-org override list +
+  inline expanding editor + Add/Delete flow). The redundant
+  `TemplatesTab.tsx` is removed; H's components fully replace it.
+  +25 page tests.
+- **SettingsPage Phase 1** (`c540784` then restored by `f7e1e97`):
+  five sections — Anthropic API key (masked / Edit / Save), the full
+  `AuthModeSection` for Delegation Authentication (subscription-
+  login status + API-key fallback in one component), default model,
+  theme (Light/Dark/System wired through Zustand + document.document-
+  Element + backend), and read-only paths. +8 page tests;
+  `AuthModeSection` is stubbed in the page test (its full behaviour
+  lives in `AuthModeSection.test.tsx`).
+- **Backend agent config CRUD** (`fc22e84`): `POST /api/agents/configs`
+  to create a per-org override (defaults inherited from the section
+  archetype when fields are omitted) and `DELETE /api/agents/configs/:id`
+  for override removal. The model layer's WHERE filter protects
+  archetype rows (organization_id IS NULL) from deletion — they're
+  the fallback default every org relies on. +6 route tests.
+
 ### Checkpoint `phase2-checkpoint-3` — 2026-04-26 night
 
 **Subscription-login delegation lands.** The user's recurring concern was
