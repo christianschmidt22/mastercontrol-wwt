@@ -9,12 +9,13 @@
  *   2.  Clicking Edit reveals password input
  *   3.  Save calls mutation with entered value
  *   4.  Cancel reverts to masked display
- *   5.  Personal API key masked initially (read-only)
- *   6.  Personal API key Edit → Save calls correct mutation
- *   7.  Cancel personal API key reverts to masked display
- *   8.  Model select calls mutation immediately on change (no separate Save)
- *   9.  Theme radio updates document.documentElement class + mutation
- *   10. Paths inputs are read-only
+ *   5.  AuthModeSection renders (delegation auth surface)
+ *   6.  Model select calls mutation immediately on change (no separate Save)
+ *   7.  Theme radio updates document.documentElement class + mutation
+ *   8.  Paths inputs are read-only
+ *
+ * AuthModeSection (subscription-login + API-key fallback) is stubbed
+ * here — its full behaviour is covered by AuthModeSection.test.tsx.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -62,6 +63,16 @@ vi.mock('../store/useUiStore', () => ({
     theme: 'dark' as const,
     setTheme: setThemeMock,
   })),
+}));
+
+// AuthModeSection has its own behaviour test; stub it here so SettingsPage
+// tests don't need to mock useSubagent / useAuthStatus / fetch.
+vi.mock('../components/agents/AuthModeSection', () => ({
+  AuthModeSection: () => (
+    <section aria-labelledby="section-delegation-auth">
+      <h2 id="section-delegation-auth">Delegation Authentication</h2>
+    </section>
+  ),
 }));
 
 // ─── Render helper ────────────────────────────────────────────────────────────
@@ -158,56 +169,15 @@ describe('SettingsPage', () => {
   });
 
   // 5 ──────────────────────────────────────────────────────────────────────────
-  it('shows masked personal Anthropic API key in a read-only input initially', () => {
+  it('renders the AuthModeSection (subscription login + API-key fallback)', () => {
     renderPage();
-    const input = screen.getByDisplayValue('sk-ant-...EFGH');
-    expect(input).toBeInTheDocument();
-    expect(input).toHaveAttribute('readonly');
+    // AuthModeSection has its own h2 'Delegation Authentication'.
+    expect(
+      screen.getByRole('heading', { name: /delegation authentication/i }),
+    ).toBeInTheDocument();
   });
 
   // 6 ──────────────────────────────────────────────────────────────────────────
-  it('saving personal API key calls mutation with the entered value', async () => {
-    const user = userEvent.setup();
-    renderPage();
-
-    await user.click(
-      screen.getByRole('button', { name: /edit personal anthropic api key/i }),
-    );
-
-    await user.type(
-      screen.getByLabelText('Personal Anthropic API Key', { selector: 'input' }),
-      'sk-ant-personal',
-    );
-
-    await user.click(screen.getByRole('button', { name: /save personal api key/i }));
-
-    await waitFor(() => {
-      expect(mutateMock).toHaveBeenCalledWith({
-        key: 'personal_anthropic_api_key',
-        value: 'sk-ant-personal',
-      });
-    });
-  });
-
-  // 7 ──────────────────────────────────────────────────────────────────────────
-  it('cancelling personal API key edit reverts to masked display', async () => {
-    const user = userEvent.setup();
-    renderPage();
-
-    await user.click(
-      screen.getByRole('button', { name: /edit personal anthropic api key/i }),
-    );
-
-    expect(
-      screen.getByLabelText('Personal Anthropic API Key', { selector: 'input' }),
-    ).toHaveAttribute('type', 'password');
-
-    await user.click(screen.getByRole('button', { name: /^cancel$/i }));
-
-    expect(screen.getByDisplayValue('sk-ant-...EFGH')).toBeInTheDocument();
-  });
-
-  // 8 ──────────────────────────────────────────────────────────────────────────
   it('model select calls mutation immediately on change (no separate Save button)', async () => {
     const user = userEvent.setup();
     renderPage();

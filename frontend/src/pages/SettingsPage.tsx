@@ -3,7 +3,8 @@
  *
  * Sections:
  *   1. Anthropic API Key          — masked display, Edit toggle, Save / Cancel
- *   2. Personal Anthropic API Key — same masked / edit pattern
+ *   2. Delegation Authentication  — subscription-login status + API-key fallback
+ *                                   (rendered via AuthModeSection)
  *   3. Default Model              — <select>, saves immediately on change
  *   4. Theme                      — Light / Dark / System radios, syncs Zustand + DOM + backend
  *   5. Paths                      — read-only WorkVault + OneDrive display
@@ -17,6 +18,7 @@ import { type ChangeEvent, type CSSProperties, useEffect, useRef, useState } fro
 import { Loader2, Pencil } from 'lucide-react';
 import { useSetting, useSetSetting } from '../api/useSettings';
 import { useUiStore, type Theme } from '../store/useUiStore';
+import { AuthModeSection } from '../components/agents/AuthModeSection';
 
 // ─── Style tokens ──────────────────────────────────────────────────────────────
 
@@ -652,14 +654,7 @@ export function SettingsPage() {
           saveLabel="Save API Key"
         />
 
-        <MaskedKeySection
-          settingKey="personal_anthropic_api_key"
-          sectionId="section-personal-anthropic-api-key"
-          title="Personal Anthropic API Key"
-          inputId="personal_anthropic_api_key"
-          helperText="Used by the subscription-login subagent flow. Optional — only set this if you want subagents to run on your Max subscription instead of the metered API."
-          saveLabel="Save Personal API Key"
-        />
+        <AuthModeSection />
 
         <DefaultModelSection />
 
