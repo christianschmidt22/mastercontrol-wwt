@@ -83,6 +83,20 @@ vi.mock('../api/useOrganizations', () => ({
   useOrganizations: vi.fn(),
 }));
 
+// The Threads / Insights / Delegate tabs have their own dedicated test
+// files. Stub them here so AgentsPage tests don't have to wire mocks for
+// useAgentThreads / useUnconfirmedInsightsAcrossOrgs / useDelegate /
+// useUsage / useAuthStatus / etc.
+vi.mock('../components/agents/ThreadsTab', () => ({
+  ThreadsTab: () => <section aria-label="Threads tab content">threads</section>,
+}));
+vi.mock('../components/agents/InsightsTab', () => ({
+  InsightsTab: () => <section aria-label="Insights tab content">insights</section>,
+}));
+vi.mock('../components/agents/DelegateConsole', () => ({
+  DelegateConsole: () => <section aria-label="Delegate tab content">delegate</section>,
+}));
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -374,5 +388,44 @@ describe('AgentsPage — per-org overrides', () => {
       expect(mockDeleteAsync).toHaveBeenCalledTimes(1);
     });
     expect(mockDeleteAsync.mock.calls[0]?.[0]).toBe(3); // config id=3
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Top-level TabStrip — Templates / Threads / Insights / Delegate
+// ---------------------------------------------------------------------------
+
+describe('AgentsPage — top-level TabStrip', () => {
+  it('renders all four top-level tabs', () => {
+    renderPage();
+    expect(screen.getByRole('tab', { name: /^templates$/i })).toBeDefined();
+    expect(screen.getByRole('tab', { name: /^threads$/i })).toBeDefined();
+    expect(screen.getByRole('tab', { name: /^insights queue/i })).toBeDefined();
+    expect(screen.getByRole('tab', { name: /^delegate$/i })).toBeDefined();
+  });
+
+  it('starts on the Templates tab — section editor is visible', () => {
+    renderPage();
+    expect(screen.getByRole('tab', { name: /^templates$/i }))
+      .toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tab', { name: /customer agent/i })).toBeDefined();
+  });
+
+  it('clicking Threads tab swaps the panel content', async () => {
+    renderPage();
+    await userEvent.click(screen.getByRole('tab', { name: /^threads$/i }));
+    expect(screen.getByLabelText('Threads tab content')).toBeDefined();
+  });
+
+  it('clicking Insights queue tab swaps the panel content', async () => {
+    renderPage();
+    await userEvent.click(screen.getByRole('tab', { name: /^insights queue/i }));
+    expect(screen.getByLabelText('Insights tab content')).toBeDefined();
+  });
+
+  it('clicking Delegate tab swaps the panel content', async () => {
+    renderPage();
+    await userEvent.click(screen.getByRole('tab', { name: /^delegate$/i }));
+    expect(screen.getByLabelText('Delegate tab content')).toBeDefined();
   });
 });
