@@ -1,7 +1,7 @@
 /**
  * Sidebar.test.tsx
  *
- * Keyboard navigation tests for the sidebar nav.
+ * Keyboard navigation + visual-polish + a11y tests for the sidebar nav.
  * Mock pattern follows ReportsPage.test.tsx / CommandPalette.test.tsx.
  */
 
@@ -10,9 +10,10 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import React from 'react';
+import type { UseQueryResult } from '@tanstack/react-query';
 
 // ---------------------------------------------------------------------------
-// Mocks — must precede SUT import
+// Fixtures
 // ---------------------------------------------------------------------------
 
 const FIXTURE_CUSTOMERS = [
@@ -34,12 +35,32 @@ const FIXTURE_CUSTOMERS = [
   },
 ];
 
+const FIXTURE_OEMS = [
+  {
+    id: 10,
+    type: 'oem' as const,
+    name: 'Cisco',
+    metadata: null,
+    created_at: '2026-01-01T00:00:00.000Z',
+    updated_at: '2026-01-01T00:00:00.000Z',
+  },
+  {
+    id: 11,
+    type: 'oem' as const,
+    name: 'NetApp',
+    metadata: null,
+    created_at: '2026-01-01T00:00:00.000Z',
+    updated_at: '2026-01-01T00:00:00.000Z',
+  },
+];
+
+// ---------------------------------------------------------------------------
+// Mocks — must precede SUT import
+// ---------------------------------------------------------------------------
+
 vi.mock('../../api/useOrganizations', () => ({
-  useOrganizations: vi.fn(() => ({
-    data: FIXTURE_CUSTOMERS,
-    isLoading: false,
-    isError: false,
-  })),
+  useOrganizations: vi.fn(),
+  useOrgLastTouched: vi.fn(),
 }));
 
 // ThemeToggle renders a button we don't want to worry about here — stub it out
@@ -48,15 +69,35 @@ vi.mock('./ThemeToggle', () => ({
   ThemeToggle: () => <button type="button" aria-label="Toggle theme" />,
 }));
 
+import { useOrganizations, useOrgLastTouched } from '../../api/useOrganizations';
 import { Sidebar } from './Sidebar';
+
+// ---------------------------------------------------------------------------
+// Default mock implementations (reset in beforeEach)
+// ---------------------------------------------------------------------------
+
+function setupDefaultMocks() {
+  vi.mocked(useOrganizations).mockImplementation((type?: string) => ({
+    data: type === 'oem' ? FIXTURE_OEMS : FIXTURE_CUSTOMERS,
+    isLoading: false,
+    isError: false,
+    refetch: vi.fn(),
+  }) as unknown as UseQueryResult<typeof FIXTURE_CUSTOMERS>);
+
+  vi.mocked(useOrgLastTouched).mockReturnValue({
+    data: {} as Record<string, string>,
+    isLoading: false,
+    isError: false,
+  } as unknown as UseQueryResult<Record<string, string>>);
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-function renderSidebar() {
+function renderSidebar(initialPath = '/') {
   return render(
-    <MemoryRouter initialEntries={['/']}>
+    <MemoryRouter initialEntries={[initialPath]}>
       <Sidebar />
     </MemoryRouter>,
   );
@@ -74,8 +115,12 @@ function getSidebarFocusables(): HTMLElement[] {
 }
 
 // ---------------------------------------------------------------------------
-// Clean up the global "/" listener between tests to avoid cross-test leakage.
+// Clean up between tests
 // ---------------------------------------------------------------------------
+beforeEach(() => {
+  setupDefaultMocks();
+});
+
 afterEach(() => {
   vi.restoreAllMocks();
 });
@@ -85,10 +130,10 @@ afterEach(() => {
 // ---------------------------------------------------------------------------
 
 describe('Sidebar — rendering', () => {
-  it('renders a nav with role=navigation and aria-label="Primary"', () => {
+  it('renders a nav with aria-label="Primary navigation"', () => {
     renderSidebar();
     expect(
-      screen.getByRole('navigation', { name: /primary/i }),
+      screen.getByRole('navigation', { name: /primary navigation/i }),
     ).toBeInTheDocument();
   });
 
@@ -108,6 +153,148 @@ describe('Sidebar — rendering', () => {
       screen.getByRole('button', { name: /add customer/i }),
     ).toBeInTheDocument();
   });
+
+  it('nav has aria-label "Primary navigation"', () => {
+    renderSidebar();
+    const nav = screen.getByRole('navigation', { name: 'Primary navigation' });
+    expect(nav).toBeInTheDocument();
+  });
+
+  it('renders section hairlines (Divider hr elements)', () => {
+    renderSidebar();
+    const nav = screen.getByRole('navigation', { name: /primary/i });
+    const hrElements = nav.querySelectorAll('hr');
+    // Expect at least 3 dividers (after top-nav, after customers, after OEM, after AI)
+    expect(hrElements.length).toBeGreaterThanOrEqual(3);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Active-route highlight
+// ---------------------------------------------------------------------------
+
+describe('Sidebar — active route highlight', () => {
+  it('active NavLink receives aria-current="page"', () => {
+    renderSidebar('/tasks');
+    const tasksLink = screen.getByRole('link', { name: /tasks/i });
+    expect(tasksLink).toHaveAttribute('aria-current', 'page');
+  });
+
+  it('inactive NavLinks do NOT have aria-current="page"', () => {
+    renderSidebar('/tasks');
+    const homeLink = screen.getByRole('link', { name: /home/i });
+    expect(homeLink).not.toHaveAttribute('aria-current', 'page');
+  });
+
+  it('active NavLink carries the bg-bg-2 class and border-l-accent class', () => {
+    renderSidebar('/tasks');
+    const tasksLink = screen.getByRole('link', { name: /tasks/i });
+    expect(tasksLink.className).toMatch(/bg-bg-2/);
+    expect(tasksLink.className).toMatch(/border-l-accent/);
+  });
+
+  it('inactive NavLink carries text-ink-2 class', () => {
+    renderSidebar('/tasks');
+    const homeLink = screen.getByRole('link', { name: /home/i });
+    expect(homeLink.className).toMatch(/text-ink-2/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Last-touched activity dot
+// ---------------------------------------------------------------------------
+
+describe('Sidebar — last-touched activity dot', () => {
+  it('shows dot when customer was touched within 48 h', () => {
+    const recent = new Date(Date.now() - 60 * 60 * 1000).toISOString(); // 1 h ago
+    vi.mocked(useOrgLastTouched).mockReturnValue({
+      data: { '1': recent },
+      isLoading: false,
+      isError: false,
+    } as unknown as UseQueryResult<Record<string, string>>);
+
+    renderSidebar();
+
+    // Dot is an aria-labelled span inside the Fairview Health NavLink
+    const dots = screen.getAllByLabelText('Recent activity');
+    expect(dots.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('dot has aria-label="Recent activity"', () => {
+    const recent = new Date(Date.now() - 60_000).toISOString(); // 1 min ago
+    vi.mocked(useOrgLastTouched).mockReturnValue({
+      data: { '1': recent },
+      isLoading: false,
+      isError: false,
+    } as unknown as UseQueryResult<Record<string, string>>);
+
+    renderSidebar();
+
+    expect(screen.getByLabelText('Recent activity')).toBeInTheDocument();
+  });
+
+  it('does NOT show dot when customer was touched more than 48 h ago', () => {
+    const old = new Date(Date.now() - 49 * 60 * 60 * 1000).toISOString(); // 49 h ago
+    vi.mocked(useOrgLastTouched).mockReturnValue({
+      data: { '1': old, '2': old },
+      isLoading: false,
+      isError: false,
+    } as unknown as UseQueryResult<Record<string, string>>);
+
+    renderSidebar();
+
+    expect(screen.queryByLabelText('Recent activity')).not.toBeInTheDocument();
+  });
+
+  it('does NOT show dot when last-touched data is missing / empty', () => {
+    vi.mocked(useOrgLastTouched).mockReturnValue({
+      data: {},
+      isLoading: false,
+      isError: false,
+    } as unknown as UseQueryResult<Record<string, string>>);
+
+    renderSidebar();
+
+    expect(screen.queryByLabelText('Recent activity')).not.toBeInTheDocument();
+  });
+
+  it('does NOT show dot when last-touched data is undefined', () => {
+    vi.mocked(useOrgLastTouched).mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isError: false,
+    } as unknown as UseQueryResult<Record<string, string>>);
+
+    renderSidebar();
+
+    expect(screen.queryByLabelText('Recent activity')).not.toBeInTheDocument();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Empty state
+// ---------------------------------------------------------------------------
+
+describe('Sidebar — empty state', () => {
+  it('shows empty-state copy when customers list is empty', () => {
+    vi.mocked(useOrganizations).mockImplementation(() => ({
+      data: [],
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    }) as unknown as UseQueryResult<typeof FIXTURE_CUSTOMERS>);
+
+    renderSidebar();
+
+    expect(
+      screen.getByText(/no customers yet/i),
+    ).toBeInTheDocument();
+  });
+
+  it('does NOT show empty-state copy when customers exist', () => {
+    renderSidebar();
+    expect(screen.queryByText(/no customers yet/i)).not.toBeInTheDocument();
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -115,15 +302,11 @@ describe('Sidebar — rendering', () => {
 // ---------------------------------------------------------------------------
 
 describe('Sidebar — Arrow key navigation', () => {
-  beforeEach(() => {
-    renderSidebar();
-  });
-
   it('Down arrow moves focus to the next link', async () => {
     const user = userEvent.setup();
+    renderSidebar();
     const focusables = getSidebarFocusables();
 
-    // Focus the first item, then arrow down.
     focusables[0]!.focus();
     expect(document.activeElement).toBe(focusables[0]);
 
@@ -133,6 +316,7 @@ describe('Sidebar — Arrow key navigation', () => {
 
   it('Down arrow wraps from the last item to the first', async () => {
     const user = userEvent.setup();
+    renderSidebar();
     const focusables = getSidebarFocusables();
 
     focusables[focusables.length - 1]!.focus();
@@ -142,6 +326,7 @@ describe('Sidebar — Arrow key navigation', () => {
 
   it('Up arrow moves focus to the previous link', async () => {
     const user = userEvent.setup();
+    renderSidebar();
     const focusables = getSidebarFocusables();
 
     focusables[2]!.focus();
@@ -151,6 +336,7 @@ describe('Sidebar — Arrow key navigation', () => {
 
   it('Up arrow wraps from the first item to the last', async () => {
     const user = userEvent.setup();
+    renderSidebar();
     const focusables = getSidebarFocusables();
 
     focusables[0]!.focus();
@@ -160,6 +346,7 @@ describe('Sidebar — Arrow key navigation', () => {
 
   it('Home jumps to the first focusable', async () => {
     const user = userEvent.setup();
+    renderSidebar();
     const focusables = getSidebarFocusables();
 
     focusables[3]!.focus();
@@ -169,6 +356,7 @@ describe('Sidebar — Arrow key navigation', () => {
 
   it('End jumps to the last focusable', async () => {
     const user = userEvent.setup();
+    renderSidebar();
     const focusables = getSidebarFocusables();
 
     focusables[0]!.focus();
@@ -189,12 +377,8 @@ describe('Sidebar — Enter activates focused link', () => {
     const tasksLink = screen.getByRole('link', { name: /tasks/i });
     tasksLink.focus();
 
-    // userEvent.keyboard('{Enter}') fires the native click on the anchor,
-    // which React Router intercepts. The aria-current attribute should change
-    // to "page" on the Tasks link after navigation.
     await user.keyboard('{Enter}');
 
-    // After navigation the Tasks link should become aria-current="page".
     expect(tasksLink).toHaveAttribute('aria-current', 'page');
   });
 });
@@ -210,7 +394,6 @@ describe('Sidebar — Space activates focused anchor link', () => {
 
     const reportsLink = screen.getByRole('link', { name: /reports/i });
 
-    // Spy on click to confirm Space dispatches it.
     const clickSpy = vi.fn();
     reportsLink.addEventListener('click', clickSpy);
 
@@ -230,7 +413,6 @@ describe('Sidebar — "/" shortcut', () => {
   it('pressing "/" when focus is outside the sidebar focuses the first link', async () => {
     const user = userEvent.setup();
 
-    // Render a fixture with a button outside the sidebar that holds focus.
     render(
       <MemoryRouter initialEntries={['/']}>
         <button type="button" data-testid="outside-btn">
@@ -246,7 +428,6 @@ describe('Sidebar — "/" shortcut', () => {
 
     await user.keyboard('/');
 
-    // First focusable inside the sidebar should now have focus.
     const nav = screen.getByRole('navigation', { name: /primary/i });
     const firstFocusable = nav.querySelector<HTMLElement>('a[href], button:not([disabled])');
     expect(document.activeElement).toBe(firstFocusable);
@@ -272,11 +453,9 @@ describe('Sidebar — no interception inside textarea', () => {
     textarea.focus();
     expect(document.activeElement).toBe(textarea);
 
-    // Type something so there's a defined cursor position, then press ArrowDown.
     await user.type(textarea, 'hello');
     await user.keyboard('{ArrowDown}');
 
-    // Focus must remain on the textarea — sidebar should not have stolen it.
     expect(document.activeElement).toBe(textarea);
   });
 
@@ -295,8 +474,6 @@ describe('Sidebar — no interception inside textarea', () => {
 
     await user.keyboard('/');
 
-    // The "/" character should have been typed into the input, and focus
-    // must remain there.
     expect(document.activeElement).toBe(input);
     expect(input).toHaveValue('/');
   });

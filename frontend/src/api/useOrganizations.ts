@@ -19,6 +19,7 @@ import type {
 export const orgKeys = {
   list: (type?: OrgType) => ['organizations', { type }] as const,
   detail: (id: number) => ['organizations', id] as const,
+  lastTouched: (type: OrgType) => ['organizations', 'last-touched', type] as const,
 };
 
 // ---------------------------------------------------------------------------
@@ -44,6 +45,24 @@ export function useOrganization(id: number): UseQueryResult<Organization> {
     queryKey: orgKeys.detail(id),
     queryFn: () => request<Organization>('GET', `/api/organizations/${id}`),
     enabled: id > 0,
+  });
+}
+
+/**
+ * Returns a `{ [orgId]: lastTouchedISO }` map for all orgs of the given type.
+ * Refreshes every 60 seconds so sidebar dots stay current without a page reload.
+ * Used by the sidebar to show the vermilion activity dot per org.
+ */
+export function useOrgLastTouched(type: OrgType): UseQueryResult<Record<string, string>> {
+  return useQuery({
+    queryKey: orgKeys.lastTouched(type),
+    queryFn: () =>
+      request<Record<string, string>>(
+        'GET',
+        `/api/organizations/last-touched?type=${encodeURIComponent(type)}`,
+      ),
+    staleTime: 30_000,
+    refetchInterval: 60_000,
   });
 }
 

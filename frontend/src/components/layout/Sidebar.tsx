@@ -1,10 +1,10 @@
 import type { ReactNode, KeyboardEvent } from 'react';
 import { useCallback, useRef } from 'react';
 import { NavLink } from 'react-router-dom';
-import { Home, CheckSquare, BarChart2, Bot, Package, Settings } from 'lucide-react';
+import { Home, CheckSquare, BarChart2, Bot, Settings } from 'lucide-react';
 import { clsx } from 'clsx';
 import { ThemeToggle } from './ThemeToggle';
-import { useOrganizations } from '../../api/useOrganizations';
+import { useOrganizations, useOrgLastTouched } from '../../api/useOrganizations';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -33,6 +33,17 @@ function getSidebarFocusables(nav: HTMLElement): HTMLElement[] {
   );
 }
 
+/**
+ * Returns true when the ISO timestamp falls within the last 48 hours.
+ * Returns false for missing, null, or unparseable values.
+ */
+function isWithin48h(iso: string | undefined): boolean {
+  if (!iso) return false;
+  const ts = new Date(iso).getTime();
+  if (Number.isNaN(ts)) return false;
+  return Date.now() - ts < 48 * 60 * 60 * 1000;
+}
+
 // ---------------------------------------------------------------------------
 // Sub-components
 // ---------------------------------------------------------------------------
@@ -50,15 +61,15 @@ function NavItem({ to, icon, label }: NavItemProps) {
       className={({ isActive }) =>
         clsx(
           'flex items-center gap-[10px] px-[10px] py-[7px] rounded-[6px]',
-          'text-sm font-normal text-ink-1 no-underline',
-          'border-l-2 transition-[background-color] duration-200',
+          'text-sm font-normal no-underline',
+          'border-l-2 transition-[background-color,color] duration-200',
           isActive
-            ? 'border-l-accent bg-accent-soft rounded-l-none -ml-0.5'
-            : 'border-l-transparent hover:bg-bg-2',
+            ? 'border-l-accent bg-bg-2 rounded-l-none -ml-0.5 text-ink-1'
+            : 'border-l-transparent hover:bg-bg-2 text-ink-2',
         )
       }
     >
-      <span aria-hidden="true" style={{ color: 'var(--ink-2)' }}>
+      <span aria-hidden="true" style={{ color: 'var(--ink-2)', flexShrink: 0 }}>
         {icon}
       </span>
       {label}
@@ -87,6 +98,107 @@ function Section({ heading, children }: SectionProps) {
   );
 }
 
+/** Hairline rule between sidebar sections — 12 px vertical rhythm. */
+function Divider() {
+  return (
+    <hr
+      aria-hidden="true"
+      style={{
+        border: 0,
+        borderTop: '1px solid var(--rule)',
+        margin: '2px 0',
+      }}
+    />
+  );
+}
+
+/** Inline empty-state message shown when an org list has no entries. */
+function EmptyState({ message }: { message: string }) {
+  return (
+    <p
+      style={{
+        color: 'var(--ink-3)',
+        fontSize: 12,
+        fontStyle: 'italic',
+        fontFamily: 'var(--body)',
+        padding: '6px 10px',
+        margin: 0,
+      }}
+    >
+      {message}
+    </p>
+  );
+}
+
+/** Dashed error state with a retry button. */
+function LoadError({ onRetry }: { onRetry: () => void }) {
+  return (
+    <div
+      style={{
+        border: '1px dashed var(--rule)',
+        borderRadius: 6,
+        padding: '8px 12px',
+        fontSize: 12,
+        color: 'var(--ink-3)',
+        fontFamily: 'var(--body)',
+      }}
+    >
+      Couldn't load orgs ·{' '}
+      <button
+        type="button"
+        onClick={onRetry}
+        style={{
+          background: 'none',
+          border: 'none',
+          cursor: 'pointer',
+          color: 'var(--ink-2)',
+          fontFamily: 'var(--body)',
+          fontSize: 12,
+          padding: 0,
+          textDecoration: 'underline',
+        }}
+      >
+        Retry
+      </button>
+    </div>
+  );
+}
+
+/** Shared skeleton shown while org lists are loading. */
+function LoadingState() {
+  return (
+    <div
+      style={{
+        border: '1px dashed var(--rule)',
+        borderRadius: 6,
+        padding: '8px 12px',
+        fontSize: 12,
+        color: 'var(--ink-3)',
+        fontFamily: 'var(--body)',
+      }}
+    >
+      Loading…
+    </div>
+  );
+}
+
+/** Vermilion dot indicating recent (< 48 h) activity for a given org. */
+function ActivityDot() {
+  return (
+    <span
+      aria-label="Recent activity"
+      style={{
+        display: 'inline-block',
+        width: 5,
+        height: 5,
+        borderRadius: '50%',
+        background: 'var(--accent)',
+        flexShrink: 0,
+      }}
+    />
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Sidebar
 // ---------------------------------------------------------------------------
@@ -94,12 +206,25 @@ function Section({ heading, children }: SectionProps) {
 export function Sidebar() {
   const navRef = useRef<HTMLElement | null>(null);
 
+  // Customer list + activity map
   const {
     data: customers,
     isLoading: customersLoading,
     isError: customersError,
     refetch: refetchCustomers,
   } = useOrganizations('customer');
+
+  const { data: customerLastTouched } = useOrgLastTouched('customer');
+
+  // OEM list + activity map
+  const {
+    data: oems,
+    isLoading: oemsLoading,
+    isError: oemsError,
+    refetch: refetchOems,
+  } = useOrganizations('oem');
+
+  const { data: oemLastTouched } = useOrgLastTouched('oem');
 
   /**
    * Global keydown handler mounted on <window> so pressing "/" from anywhere
@@ -185,12 +310,14 @@ export function Sidebar() {
     }
   }, []);
 
+  const customerList = customers ?? [];
+  const oemList = oems ?? [];
+
   return (
     <nav
       ref={setNavRef}
-      role="navigation"
-      aria-label="Primary"
-      className="flex flex-col gap-6 h-full"
+      aria-label="Primary navigation"
+      className="flex flex-col gap-4 h-full"
       style={{
         padding: '20px 14px',
         borderRight: '1px solid var(--rule)',
@@ -241,74 +368,42 @@ export function Sidebar() {
         />
       </Section>
 
+      <Divider />
+
       {/* Customers */}
       <Section heading="Customers">
-        {customersLoading && (
-          <div
-            style={{
-              border: '1px dashed var(--rule)',
-              borderRadius: 6,
-              padding: '8px 12px',
-              fontSize: 12,
-              color: 'var(--ink-3)',
-              fontFamily: 'var(--body)',
-            }}
-          >
-            Loading…
-          </div>
-        )}
+        {customersLoading && <LoadingState />}
         {customersError && !customersLoading && (
-          <div
-            style={{
-              border: '1px dashed var(--rule)',
-              borderRadius: 6,
-              padding: '8px 12px',
-              fontSize: 12,
-              color: 'var(--ink-3)',
-              fontFamily: 'var(--body)',
-            }}
-          >
-            Couldn't load orgs ·{' '}
-            <button
-              type="button"
-              onClick={() => void refetchCustomers()}
-              style={{
-                background: 'none',
-                border: 'none',
-                cursor: 'pointer',
-                color: 'var(--ink-2)',
-                fontFamily: 'var(--body)',
-                fontSize: 12,
-                padding: 0,
-                textDecoration: 'underline',
-              }}
-            >
-              Retry
-            </button>
-          </div>
+          <LoadError onRetry={() => void refetchCustomers()} />
         )}
-        {!customersLoading && !customersError && (customers ?? []).map((c) => (
-          <NavLink
-            key={c.id}
-            to={`/customers/${c.id}`}
-            title={c.name}
-            className={({ isActive }) =>
-              clsx(
-                'flex items-center gap-[10px] px-[10px] py-[7px] rounded-[6px]',
-                'text-sm font-normal text-ink-1 no-underline truncate',
-                'border-l-2 transition-[background-color] duration-200',
-                isActive
-                  ? 'border-l-accent bg-accent-soft rounded-l-none -ml-0.5'
-                  : 'border-l-transparent hover:bg-bg-2',
-              )
-            }
-          >
-            {c.name}
-          </NavLink>
-        ))}
+        {!customersLoading && !customersError && customerList.length === 0 && (
+          <EmptyState message="No customers yet — add one in the database" />
+        )}
+        {!customersLoading &&
+          !customersError &&
+          customerList.map((c) => (
+            <NavLink
+              key={c.id}
+              to={`/customers/${c.id}`}
+              title={c.name}
+              className={({ isActive }) =>
+                clsx(
+                  'flex items-center gap-[10px] px-[10px] py-[7px] rounded-[6px]',
+                  'text-sm font-normal no-underline',
+                  'border-l-2 transition-[background-color,color] duration-200',
+                  isActive
+                    ? 'border-l-accent bg-bg-2 rounded-l-none -ml-0.5 text-ink-1'
+                    : 'border-l-transparent hover:bg-bg-2 text-ink-2',
+                )
+              }
+            >
+              <span className="truncate flex-1 min-w-0">{c.name}</span>
+              {isWithin48h(customerLastTouched?.[String(c.id)]) && <ActivityDot />}
+            </NavLink>
+          ))}
         <button
           type="button"
-          className="mt-1.5 mx-2 px-[10px] py-1.5 text-xs rounded-md text-left font-sans"
+          className="mt-1.5 mx-2 px-[10px] py-1.5 text-xs rounded-md text-left"
           style={{
             background: 'transparent',
             border: '1px dashed var(--rule)',
@@ -322,14 +417,49 @@ export function Sidebar() {
         </button>
       </Section>
 
-      {/* OEM + Agents */}
+      <Divider />
+
+      {/* OEM */}
       <Section heading="OEM">
-        <NavItem to="/oem" icon={<Package size={16} strokeWidth={1.5} />} label="OEM" />
+        {oemsLoading && <LoadingState />}
+        {oemsError && !oemsLoading && (
+          <LoadError onRetry={() => void refetchOems()} />
+        )}
+        {!oemsLoading && !oemsError && oemList.length === 0 && (
+          <EmptyState message="No OEMs yet — add one in the database" />
+        )}
+        {!oemsLoading &&
+          !oemsError &&
+          oemList.map((o) => (
+            <NavLink
+              key={o.id}
+              to={`/oem/${o.id}`}
+              title={o.name}
+              className={({ isActive }) =>
+                clsx(
+                  'flex items-center gap-[10px] px-[10px] py-[7px] rounded-[6px]',
+                  'text-sm font-normal no-underline',
+                  'border-l-2 transition-[background-color,color] duration-200',
+                  isActive
+                    ? 'border-l-accent bg-bg-2 rounded-l-none -ml-0.5 text-ink-1'
+                    : 'border-l-transparent hover:bg-bg-2 text-ink-2',
+                )
+              }
+            >
+              <span className="truncate flex-1 min-w-0">{o.name}</span>
+              {isWithin48h(oemLastTouched?.[String(o.id)]) && <ActivityDot />}
+            </NavLink>
+          ))}
       </Section>
 
+      <Divider />
+
+      {/* AI */}
       <Section heading="AI">
         <NavItem to="/agents" icon={<Bot size={16} strokeWidth={1.5} />} label="Agents" />
       </Section>
+
+      <Divider />
 
       {/* Bottom: Settings + ThemeToggle */}
       <div className="mt-auto flex flex-col gap-0.5">
