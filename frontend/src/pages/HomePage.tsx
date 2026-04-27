@@ -1,11 +1,16 @@
 import { useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useQueries } from '@tanstack/react-query';
 import { Clock, Check, X, RefreshCw } from 'lucide-react';
 import { Tile } from '../components/tiles/Tile';
 import { useTasks, useCompleteTask } from '../api/useTasks';
 import { useOrganizations } from '../api/useOrganizations';
-import { useConfirmInsight, useRejectInsight, noteKeys } from '../api/useNotes';
+import {
+  useUnconfirmedInsightsAcrossOrgs,
+  useConfirmInsight,
+  useRejectInsight,
+  noteKeys,
+} from '../api/useNotes';
+import { useQueries } from '@tanstack/react-query';
 import { request } from '../api/http';
 import type { Task, Note, Organization } from '../types';
 
@@ -265,7 +270,7 @@ interface NoteWithOrg extends Note {
   orgType: 'customer' | 'oem';
 }
 
-function RecentNotesWidget({ orgs, orgMap: _orgMap }: RecentNotesWidgetProps) {
+function RecentNotesWidget({ orgs }: RecentNotesWidgetProps) {
   const navigate = useNavigate();
 
   const noteQueries = useQueries({
@@ -360,19 +365,17 @@ function RecentNotesWidget({ orgs, orgMap: _orgMap }: RecentNotesWidgetProps) {
                   {formatNoteTimestamp(note.created_at)}
                 </time>
                 <p
-                  style={
-                    {
-                      fontSize: 14,
-                      color: 'var(--ink-1)',
-                      fontFamily: 'var(--body)',
-                      margin: 0,
-                      lineHeight: 1.45,
-                      overflow: 'hidden',
-                      display: '-webkit-box',
-                      WebkitLineClamp: 2,
-                      WebkitBoxOrient: 'vertical',
-                    }
-                  }
+                  style={{
+                    fontSize: 14,
+                    color: 'var(--ink-1)',
+                    fontFamily: 'var(--body)',
+                    margin: 0,
+                    lineHeight: 1.45,
+                    overflow: 'hidden',
+                    display: '-webkit-box',
+                    WebkitLineClamp: 2,
+                    WebkitBoxOrient: 'vertical',
+                  }}
                 >
                   {note.content}
                 </p>
@@ -395,104 +398,80 @@ function RecentNotesWidget({ orgs, orgMap: _orgMap }: RecentNotesWidgetProps) {
 }
 
 // ---------------------------------------------------------------------------
-// Widget 3 — Recent agent insights
+// Widget 3 — Agent insights (cross-org aggregator)
 // ---------------------------------------------------------------------------
 
-interface AgentInsightsWidgetProps {
-  orgs: Organization[];
-  orgMap: Map<number, Organization>;
-}
-
-function AgentInsightsWidget({ orgs, orgMap }: AgentInsightsWidgetProps) {
+function AgentInsightsWidget() {
+  const navigate = useNavigate();
+  const insightsQuery = useUnconfirmedInsightsAcrossOrgs(20);
   const { mutate: confirmInsight } = useConfirmInsight();
   const { mutate: rejectInsight } = useRejectInsight();
 
-  const insightQueries = useQueries({
-    queries: orgs.map((org) => ({
-      queryKey: noteKeys.list(org.id, true),
-      queryFn: () =>
-        request<Note[]>(
-          'GET',
-          `/api/organizations/${org.id}/notes?include_unconfirmed=true`,
-        ),
-      enabled: org.id > 0,
-    })),
-  });
-
-  const isLoading = insightQueries.some((q) => q.isLoading);
-  const isError = !isLoading && insightQueries.every((q) => q.isError);
-
-  const unconfirmedInsights: (Note & { orgName: string })[] = insightQueries
-    .flatMap((q, i) => {
-      const org = orgs[i];
-      if (!org || !q.data) return [];
-      return q.data
-        .filter((n) => n.role === 'agent_insight' && !n.confirmed)
-        .map((n) => ({ ...n, orgName: org.name }));
-    })
-    .sort((a, b) => b.created_at.localeCompare(a.created_at))
-    .slice(0, 5);
-
-  const handleRetry = () => {
-    insightQueries.forEach((q) => void q.refetch());
-  };
+  const insights = insightsQuery.data ?? [];
 
   return (
     <Tile
       title="Agent Insights"
-      count={isLoading ? '…' : unconfirmedInsights.length || undefined}
+      count={insightsQuery.isLoading ? '…' : insights.length || undefined}
     >
-      {isError && (
-        <TileError message="Couldn't load insights" onRetry={handleRetry} />
-      )}
-      {isLoading && (
-        <p style={{ fontSize: 13, color: 'var(--ink-3)', fontFamily: 'var(--body)' }}>
-          Loading…
-        </p>
-      )}
-      {!isLoading && !isError && unconfirmedInsights.length === 0 && (
-        <EmptyState text="No new insights to review." />
-      )}
-      {unconfirmedInsights.length > 0 && (
-        <ul
-          role="list"
-          style={{
-            listStyle: 'none',
-            margin: 0,
-            padding: 0,
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 12,
-          }}
-        >
-          {unconfirmedInsights.map((note) => {
-            const org = orgMap.get(note.organization_id);
-            return (
-              <li
-                key={note.id}
-                style={{
-                  position: 'relative',
-                  paddingLeft: 12,
-                  borderBottom: '1px dotted var(--rule)',
-                  paddingBottom: 10,
-                }}
-              >
-                {/* Vermilion dot — transient signal per DESIGN.md Q-1 */}
-                <span
-                  aria-hidden="true"
+      {/* aria-live so accept/dismiss updates announce to screen readers */}
+      <div aria-live="polite" aria-atomic="false">
+        {insightsQuery.isError && (
+          <TileError
+            message="Couldn't load insights"
+            onRetry={() => void insightsQuery.refetch()}
+          />
+        )}
+        {insightsQuery.isLoading && (
+          <p style={{ fontSize: 13, color: 'var(--ink-3)', fontFamily: 'var(--body)' }}>
+            Loading…
+          </p>
+        )}
+        {!insightsQuery.isLoading && !insightsQuery.isError && insights.length === 0 && (
+          <EmptyState text="No insights pending review." />
+        )}
+        {insights.length > 0 && (
+          <ul
+            role="list"
+            style={{
+              listStyle: 'none',
+              margin: 0,
+              padding: 0,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 12,
+            }}
+          >
+            {insights.map((note) => {
+              const orgPath =
+                note.org_type === 'customer'
+                  ? `/customers/${note.organization_id}`
+                  : `/oem/${note.organization_id}`;
+              return (
+                <li
+                  key={note.id}
                   style={{
-                    position: 'absolute',
-                    left: 0,
-                    top: 5,
-                    width: 4,
-                    height: 4,
-                    borderRadius: '50%',
-                    background: 'var(--accent)',
+                    position: 'relative',
+                    paddingLeft: 12,
+                    borderBottom: '1px dotted var(--rule)',
+                    paddingBottom: 10,
                   }}
-                />
-                <p
-                  style={
-                    {
+                >
+                  {/* Vermilion dot — transient signal per DESIGN.md Q-1 */}
+                  <span
+                    aria-hidden="true"
+                    style={{
+                      position: 'absolute',
+                      left: 0,
+                      top: 5,
+                      width: 4,
+                      height: 4,
+                      borderRadius: '50%',
+                      background: 'var(--accent)',
+                    }}
+                  />
+                  <p
+                    style={{
                       fontSize: 13,
                       color: 'var(--ink-1)',
                       fontFamily: 'var(--body)',
@@ -500,79 +479,101 @@ function AgentInsightsWidget({ orgs, orgMap }: AgentInsightsWidgetProps) {
                       lineHeight: 1.5,
                       overflow: 'hidden',
                       display: '-webkit-box',
-                      WebkitLineClamp: 3,
+                      WebkitLineClamp: 2,
                       WebkitBoxOrient: 'vertical',
-                    }
-                  }
-                >
-                  {note.content}
-                </p>
-                <p
-                  style={{
-                    fontSize: 11,
-                    color: 'var(--ink-3)',
-                    fontFamily: 'var(--body)',
-                    margin: '0 0 6px',
-                  }}
-                >
-                  {org?.name ?? 'Unknown org'} ·{' '}
-                  <time dateTime={note.created_at} style={{ fontVariantNumeric: 'tabular-nums' }}>
-                    {formatNoteTimestamp(note.created_at)}
-                  </time>
-                </p>
-                <div style={{ display: 'flex', gap: 6 }}>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      confirmInsight({ id: note.id, orgId: note.organization_id })
-                    }
-                    aria-label={`Accept insight from ${org?.name ?? 'org'}`}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 4,
-                      background: 'transparent',
-                      border: '1px solid var(--rule)',
-                      borderRadius: 4,
-                      padding: '2px 8px',
-                      fontSize: 11,
-                      color: 'var(--ink-2)',
-                      cursor: 'pointer',
-                      fontFamily: 'var(--body)',
                     }}
                   >
-                    <Check size={10} strokeWidth={2} aria-hidden="true" />
-                    Accept
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      rejectInsight({ id: note.id, orgId: note.organization_id })
-                    }
-                    aria-label={`Dismiss insight from ${org?.name ?? 'org'}`}
+                    {note.content}
+                  </p>
+                  <p
                     style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 4,
-                      background: 'transparent',
-                      border: '1px solid var(--rule)',
-                      borderRadius: 4,
-                      padding: '2px 8px',
                       fontSize: 11,
-                      color: 'var(--ink-2)',
-                      cursor: 'pointer',
+                      color: 'var(--ink-3)',
                       fontFamily: 'var(--body)',
+                      margin: '0 0 6px',
                     }}
                   >
-                    <X size={10} strokeWidth={2} aria-hidden="true" />
-                    Dismiss
-                  </button>
-                </div>
-              </li>
-            );
-          })}
-        </ul>
-      )}
+                    <button
+                      type="button"
+                      onClick={() => navigate(orgPath)}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        padding: 0,
+                        cursor: 'pointer',
+                        fontSize: 11,
+                        color: 'var(--ink-2)',
+                        fontFamily: 'var(--body)',
+                        textDecoration: 'underline',
+                        textDecorationStyle: 'dotted',
+                        textUnderlineOffset: 2,
+                      }}
+                      aria-label={`Go to ${note.org_name}`}
+                    >
+                      {note.org_name}
+                    </button>
+                    {' · '}
+                    <time
+                      dateTime={note.created_at}
+                      style={{ fontVariantNumeric: 'tabular-nums' }}
+                    >
+                      {formatNoteTimestamp(note.created_at)}
+                    </time>
+                  </p>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        confirmInsight({ id: note.id, orgId: note.organization_id })
+                      }
+                      aria-label={`Accept insight from ${note.org_name}`}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 4,
+                        background: 'transparent',
+                        border: '1px solid var(--accent)',
+                        borderRadius: 4,
+                        padding: '2px 8px',
+                        fontSize: 11,
+                        color: 'var(--accent)',
+                        cursor: 'pointer',
+                        fontFamily: 'var(--body)',
+                      }}
+                    >
+                      <Check size={10} strokeWidth={2} aria-hidden="true" />
+                      Accept
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        rejectInsight({ id: note.id, orgId: note.organization_id })
+                      }
+                      aria-label={`Dismiss insight from ${note.org_name}`}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 4,
+                        background: 'transparent',
+                        border: '1px solid var(--rule)',
+                        borderRadius: 4,
+                        padding: '2px 8px',
+                        fontSize: 11,
+                        color: 'var(--ink-2)',
+                        cursor: 'pointer',
+                        fontFamily: 'var(--body)',
+                      }}
+                    >
+                      <X size={10} strokeWidth={2} aria-hidden="true" />
+                      Dismiss
+                    </button>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
     </Tile>
   );
 }
@@ -667,6 +668,7 @@ export function HomePage() {
           letterSpacing: '-0.02em',
           marginLeft: -3,
           marginBottom: 6,
+          textWrap: 'balance',
         }}
       >
         Today.
@@ -705,7 +707,7 @@ export function HomePage() {
 
         {/* Bottom-left: Agent insights */}
         <div style={{ gridColumn: 1, gridRow: 2 }}>
-          <AgentInsightsWidget orgs={allOrgs} orgMap={orgMap} />
+          <AgentInsightsWidget />
         </div>
 
         {/* Bottom-right: Reports placeholder */}
