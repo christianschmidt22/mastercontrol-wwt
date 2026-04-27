@@ -12,6 +12,7 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import React from 'react';
 import {
   CustomerPageHeader,
@@ -30,11 +31,12 @@ const baseOrg: Organization = {
 };
 
 function renderHeader(overrides: Partial<CustomerPageHeaderProps> = {}) {
+  // The header now uses useUpdateOrganization, which needs a QueryClientProvider.
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
   return render(
-    <CustomerPageHeader
-      org={baseOrg}
-      {...overrides}
-    />,
+    <QueryClientProvider client={qc}>
+      <CustomerPageHeader org={baseOrg} {...overrides} />
+    </QueryClientProvider>,
   );
 }
 

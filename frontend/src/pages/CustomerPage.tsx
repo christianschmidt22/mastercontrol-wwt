@@ -10,6 +10,7 @@ import { RecentNotesTile } from '../components/tiles/customer/RecentNotesTile';
 import { ContactsTile } from '../components/tiles/customer/ContactsTile';
 import { ReferenceTile } from '../components/tiles/customer/ReferenceTile';
 import { DocumentsTile } from '../components/tiles/customer/DocumentsTile';
+import { OrgTimelineTile } from '../components/tiles/customer/OrgTimelineTile';
 import { useOrganization } from '../api/useOrganizations';
 import { CustomerPageHeader } from '../components/customers/CustomerPageHeader';
 import { CrossOrgInsightsPanel } from '../components/customers/CrossOrgInsightsPanel';
@@ -26,15 +27,17 @@ import { CrossOrgInsightsPanel } from '../components/customers/CrossOrgInsightsP
  * | contacts          | 8–12     | 6–7    |
  * | reference         | 8–12     | 8      |
  * | documents         | 1–7      | 9      |
+ * | org-timeline      | 1–12     | 10–14  |
  */
 const DEFAULT_CUSTOMER_LAYOUT: TileLayout[] = [
-  { id: 'chat',              x: 1,  y: 1, w: 7, h: 5 },
-  { id: 'priority-projects', x: 8,  y: 1, w: 5, h: 3 },
-  { id: 'tasks',             x: 8,  y: 4, w: 5, h: 2 },
-  { id: 'recent-notes',      x: 1,  y: 6, w: 7, h: 3 },
-  { id: 'contacts',          x: 8,  y: 6, w: 5, h: 2 },
-  { id: 'reference',         x: 8,  y: 8, w: 5, h: 1 },
-  { id: 'documents',         x: 1,  y: 9, w: 7, h: 1 },
+  { id: 'chat',              x: 1,  y: 1,  w: 7,  h: 5 },
+  { id: 'priority-projects', x: 8,  y: 1,  w: 5,  h: 3 },
+  { id: 'tasks',             x: 8,  y: 4,  w: 5,  h: 2 },
+  { id: 'recent-notes',      x: 1,  y: 6,  w: 7,  h: 3 },
+  { id: 'contacts',          x: 8,  y: 6,  w: 5,  h: 2 },
+  { id: 'reference',         x: 8,  y: 8,  w: 5,  h: 1 },
+  { id: 'documents',         x: 1,  y: 9,  w: 7,  h: 1 },
+  { id: 'org-timeline',      x: 1,  y: 10, w: 12, h: 5 },
 ];
 
 export function CustomerPage() {
@@ -101,6 +104,11 @@ export function CustomerPage() {
       id: 'documents',
       title: 'Documents',
       node: <DocumentsTile orgId={orgId} />,
+    },
+    {
+      id: 'org-timeline',
+      title: 'Notes Timeline',
+      node: <OrgTimelineTile orgId={orgId} />,
     },
   ];
 

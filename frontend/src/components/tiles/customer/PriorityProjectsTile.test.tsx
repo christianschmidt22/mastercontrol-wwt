@@ -1,15 +1,17 @@
 /**
  * PriorityProjectsTile.test.tsx
  *
- * Tests for the PriorityProjectsTile empty-state and data-view rendering.
- * Hook injection via the _useProjects prop — no real network calls.
+ * Tests for the PriorityProjectsTile: empty-state, data-view, and
+ * inline add-project form. Hook injection via _useProjects / _useCreateProject
+ * props — no real network calls.
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import React from 'react';
 import { PriorityProjectsTile } from './PriorityProjectsTile';
-import type { Project } from '../../../types';
+import type { Project, ProjectCreate } from '../../../types';
 
 const activeProject: Project = {
   id: 1,
@@ -34,11 +36,15 @@ function makeHook(data: Project[] | undefined, isLoading = false) {
   return (_orgId: number) => ({ data, isLoading });
 }
 
+function makeMutationHook(mutate = vi.fn()) {
+  return { hook: () => ({ mutate, isPending: false }), mutate };
+}
+
+// ── Empty state ───────────────────────────────────────────────────────────────
+
 describe('PriorityProjectsTile — empty state', () => {
   it('shows empty-state copy when no active/qualifying projects', () => {
-    render(
-      <PriorityProjectsTile orgId={10} _useProjects={makeHook([])} />,
-    );
+    render(<PriorityProjectsTile orgId={10} _useProjects={makeHook([])} />);
     expect(
       screen.getByText('No projects on record. Add one when an engagement starts.'),
     ).toBeInTheDocument();
@@ -68,6 +74,8 @@ describe('PriorityProjectsTile — empty state', () => {
   });
 });
 
+// ── Data view ─────────────────────────────────────────────────────────────────
+
 describe('PriorityProjectsTile — data view', () => {
   it('renders active project name when data is present', () => {
     render(
@@ -94,5 +102,115 @@ describe('PriorityProjectsTile — data view', () => {
     );
     expect(screen.getByText('Storage Refresh')).toBeInTheDocument();
     expect(screen.queryByText('Old Deal')).toBeNull();
+  });
+});
+
+// ── Inline add form ───────────────────────────────────────────────────────────
+
+describe('PriorityProjectsTile — inline add form', () => {
+  it('clicking Add project opens the form; Cancel collapses it', async () => {
+    const user = userEvent.setup();
+    render(<PriorityProjectsTile orgId={10} _useProjects={makeHook([])} />);
+
+    await user.click(screen.getByRole('button', { name: 'Add project' }));
+
+    expect(screen.getByLabelText('Name')).toBeInTheDocument();
+    expect(screen.getByLabelText('Status')).toBeInTheDocument();
+    expect(screen.getByLabelText('Description')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(screen.queryByLabelText('Name')).toBeNull();
+  });
+
+  it('shows validation error in aria-live region when name is empty on submit', async () => {
+    const user = userEvent.setup();
+    render(<PriorityProjectsTile orgId={10} _useProjects={makeHook([])} />);
+
+    await user.click(screen.getByRole('button', { name: 'Add project' }));
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    expect(screen.getByText('Name is required.')).toBeInTheDocument();
+  });
+
+  it('save calls mutate with the expected payload', async () => {
+    const user = userEvent.setup();
+    const { hook, mutate } = makeMutationHook();
+    render(
+      <PriorityProjectsTile
+        orgId={10}
+        _useProjects={makeHook([])}
+        _useCreateProject={hook}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Add project' }));
+    await user.type(screen.getByLabelText('Name'), 'Network Upgrade');
+    await user.selectOptions(screen.getByLabelText('Status'), 'qualifying');
+    await user.type(screen.getByLabelText('Description'), 'Core switch refresh');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    expect(mutate).toHaveBeenCalledOnce();
+    expect(mutate).toHaveBeenCalledWith(
+      expect.objectContaining<Partial<ProjectCreate>>({
+        organization_id: 10,
+        name: 'Network Upgrade',
+        status: 'qualifying',
+        description: 'Core switch refresh',
+      }),
+      expect.any(Object),
+    );
+  });
+
+  it('cancel does not call mutate', async () => {
+    const user = userEvent.setup();
+    const { hook, mutate } = makeMutationHook();
+    render(
+      <PriorityProjectsTile
+        orgId={10}
+        _useProjects={makeHook([])}
+        _useCreateProject={hook}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Add project' }));
+    await user.type(screen.getByLabelText('Name'), 'Draft Project');
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+
+    expect(mutate).not.toHaveBeenCalled();
+  });
+
+  it('optimistically inserts active project into the priority list before server responds', async () => {
+    const user = userEvent.setup();
+    render(
+      <PriorityProjectsTile
+        orgId={10}
+        _useProjects={makeHook([activeProject])}
+      />,
+    );
+
+    expect(screen.getByText('Storage Refresh')).toBeInTheDocument();
+    expect(screen.queryByText('New Security Initiative')).toBeNull();
+
+    await user.click(screen.getByRole('button', { name: 'Add project' }));
+    await user.type(screen.getByLabelText('Name'), 'New Security Initiative');
+    // status defaults to 'active' — will pass the ACTIVE_STATUSES filter
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    // Optimistic item appears immediately alongside the existing project
+    expect(screen.getByText('New Security Initiative')).toBeInTheDocument();
+    expect(screen.getByText('Storage Refresh')).toBeInTheDocument();
+  });
+
+  it('optimistic project with non-priority status does not appear in the list', async () => {
+    const user = userEvent.setup();
+    render(<PriorityProjectsTile orgId={10} _useProjects={makeHook([])} />);
+
+    await user.click(screen.getByRole('button', { name: 'Add project' }));
+    await user.type(screen.getByLabelText('Name'), 'Closed Deal');
+    await user.selectOptions(screen.getByLabelText('Status'), 'closed');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    // 'closed' is not in ACTIVE_STATUSES so it won't show in Priority Projects
+    expect(screen.queryByText('Closed Deal')).toBeNull();
   });
 });
