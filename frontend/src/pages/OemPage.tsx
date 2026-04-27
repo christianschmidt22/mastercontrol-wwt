@@ -7,6 +7,8 @@ import { ChatTile } from '../components/tiles/customer/ChatTile';
 import { AccountChannelTile } from '../components/tiles/oem/AccountChannelTile';
 import { OemQuickLinksTile } from '../components/tiles/oem/OemQuickLinksTile';
 import { OemDocsTile } from '../components/tiles/oem/OemDocsTile';
+import { OemPageHeader } from '../components/oem/OemPageHeader';
+import { OemCrossRefsPanel } from '../components/oem/OemCrossRefsPanel';
 import type { Organization } from '../types';
 import { useOrganizations } from '../api/useOrganizations';
 
@@ -81,6 +83,10 @@ function OemDashboard({ org }: OemDashboardProps) {
 
   return (
     <div>
+      {/* OEM page header + cross-references — mirrors customer page treatment. */}
+      <OemPageHeader org={org} />
+      <OemCrossRefsPanel orgId={org.id} />
+
       {/* Section header + edit controls */}
       <div
         style={{
