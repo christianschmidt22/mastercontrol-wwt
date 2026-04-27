@@ -2,7 +2,7 @@
 
 ## Phase 2 — In progress on branch `claude/laughing-ishizaka-8f06fa` (2026-04-25)
 
-### Checkpoint `phase2-checkpoint-4` — 2026-04-27 morning
+### Checkpoint `phase2-checkpoint-6` — 2026-04-27 morning
 
 **A focused product polish round.** With Fairview + C.H. Robinson seeded
 and the per-org chat / cross-org insights surface live, this round
