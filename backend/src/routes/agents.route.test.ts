@@ -269,6 +269,100 @@ describe('PUT /api/agents/configs/:id', () => {
 });
 
 // ---------------------------------------------------------------------------
+// POST /api/agents/configs — create per-org override
+// ---------------------------------------------------------------------------
+
+describe('POST /api/agents/configs', () => {
+  it('creates a per-org override row inheriting archetype defaults', async () => {
+    const org = makeOrg({ type: 'customer', name: 'Override Cust' });
+    const archetype = agentConfigModel.getArchetype('customer')!;
+
+    const res = await request(app)
+      .post('/api/agents/configs')
+      .send({ section: 'customer', organization_id: org.id });
+
+    expect(res.status).toBe(201);
+    const body = res.body as { id: number; section: string; organization_id: number; system_prompt_template: string; model: string };
+    expect(body.section).toBe('customer');
+    expect(body.organization_id).toBe(org.id);
+    expect(body.system_prompt_template).toBe(archetype.system_prompt_template);
+    expect(body.model).toBe(archetype.model);
+  });
+
+  it('honours an explicit template / model when supplied', async () => {
+    const org = makeOrg({ type: 'oem', name: 'Override OEM' });
+
+    const res = await request(app)
+      .post('/api/agents/configs')
+      .send({
+        section: 'oem',
+        organization_id: org.id,
+        system_prompt_template: 'Bespoke template.',
+        model: 'claude-haiku-4-5',
+      });
+
+    expect(res.status).toBe(201);
+    const body = res.body as { system_prompt_template: string; model: string };
+    expect(body.system_prompt_template).toBe('Bespoke template.');
+    expect(body.model).toBe('claude-haiku-4-5');
+  });
+
+  it('returns 404 when the organization does not exist', async () => {
+    const res = await request(app)
+      .post('/api/agents/configs')
+      .send({ section: 'customer', organization_id: 99_999_999 });
+
+    expect(res.status).toBe(404);
+  });
+
+  it('rejects an invalid section with 400', async () => {
+    const org = makeOrg({ type: 'customer', name: 'Bad Section Cust' });
+
+    const res = await request(app)
+      .post('/api/agents/configs')
+      .send({ section: 'agent', organization_id: org.id });
+
+    expect(res.status).toBe(400);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// DELETE /api/agents/configs/:id
+// ---------------------------------------------------------------------------
+
+describe('DELETE /api/agents/configs/:id', () => {
+  it('deletes a per-org override row and returns 204', async () => {
+    const org = makeOrg({ type: 'customer', name: 'Deletable Cust' });
+    const created = await request(app)
+      .post('/api/agents/configs')
+      .send({ section: 'customer', organization_id: org.id });
+    const id = (created.body as { id: number }).id;
+
+    const res = await request(app).delete(`/api/agents/configs/${id}`);
+    expect(res.status).toBe(204);
+
+    // Subsequent GET should not contain the deleted row.
+    const list = await request(app).get('/api/agents/configs');
+    const ids = (list.body as Array<{ id: number }>).map((r) => r.id);
+    expect(ids).not.toContain(id);
+  });
+
+  it('refuses to delete the section archetype (organization_id IS NULL)', async () => {
+    const archetype = agentConfigModel.getArchetype('customer')!;
+    const res = await request(app).delete(`/api/agents/configs/${archetype.id}`);
+    expect(res.status).toBe(404);
+
+    // Archetype must still be present.
+    expect(agentConfigModel.getArchetype('customer')).not.toBeNull();
+  });
+
+  it('returns 404 for an unknown id', async () => {
+    const res = await request(app).delete('/api/agents/configs/99999999');
+    expect(res.status).toBe(404);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // POST /api/agents/threads
 // ---------------------------------------------------------------------------
 
