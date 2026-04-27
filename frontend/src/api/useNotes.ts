@@ -87,10 +87,50 @@ export function useUnconfirmedInsightsAcrossOrgs(
 // Mutations
 // ---------------------------------------------------------------------------
 
-export function useCreateNote(): UseMutationResult<Note, Error, NoteCreate> {
+type CreateNoteContext = {
+  previousIncl: Note[] | undefined;
+  previousConf: Note[] | undefined;
+};
+
+export function useCreateNote(): UseMutationResult<Note, Error, NoteCreate, CreateNoteContext> {
   const qc = useQueryClient();
-  return useMutation({
+  return useMutation<Note, Error, NoteCreate, CreateNoteContext>({
     mutationFn: (body) => request<Note>('POST', '/api/notes', body),
+    onMutate: async (newNote) => {
+      const { organization_id } = newNote;
+      // Cancel in-flight refetches for this org
+      await qc.cancelQueries({ queryKey: noteKeys.all(organization_id) });
+      const inclKey = noteKeys.list(organization_id, true);
+      const confKey = noteKeys.list(organization_id, false);
+      const previousIncl = qc.getQueryData<Note[]>(inclKey);
+      const previousConf = qc.getQueryData<Note[]>(confKey);
+      // Prepend an optimistic placeholder — user notes are always confirmed
+      const optimistic: Note = {
+        id: -Date.now(),
+        organization_id,
+        content: newNote.content,
+        ai_response: null,
+        source_path: null,
+        file_mtime: null,
+        role: newNote.role ?? 'user',
+        thread_id: newNote.thread_id ?? null,
+        provenance: newNote.provenance ?? null,
+        confirmed: true,
+        created_at: new Date().toISOString(),
+      };
+      qc.setQueryData<Note[]>(inclKey, (old) => [optimistic, ...(old ?? [])]);
+      qc.setQueryData<Note[]>(confKey, (old) => [optimistic, ...(old ?? [])]);
+      return { previousIncl, previousConf };
+    },
+    onError: (_err, newNote, context) => {
+      const { organization_id } = newNote;
+      if (context?.previousIncl !== undefined) {
+        qc.setQueryData(noteKeys.list(organization_id, true), context.previousIncl);
+      }
+      if (context?.previousConf !== undefined) {
+        qc.setQueryData(noteKeys.list(organization_id, false), context.previousConf);
+      }
+    },
     onSuccess: (note) => {
       // Invalidate both confirmed-only and include-unconfirmed variants
       void qc.invalidateQueries({ queryKey: noteKeys.all(note.organization_id) });

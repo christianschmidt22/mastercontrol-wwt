@@ -25,6 +25,7 @@ export interface NoteCreate {
   organization_id: number;
   content: string;
   role?: NoteRole;
+  confirmed?: boolean;
   thread_id?: number | null;
   provenance?: NoteProvenance | null;
 }

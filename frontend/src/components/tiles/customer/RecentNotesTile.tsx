@@ -1,16 +1,29 @@
-import { useState, useCallback } from 'react';
-import { Check, X } from 'lucide-react';
+import { useState, useCallback, useId, type FormEvent } from 'react';
+import { Check, X, Plus } from 'lucide-react';
 import { Tile } from '../Tile';
 import { TileEmptyState } from '../TileEmptyState';
-import type { Note } from '../../../types';
+import type { Note, NoteCreate } from '../../../types';
+
+// ---------------------------------------------------------------------------
+// Hook interfaces — narrower than UseMutationResult for inject-ability
+// ---------------------------------------------------------------------------
 
 interface UseNotesResult {
   data: Note[] | undefined;
   isLoading: boolean;
 }
 
+interface UseCreateNoteResult {
+  mutate: (data: NoteCreate) => void;
+  isPending: boolean;
+}
+
 function useNotesStub(_orgId: number, _options?: { includeUnconfirmed?: boolean }): UseNotesResult {
   return { data: undefined, isLoading: false };
+}
+
+function useCreateNoteStub(): UseCreateNoteResult {
+  return { mutate: () => {}, isPending: false };
 }
 
 interface RecentNotesTileProps {
@@ -18,6 +31,7 @@ interface RecentNotesTileProps {
   _useNotes?: (orgId: number, options?: { includeUnconfirmed?: boolean }) => UseNotesResult;
   _useConfirmInsight?: () => { mutate: (noteId: number) => void };
   _useRejectInsight?: () => { mutate: (noteId: number) => void };
+  _useCreateNote?: () => UseCreateNoteResult;
 }
 
 function formatTimestamp(iso: string): string {
@@ -200,9 +214,17 @@ function NoteRow({
  *
  * Note list: timestamp gutter 80px + content 70ch max.
  * Unconfirmed agent_insight rows get inline accept/dismiss (Q-4).
+ * Inline "+ Add note" form in the tile header (or empty-state action).
  */
-export function RecentNotesTile({ orgId, _useNotes, _useConfirmInsight, _useRejectInsight }: RecentNotesTileProps) {
+export function RecentNotesTile({
+  orgId,
+  _useNotes,
+  _useConfirmInsight,
+  _useRejectInsight,
+  _useCreateNote,
+}: RecentNotesTileProps) {
   const useNotes = _useNotes ?? useNotesStub;
+  const useCreateNote = _useCreateNote ?? useCreateNoteStub;
   const { data: notes, isLoading } = useNotes(orgId, { includeUnconfirmed: true });
 
   const useConfirmInsight = _useConfirmInsight ?? (() => ({ mutate: (_id: number) => {} }));
@@ -210,23 +232,162 @@ export function RecentNotesTile({ orgId, _useNotes, _useConfirmInsight, _useReje
 
   const { mutate: confirmInsight } = useConfirmInsight();
   const { mutate: rejectInsight } = useRejectInsight();
+  const { mutate: createNote, isPending } = useCreateNote();
 
   const handleConfirm = useCallback((id: number) => confirmInsight(id), [confirmInsight]);
   const handleReject = useCallback((id: number) => rejectInsight(id), [rejectInsight]);
 
+  const [adding, setAdding] = useState(false);
+  const [noteContent, setNoteContent] = useState('');
+
+  const formId = useId();
+  const textareaId = `${formId}-content`;
+
+  const handleCancelNote = useCallback(() => {
+    setNoteContent('');
+    setAdding(false);
+  }, []);
+
+  const handleAddNote = useCallback(
+    (e: FormEvent) => {
+      e.preventDefault();
+      const trimmed = noteContent.trim();
+      if (!trimmed) return;
+      createNote({
+        organization_id: orgId,
+        content: trimmed,
+        role: 'user',
+      });
+      setNoteContent('');
+      setAdding(false);
+    },
+    [noteContent, orgId, createNote],
+  );
+
   const noteList = notes ?? [];
+  const canSave = noteContent.trim().length > 0;
 
   return (
-    <Tile title="Recent Notes" count={isLoading ? '…' : noteList.length || undefined}>
+    <Tile
+      title="Recent Notes"
+      count={isLoading ? '…' : noteList.length || undefined}
+      titleAction={
+        !adding && noteList.length > 0 ? (
+          <button
+            type="button"
+            aria-label="Add note"
+            onClick={() => setAdding(true)}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4,
+              background: 'transparent',
+              border: 'none',
+              padding: '2px 4px',
+              cursor: 'pointer',
+              fontSize: 11,
+              color: 'var(--ink-3)',
+              fontFamily: 'var(--body)',
+            }}
+          >
+            <Plus size={11} strokeWidth={1.5} aria-hidden="true" />
+            Add note
+          </button>
+        ) : undefined
+      }
+    >
+      {/* Inline add form — shown above the list whether list is empty or not */}
+      {adding && (
+        <form
+          onSubmit={handleAddNote}
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 8,
+            marginBottom: noteList.length > 0 ? 14 : 0,
+          }}
+        >
+          {/* Visually hidden label for a11y */}
+          <label
+            htmlFor={textareaId}
+            style={{
+              position: 'absolute',
+              width: 1,
+              height: 1,
+              overflow: 'hidden',
+              clip: 'rect(0,0,0,0)',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            Note content
+          </label>
+          <textarea
+            id={textareaId}
+            rows={4}
+            autoFocus
+            value={noteContent}
+            onChange={(e) => setNoteContent(e.target.value)}
+            placeholder="What happened? What's the context?"
+            style={{
+              border: '1px solid var(--rule)',
+              borderRadius: 4,
+              padding: '6px 8px',
+              fontSize: 13,
+              background: 'transparent',
+              color: 'var(--ink-1)',
+              fontFamily: 'var(--body)',
+              resize: 'vertical',
+              width: '100%',
+              boxSizing: 'border-box',
+            }}
+          />
+          <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+            <button
+              type="button"
+              onClick={handleCancelNote}
+              style={{
+                padding: '4px 10px',
+                fontSize: 12,
+                border: '1px solid var(--rule)',
+                borderRadius: 4,
+                background: 'transparent',
+                color: 'var(--ink-2)',
+                cursor: 'pointer',
+                fontFamily: 'var(--body)',
+              }}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={!canSave || isPending}
+              style={{
+                padding: '4px 10px',
+                fontSize: 12,
+                border: 'none',
+                borderRadius: 4,
+                background: 'var(--accent)',
+                color: '#fff',
+                cursor: canSave && !isPending ? 'pointer' : 'not-allowed',
+                fontFamily: 'var(--body)',
+                opacity: canSave ? 1 : 0.5,
+              }}
+            >
+              Save Note
+            </button>
+          </div>
+        </form>
+      )}
+
       {isLoading && (
         <p style={{ fontSize: 13, color: 'var(--ink-3)' }}>Loading…</p>
       )}
 
-      {!isLoading && noteList.length === 0 && (
+      {!isLoading && noteList.length === 0 && !adding && (
         <TileEmptyState
           copy="Take your first note. The agent will see anything you save here."
           actionLabel="Add note"
-          onAction={() => {}}
+          onAction={() => setAdding(true)}
           ariaLive
         />
       )}
