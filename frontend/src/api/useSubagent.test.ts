@@ -45,6 +45,8 @@ function makeJsonResponse(body: unknown, status = 200): Response {
 const MOCK_USAGE: UsageAggregate = {
   period: 'session',
   cost_usd: 0.0042,
+  would_have_cost_usd: 0.0042,
+  savings_usd: 0,
   requests: 1,
   input_tokens: 100,
   output_tokens: 50,

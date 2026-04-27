@@ -442,6 +442,9 @@ export async function delegateViaSubscription(
             cache_read_input_tokens: totalUsage.cache_read_input_tokens,
             cache_creation_input_tokens: totalUsage.cache_creation_input_tokens,
             cost_usd_micros: 0, // subscription — no per-token cost
+            // SDK reports what this would have cost via the metered API;
+            // record it so the AgentsPage tile can show cumulative savings.
+            would_have_cost_micros: Math.round(totalCostUsd * 1_000_000),
             request_id: null,
             task_summary: input.task_summary ?? null,
             error: errMsg,
@@ -464,6 +467,7 @@ export async function delegateViaSubscription(
           cache_read_input_tokens: totalUsage.cache_read_input_tokens,
           cache_creation_input_tokens: totalUsage.cache_creation_input_tokens,
           cost_usd_micros: 0, // subscription — no per-token cost
+          would_have_cost_micros: Math.round(totalCostUsd * 1_000_000),
           request_id: null,
           task_summary: input.task_summary ?? null,
         });
@@ -488,6 +492,7 @@ export async function delegateViaSubscription(
       input_tokens: totalUsage.input_tokens,
       output_tokens: totalUsage.output_tokens,
       cost_usd_micros: 0,
+      would_have_cost_micros: Math.round(totalCostUsd * 1_000_000),
       task_summary: input.task_summary ?? null,
     });
 
@@ -509,6 +514,7 @@ export async function delegateViaSubscription(
       input_tokens: totalUsage.input_tokens,
       output_tokens: totalUsage.output_tokens,
       cost_usd_micros: 0,
+      would_have_cost_micros: Math.round(totalCostUsd * 1_000_000),
       task_summary: input.task_summary ?? null,
       error: errorMessage,
     });

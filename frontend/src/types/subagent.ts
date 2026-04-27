@@ -44,6 +44,10 @@ export interface UsageAggregate {
   output_tokens: number;
   total_tokens: number;
   cost_usd: number;
+  /** Sum of "what every call would have cost via metered API". */
+  would_have_cost_usd: number;
+  /** would_have_cost_usd − cost_usd. Money kept off the API by using the subscription. */
+  savings_usd: number;
 }
 
 // ---------------------------------------------------------------------------

@@ -140,6 +140,11 @@ function PeriodPanel({ period }: { period: UsagePeriod }) {
     );
   }
 
+  // Show the savings stat only when it's non-zero (the subscription path
+  // contributed at least one row in this window). Keeps the UI quiet for
+  // pure API-key users.
+  const showSavings = data.savings_usd > 0;
+
   return (
     <div style={{ display: 'flex', gap: 32, alignItems: 'flex-start', flexWrap: 'wrap' }}>
       <Stat label="Requests" value={String(data.requests)} />
@@ -161,6 +166,28 @@ function PeriodPanel({ period }: { period: UsagePeriod }) {
           {formatCost(data.cost_usd)}
         </span>
       </div>
+      {showSavings && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <span style={{ fontSize: 11, color: 'var(--ink-3)', fontFamily: 'var(--body)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+            Saved
+          </span>
+          <span
+            style={{
+              fontFamily: 'var(--body)',
+              fontSize: 18,
+              fontVariantNumeric: 'tabular-nums',
+              color: 'var(--accent)',
+              fontWeight: 500,
+            }}
+            aria-label={`${costAriaLabel(data.savings_usd)} saved by using subscription instead of metered API`}
+          >
+            {formatCost(data.savings_usd)}
+          </span>
+          <span style={{ fontSize: 11, color: 'var(--ink-3)', fontFamily: 'var(--body)', fontVariantNumeric: 'tabular-nums' }}>
+            vs. {formatCost(data.would_have_cost_usd)} on API
+          </span>
+        </div>
+      )}
     </div>
   );
 }
@@ -416,9 +443,114 @@ export function PersonalUsageTile() {
             </div>
           ))}
 
+          <SessionWindowBars />
           <RecentActivity />
         </>
       )}
     </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// SessionWindowBars — rolling 5-hour rate-limit visualization
+//
+// Anthropic's subscription quotas reset on a rolling 5-hour window. This
+// component derives "messages in last 5 hours" from the recent-usage feed
+// (we already poll it for the activity disclosure, so no extra request) and
+// renders a fill bar against an estimated tier cap.
+//
+// Tier defaults: Pro = 45 msg/5h, Max 5x = 225, Max 20x = 900. We default
+// to 100 (a generic "Max-ish" approximation) so the bar is visible without
+// requiring the user to configure a tier; the cap can be wired to a
+// Settings field in a follow-up.
+// ---------------------------------------------------------------------------
+
+const ROLLING_WINDOW_MS = 5 * 60 * 60 * 1000;
+const SESSION_WINDOW_LIMIT = 100;
+
+function SessionWindowBars() {
+  const { data, isLoading } = useRecentUsage(100);
+
+  // Messages within the last 5 hours.
+  let messageCount = 0;
+  let tokenSum = 0;
+  if (data) {
+    const cutoff = Date.now() - ROLLING_WINDOW_MS;
+    for (const evt of data) {
+      const t = new Date(evt.occurred_at).getTime();
+      if (Number.isFinite(t) && t >= cutoff) {
+        messageCount += 1;
+        tokenSum += evt.input_tokens + evt.output_tokens;
+      }
+    }
+  }
+
+  const fillPct = Math.min(100, Math.round((messageCount / SESSION_WINDOW_LIMIT) * 100));
+  const nearLimit = fillPct >= 80;
+
+  return (
+    <div
+      style={{
+        marginTop: 16,
+        marginBottom: 8,
+        padding: '12px 0 0',
+        borderTop: '1px solid var(--rule)',
+      }}
+    >
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6 }}>
+        <span style={{ fontSize: 11, color: 'var(--ink-3)', fontFamily: 'var(--body)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+          Past 5 hours
+        </span>
+        <span style={{ fontSize: 11, color: 'var(--ink-3)', fontFamily: 'var(--body)', fontVariantNumeric: 'tabular-nums' }}>
+          rolling subscription window
+        </span>
+      </div>
+
+      {/* Messages bar */}
+      <div style={{ marginBottom: 8 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 4 }}>
+          <span style={{ fontSize: 12, color: 'var(--ink-2)', fontFamily: 'var(--body)' }}>Messages</span>
+          <span
+            style={{ fontSize: 12, color: 'var(--ink-2)', fontFamily: 'var(--body)', fontVariantNumeric: 'tabular-nums' }}
+            aria-label={`${messageCount} of ${SESSION_WINDOW_LIMIT} approximate subscription quota in the past 5 hours`}
+          >
+            {isLoading ? '—' : `${messageCount} / ${SESSION_WINDOW_LIMIT}`}
+          </span>
+        </div>
+        <div
+          role="progressbar"
+          aria-valuenow={fillPct}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-label={`Subscription window: ${fillPct}% used`}
+          style={{
+            height: 6,
+            background: 'var(--bg-2)',
+            border: '1px solid var(--rule)',
+            borderRadius: 3,
+            overflow: 'hidden',
+          }}
+        >
+          <div
+            style={{
+              height: '100%',
+              width: `${fillPct}%`,
+              background: nearLimit ? 'var(--accent)' : 'var(--ink-2)',
+              transition: 'width 250ms var(--ease)',
+            }}
+          />
+        </div>
+      </div>
+
+      {/* Tokens bar (informational — shows volume; no hard cap) */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+        <span style={{ fontSize: 12, color: 'var(--ink-2)', fontFamily: 'var(--body)' }}>Tokens</span>
+        <span
+          style={{ fontSize: 12, color: 'var(--ink-3)', fontFamily: 'var(--body)', fontVariantNumeric: 'tabular-nums' }}
+        >
+          {isLoading ? '—' : formatTokens(tokenSum)} in past 5h
+        </span>
+      </div>
+    </div>
   );
 }

@@ -47,6 +47,8 @@ const SESSION_AGGREGATE: UsageAggregate = {
   output_tokens: 300,
   total_tokens: 900,
   cost_usd: 0.0021,
+  would_have_cost_usd: 0.0021,
+  savings_usd: 0,
 };
 
 const TODAY_AGGREGATE: UsageAggregate = {
@@ -56,6 +58,8 @@ const TODAY_AGGREGATE: UsageAggregate = {
   output_tokens: 1000,
   total_tokens: 3000,
   cost_usd: 0.07,
+  would_have_cost_usd: 0.07,
+  savings_usd: 0,
 };
 
 const WEEK_AGGREGATE: UsageAggregate = {
@@ -65,6 +69,8 @@ const WEEK_AGGREGATE: UsageAggregate = {
   output_tokens: 5000,
   total_tokens: 15000,
   cost_usd: 1.23,
+  would_have_cost_usd: 1.23,
+  savings_usd: 0,
 };
 
 const ALL_AGGREGATE: UsageAggregate = {
@@ -74,6 +80,8 @@ const ALL_AGGREGATE: UsageAggregate = {
   output_tokens: 25000,
   total_tokens: 75000,
   cost_usd: 5.678,
+  would_have_cost_usd: 5.678,
+  savings_usd: 0,
 };
 
 const RECENT_EVENTS: UsageEvent[] = [
