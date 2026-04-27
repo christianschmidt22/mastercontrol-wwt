@@ -222,7 +222,7 @@ export function Sidebar() {
             marginTop: 2,
           }}
         >
-          Field Notes
+          Mark 0.1
         </span>
       </div>
 
