@@ -7,6 +7,7 @@ import {
   type FormEvent,
   type CSSProperties,
   type RefObject,
+  type KeyboardEvent as ReactKeyboardEvent,
 } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Plus, RefreshCw } from 'lucide-react';
@@ -18,14 +19,14 @@ import {
   useCompleteTask,
 } from '../api/useTasks';
 import { useOrganizations } from '../api/useOrganizations';
-import { useContacts } from '../api/useContacts';
+import { TileEmptyState } from '../components/tiles/TileEmptyState';
 import type { Task, TaskStatus, TaskUpdate } from '../types';
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-type DueFilter = 'today' | 'this-week' | 'overdue' | 'any';
+type QuickFilter = 'all' | 'today' | 'this-week' | 'overdue';
 
 function todayStr(): string {
   return new Date().toISOString().slice(0, 10);
@@ -60,12 +61,12 @@ function formatDue(dueDate: string | null): string {
   }).format(d);
 }
 
-/** Apply the due-date filter client-side (since the API only supports dueBefore). */
-function applyDueFilter(tasks: Task[], due: DueFilter): Task[] {
-  if (due === 'any') return tasks;
-  if (due === 'today') return tasks.filter((t) => isDueToday(t.due_date));
-  if (due === 'overdue') return tasks.filter((t) => isOverdue(t.due_date));
-  if (due === 'this-week') {
+/** Apply the quick-filter client-side. */
+function applyQuickFilter(tasks: Task[], filter: QuickFilter): Task[] {
+  if (filter === 'all') return tasks;
+  if (filter === 'today') return tasks.filter((t) => isDueToday(t.due_date));
+  if (filter === 'overdue') return tasks.filter((t) => isOverdue(t.due_date));
+  if (filter === 'this-week') {
     const end = weekEndStr();
     return tasks.filter(
       (t) => t.due_date !== null && t.due_date <= end,
@@ -74,8 +75,114 @@ function applyDueFilter(tasks: Task[], due: DueFilter): Task[] {
   return tasks;
 }
 
+function getEmptyCopy(
+  quickFilter: QuickFilter,
+  isStatusFiltered: boolean,
+): string {
+  if (quickFilter === 'today') return 'No tasks due today.';
+  if (quickFilter === 'overdue') return 'No overdue tasks — nice work.';
+  if (quickFilter === 'this-week') return 'No tasks due this week.';
+  if (isStatusFiltered) return 'No tasks match these filters.';
+  return 'No open tasks. Add one with Ctrl+N or the + Add task button above.';
+}
+
+function useReducedMotion(): boolean {
+  return typeof window !== 'undefined' &&
+    typeof window.matchMedia === 'function'
+    ? window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    : false;
+}
+
 // ---------------------------------------------------------------------------
-// Sub-components
+// DuePills — quick-filter tab bar, local state only
+// ---------------------------------------------------------------------------
+
+const QUICK_FILTER_OPTIONS: { value: QuickFilter; label: string }[] = [
+  { value: 'all', label: 'All' },
+  { value: 'today', label: 'Today' },
+  { value: 'this-week', label: 'This week' },
+  { value: 'overdue', label: 'Overdue' },
+];
+
+interface DuePillsProps {
+  value: QuickFilter;
+  onChange: (v: QuickFilter) => void;
+}
+
+function DuePills({ value, onChange }: DuePillsProps) {
+  const pillRefs = useRef<(HTMLButtonElement | null)[]>([]);
+
+  const handleKeyDown = (
+    e: ReactKeyboardEvent<HTMLButtonElement>,
+    idx: number,
+  ) => {
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+      e.preventDefault();
+      const nextIdx = (idx + 1) % QUICK_FILTER_OPTIONS.length;
+      const nextOpt = QUICK_FILTER_OPTIONS[nextIdx];
+      if (nextOpt) { onChange(nextOpt.value); pillRefs.current[nextIdx]?.focus(); }
+    }
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      const prevIdx =
+        (idx - 1 + QUICK_FILTER_OPTIONS.length) % QUICK_FILTER_OPTIONS.length;
+      const prevOpt = QUICK_FILTER_OPTIONS[prevIdx];
+      if (prevOpt) { onChange(prevOpt.value); pillRefs.current[prevIdx]?.focus(); }
+    }
+  };
+
+  return (
+    <div
+      role="radiogroup"
+      aria-label="Filter by due date"
+      style={{
+        display: 'flex',
+        borderBottom: '1px solid var(--rule)',
+        marginBottom: 16,
+      }}
+    >
+      {QUICK_FILTER_OPTIONS.map((opt, idx) => {
+        const active = opt.value === value;
+        return (
+          <button
+            key={opt.value}
+            type="button"
+            role="radio"
+            aria-checked={active}
+            ref={(el) => {
+              pillRefs.current[idx] = el;
+            }}
+            tabIndex={active ? 0 : -1}
+            onClick={() => onChange(opt.value)}
+            onKeyDown={(e) => handleKeyDown(e, idx)}
+            style={{
+              fontFamily: 'var(--body)',
+              fontSize: 13,
+              fontWeight: active ? 600 : 400,
+              padding: '8px 16px',
+              background: 'none',
+              border: 'none',
+              borderBottom: active
+                ? '2px solid var(--accent)'
+                : '2px solid transparent',
+              color: active ? 'var(--ink-1)' : 'var(--ink-2)',
+              cursor: 'pointer',
+              marginBottom: -1,
+              transition:
+                'color 150ms var(--ease), border-color 150ms var(--ease)',
+            }}
+            className="focus-visible:ring-2 focus-visible:ring-[--accent]"
+          >
+            {opt.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Status chip group (URL-synced)
 // ---------------------------------------------------------------------------
 
 interface ChipGroupProps<T extends string> {
@@ -369,6 +476,7 @@ interface TaskRowProps {
   onDelete: (id: number) => void;
   onSave: (update: { id: number } & TaskUpdate) => void;
   isUpdating: boolean;
+  completing: boolean;
 }
 
 function TaskRow({
@@ -379,11 +487,13 @@ function TaskRow({
   onDelete,
   onSave,
   isUpdating,
+  completing,
 }: TaskRowProps) {
   const [expanded, setExpanded] = useState(false);
   const [editing, setEditing] = useState(false);
   const checkId = `task-check-${task.id}`;
   const overdue = isOverdue(task.due_date);
+  const prefersReducedMotion = useReducedMotion();
 
   const handleSave = useCallback(
     (update: { id: number } & TaskUpdate) => {
@@ -398,6 +508,15 @@ function TaskRow({
     <li
       style={{
         borderBottom: '1px dotted var(--rule)',
+        opacity: completing && !prefersReducedMotion ? 0 : 1,
+        transform:
+          completing && !prefersReducedMotion
+            ? 'translateY(-6px)'
+            : 'translateY(0)',
+        transition: !prefersReducedMotion
+          ? 'opacity 240ms cubic-bezier(0.2, 0.0, 0.0, 1.0), transform 240ms cubic-bezier(0.2, 0.0, 0.0, 1.0)'
+          : 'none',
+        pointerEvents: completing ? 'none' : 'auto',
       }}
     >
       {/* Main row */}
@@ -458,7 +577,8 @@ function TaskRow({
                 overflow: 'hidden',
                 textOverflow: 'ellipsis',
                 whiteSpace: 'nowrap',
-                textDecoration: task.status === 'done' ? 'line-through' : 'none',
+                textDecoration:
+                  task.status === 'done' ? 'line-through' : 'none',
                 opacity: task.status === 'done' ? 0.5 : 1,
               }}
             >
@@ -497,11 +617,7 @@ function TaskRow({
 
       {/* Expanded detail */}
       {expanded && !editing && (
-        <div
-          style={{
-            padding: '0 0 12px 24px',
-          }}
-        >
+        <div style={{ padding: '0 0 12px 24px' }}>
           {task.due_date && (
             <p
               style={{
@@ -618,24 +734,19 @@ function TaskRow({
 }
 
 // ---------------------------------------------------------------------------
-// Add task form
+// Inline add-task form — one-line layout, customers only
 // ---------------------------------------------------------------------------
 
 interface AddTaskFormProps {
-  orgOptions: { id: number; name: string }[];
-  onSubmit: (data: {
-    title: string;
-    dueDate: string;
-    orgId: string;
-    contactId: string;
-  }) => void;
+  customerOptions: { id: number; name: string }[];
+  onSubmit: (data: { title: string; dueDate: string; orgId: string }) => void;
   onCancel: () => void;
   isCreating: boolean;
   titleInputRef?: RefObject<HTMLInputElement>;
 }
 
 function AddTaskForm({
-  orgOptions,
+  customerOptions,
   onSubmit,
   onCancel,
   isCreating,
@@ -644,27 +755,19 @@ function AddTaskForm({
   const [title, setTitle] = useState('');
   const [dueDate, setDueDate] = useState('');
   const [orgId, setOrgId] = useState('');
-  const [contactId, setContactId] = useState('');
 
   const titleId = useId();
   const dueId = useId();
   const orgSelectId = useId();
-  const contactSelectId = useId();
-
-  // Contacts filtered by selected org
-  const { data: contacts = [] } = useContacts(
-    orgId ? parseInt(orgId, 10) : 0,
-  );
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
     const trimmed = title.trim();
     if (!trimmed) return;
-    onSubmit({ title: trimmed, dueDate, orgId, contactId });
+    onSubmit({ title: trimmed, dueDate, orgId });
     setTitle('');
     setDueDate('');
     setOrgId('');
-    setContactId('');
   };
 
   const inputStyle: CSSProperties = {
@@ -678,12 +781,16 @@ function AddTaskForm({
     width: '100%',
   };
 
-  const labelStyle: CSSProperties = {
-    fontSize: 11,
-    color: 'var(--ink-3)',
-    fontFamily: 'var(--body)',
-    display: 'block',
-    marginBottom: 3,
+  const srOnly: CSSProperties = {
+    position: 'absolute',
+    width: 1,
+    height: 1,
+    padding: 0,
+    margin: -1,
+    overflow: 'hidden',
+    clip: 'rect(0,0,0,0)',
+    whiteSpace: 'nowrap',
+    borderWidth: 0,
   };
 
   return (
@@ -692,16 +799,19 @@ function AddTaskForm({
       style={{
         border: '1px solid var(--rule)',
         borderRadius: 6,
-        padding: '14px 16px',
+        padding: '10px 12px',
         display: 'flex',
-        flexDirection: 'column',
-        gap: 10,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
         background: 'var(--bg-2)',
         marginBottom: 16,
+        flexWrap: 'wrap',
       }}
     >
-      <div>
-        <label htmlFor={titleId} style={labelStyle}>
+      {/* Title */}
+      <div style={{ flex: '2 1 160px', minWidth: 0 }}>
+        <label htmlFor={titleId} style={srOnly}>
           Task title
         </label>
         <input
@@ -712,6 +822,7 @@ function AddTaskForm({
           autoComplete="off"
           autoFocus
           required
+          maxLength={200}
           aria-label="New task title"
           value={title}
           onChange={(e) => setTitle(e.target.value)}
@@ -720,80 +831,61 @@ function AddTaskForm({
         />
       </div>
 
-      <div style={{ display: 'flex', gap: 8 }}>
-        <div style={{ flex: 1 }}>
-          <label htmlFor={dueId} style={labelStyle}>
-            Due date
-          </label>
-          <input
-            id={dueId}
-            type="date"
-            name="new-task-due"
-            value={dueDate}
-            onChange={(e) => setDueDate(e.target.value)}
-            style={inputStyle}
-          />
-        </div>
-
-        <div style={{ flex: 1 }}>
-          <label htmlFor={orgSelectId} style={labelStyle}>
-            Organization
-          </label>
-          <select
-            id={orgSelectId}
-            name="new-task-org"
-            value={orgId}
-            onChange={(e) => {
-              setOrgId(e.target.value);
-              setContactId('');
-            }}
-            style={inputStyle}
-          >
-            <option value="">None</option>
-            {orgOptions.map((o) => (
-              <option key={o.id} value={String(o.id)}>
-                {o.name}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {orgId && (
-          <div style={{ flex: 1 }}>
-            <label htmlFor={contactSelectId} style={labelStyle}>
-              Contact (optional)
-            </label>
-            <select
-              id={contactSelectId}
-              name="new-task-contact"
-              value={contactId}
-              onChange={(e) => setContactId(e.target.value)}
-              style={inputStyle}
-            >
-              <option value="">None</option>
-              {contacts.map((c) => (
-                <option key={c.id} value={String(c.id)}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
+      {/* Due date */}
+      <div style={{ flex: '0 1 140px' }}>
+        <label htmlFor={dueId} style={srOnly}>
+          Due date
+        </label>
+        <input
+          id={dueId}
+          type="date"
+          name="new-task-due"
+          aria-label="Due date"
+          value={dueDate}
+          onChange={(e) => setDueDate(e.target.value)}
+          style={inputStyle}
+        />
       </div>
 
-      <div style={{ display: 'flex', gap: 6 }}>
+      {/* Customer org */}
+      <div style={{ flex: '1 1 140px' }}>
+        <label htmlFor={orgSelectId} style={srOnly}>
+          Organization
+        </label>
+        <select
+          id={orgSelectId}
+          name="new-task-org"
+          aria-label="Organization"
+          value={orgId}
+          onChange={(e) => setOrgId(e.target.value)}
+          style={inputStyle}
+        >
+          <option value="">No org</option>
+          {customerOptions.map((o) => (
+            <option key={o.id} value={String(o.id)}>
+              {o.name}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {/* Actions */}
+      <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
         <button
           type="submit"
           disabled={isCreating || !title.trim()}
           style={{
             fontFamily: 'var(--body)',
             fontSize: 12,
+            fontWeight: 600,
             padding: '6px 14px',
             borderRadius: 4,
             cursor: isCreating || !title.trim() ? 'default' : 'pointer',
-            border: '1px solid var(--rule)',
-            background: 'var(--bg)',
-            color: 'var(--ink-1)',
+            border: 'none',
+            background: 'var(--accent)',
+            color: '#fff',
+            opacity: isCreating || !title.trim() ? 0.55 : 1,
+            transition: 'opacity 150ms var(--ease)',
           }}
         >
           {isCreating ? 'Adding…' : 'Add task'}
@@ -830,42 +922,26 @@ const STATUS_OPTIONS: { value: TaskStatus | 'all'; label: string }[] = [
   { value: 'all', label: 'All' },
 ];
 
-const DUE_OPTIONS: { value: DueFilter; label: string }[] = [
-  { value: 'today', label: 'Today' },
-  { value: 'this-week', label: 'This week' },
-  { value: 'overdue', label: 'Overdue' },
-  { value: 'any', label: 'Any time' },
-];
-
 const DEFAULT_STATUS: TaskStatus = 'open';
-const DEFAULT_DUE: DueFilter = 'any';
 
 export function TasksPage() {
   const [searchParams, setSearchParams] = useSearchParams();
 
-  // Read filter state from URL
+  // Status + org remain URL-synced for shareability
   const statusParam = searchParams.get('status');
-  const dueParam = searchParams.get('due');
   const orgParam = searchParams.get('org');
 
   const status: TaskStatus | 'all' =
-    statusParam === 'done' || statusParam === 'snoozed' || statusParam === 'open'
+    statusParam === 'done' ||
+    statusParam === 'snoozed' ||
+    statusParam === 'open'
       ? statusParam
       : statusParam === 'all'
       ? 'all'
       : DEFAULT_STATUS;
 
-  const due: DueFilter =
-    dueParam === 'today' ||
-    dueParam === 'this-week' ||
-    dueParam === 'overdue' ||
-    dueParam === 'any'
-      ? dueParam
-      : DEFAULT_DUE;
-
   const orgFilterId = orgParam ? parseInt(orgParam, 10) : undefined;
 
-  // Write filter state back to URL
   const setStatus = useCallback(
     (v: TaskStatus | 'all') => {
       setSearchParams((prev) => {
@@ -874,21 +950,6 @@ export function TasksPage() {
           next.delete('status');
         } else {
           next.set('status', v);
-        }
-        return next;
-      });
-    },
-    [setSearchParams],
-  );
-
-  const setDue = useCallback(
-    (v: DueFilter) => {
-      setSearchParams((prev) => {
-        const next = new URLSearchParams(prev);
-        if (v === DEFAULT_DUE) {
-          next.delete('due');
-        } else {
-          next.set('due', v);
         }
         return next;
       });
@@ -913,7 +974,11 @@ export function TasksPage() {
 
   const resetFilters = useCallback(() => {
     setSearchParams({});
+    setQuickFilter('all');
   }, [setSearchParams]);
+
+  // Quick filter — component-local, not URL-synced
+  const [quickFilter, setQuickFilter] = useState<QuickFilter>('all');
 
   // Data
   const tasksQuery = useTasks({
@@ -939,6 +1004,9 @@ export function TasksPage() {
   const [showAddForm, setShowAddForm] = useState(false);
   const addTaskTitleRef = useRef<HTMLInputElement>(null);
 
+  // Optimistic completion: track which IDs are animating out
+  const [completingIds, setCompletingIds] = useState<Set<number>>(new Set());
+
   // Ctrl+N / Cmd+N — open the add-task form and focus the title input.
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -947,7 +1015,6 @@ export function TasksPage() {
       if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') return;
       e.preventDefault();
       setShowAddForm(true);
-      // Focus happens after the form mounts; a rAF tick is sufficient.
       requestAnimationFrame(() => {
         addTaskTitleRef.current?.focus();
       });
@@ -956,13 +1023,15 @@ export function TasksPage() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  // Apply due filter client-side
+  // Apply quick filter client-side
   const rawTasks = tasksQuery.data ?? [];
-  const filteredTasks = applyDueFilter(rawTasks, due);
+  const filteredTasks = applyQuickFilter(rawTasks, quickFilter);
 
   // Subtitle counts
   const openCount = filteredTasks.filter((t) => t.status === 'open').length;
-  const todayCount = filteredTasks.filter((t) => isDueToday(t.due_date) && t.status === 'open').length;
+  const todayCount = filteredTasks.filter(
+    (t) => isDueToday(t.due_date) && t.status === 'open',
+  ).length;
 
   const subtitleParts: string[] = [];
   if (status === 'open' || status === 'all') {
@@ -970,7 +1039,7 @@ export function TasksPage() {
       `${new Intl.NumberFormat('en-US').format(openCount)} open`,
     );
   }
-  if (todayCount > 0 && due === 'any') {
+  if (todayCount > 0 && quickFilter === 'all') {
     subtitleParts.push(
       `${new Intl.NumberFormat('en-US').format(todayCount)} due today`,
     );
@@ -978,27 +1047,22 @@ export function TasksPage() {
   const subtitle = subtitleParts.join(' · ');
 
   const orgSelectId = useId();
-  const isFiltered =
-    status !== DEFAULT_STATUS ||
-    due !== DEFAULT_DUE ||
-    orgFilterId !== undefined;
+  const isStatusFiltered = status !== DEFAULT_STATUS || orgFilterId !== undefined;
+  const isFiltered = isStatusFiltered || quickFilter !== 'all';
 
   const handleCreate = ({
     title,
     dueDate,
     orgId,
-    contactId,
   }: {
     title: string;
     dueDate: string;
     orgId: string;
-    contactId: string;
   }) => {
     createTask({
       title,
       due_date: dueDate || null,
       organization_id: orgId ? parseInt(orgId, 10) : null,
-      contact_id: contactId ? parseInt(contactId, 10) : null,
       status: 'open',
     });
     setShowAddForm(false);
@@ -1013,7 +1077,16 @@ export function TasksPage() {
 
   const handleComplete = useCallback(
     (id: number) => {
-      completeTask(id);
+      setCompletingIds((prev) => new Set([...prev, id]));
+      completeTask(id, {
+        onSettled: () => {
+          setCompletingIds((prev) => {
+            const next = new Set(prev);
+            next.delete(id);
+            return next;
+          });
+        },
+      });
     },
     [completeTask],
   );
@@ -1069,7 +1142,7 @@ export function TasksPage() {
         </p>
       )}
 
-      {/* Sticky filter bar */}
+      {/* Sticky status + org filter bar */}
       <div
         style={{
           position: 'sticky',
@@ -1090,12 +1163,6 @@ export function TasksPage() {
           options={STATUS_OPTIONS}
           value={status}
           onChange={setStatus}
-        />
-        <ChipGroup
-          label="Due"
-          options={DUE_OPTIONS}
-          value={due}
-          onChange={setDue}
         />
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -1163,7 +1230,7 @@ export function TasksPage() {
         {/* Add task trigger / form */}
         {showAddForm ? (
           <AddTaskForm
-            orgOptions={allOrgs}
+            customerOptions={customersQuery.data ?? []}
             onSubmit={handleCreate}
             onCancel={() => setShowAddForm(false)}
             isCreating={isCreating}
@@ -1191,6 +1258,9 @@ export function TasksPage() {
             + Add task
           </button>
         )}
+
+        {/* Quick-filter pills — above task list, local state */}
+        <DuePills value={quickFilter} onChange={setQuickFilter} />
 
         {/* Error state */}
         {tasksQuery.isError && (
@@ -1247,22 +1317,10 @@ export function TasksPage() {
         {!tasksQuery.isLoading &&
           !tasksQuery.isError &&
           filteredTasks.length === 0 && (
-            <div
-              style={{
-                border: '1px dashed var(--rule)',
-                borderRadius: 6,
-                padding: '24px 20px',
-                textAlign: 'center',
-                fontSize: 14,
-                color: 'var(--ink-2)',
-                fontFamily: 'var(--body)',
-                lineHeight: 1.6,
-              }}
-            >
-              {isFiltered
-                ? 'No tasks match these filters.'
-                : 'No open tasks. Add one with Ctrl+N or the + Add task button above.'}
-            </div>
+            <TileEmptyState
+              copy={getEmptyCopy(quickFilter, isStatusFiltered)}
+              ariaLive
+            />
           )}
 
         {/* Task list */}
@@ -1289,6 +1347,7 @@ export function TasksPage() {
                 onDelete={handleDelete}
                 onSave={handleUpdate}
                 isUpdating={isUpdating}
+                completing={completingIds.has(task.id)}
               />
             ))}
           </ul>
