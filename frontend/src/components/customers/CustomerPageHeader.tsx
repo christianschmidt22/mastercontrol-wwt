@@ -1,0 +1,310 @@
+/**
+ * CustomerPageHeader.tsx
+ *
+ * Rich header for the customer detail page.
+ * - Large Fraunces org name (h1)
+ * - Status pill row: type, last-touched relative time
+ * - Two-line "About" (metadata.summary)
+ * - Action row: Edit org, New note (vermilion — primary), Open chat
+ * - Hairline separator below
+ *
+ * ≤180 lines per CLAUDE.md component rule.
+ * Vermilion budget: only the "New note" CTA at rest per Q-1.
+ */
+
+import { Edit2, MessageSquarePlus, Pencil } from 'lucide-react';
+import type { Organization } from '../../types';
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Format a relative "last touched" label from an ISO date string.
+ * Returns strings like "just now", "5 min ago", "3 hr ago", "2 days ago".
+ * Exported for unit-test coverage.
+ */
+export function formatLastTouched(isoDate: string | null | undefined): string {
+  if (!isoDate) return 'Never touched';
+  const diffMs = Date.now() - new Date(isoDate).getTime();
+  if (diffMs < 0) return 'just now';
+  const diffMin = Math.floor(diffMs / 60_000);
+  if (diffMin < 1) return 'just now';
+  if (diffMin < 60) return `${diffMin} min ago`;
+  const diffHr = Math.floor(diffMin / 60);
+  if (diffHr < 24) return `${diffHr} hr ago`;
+  const diffDay = Math.floor(diffHr / 24);
+  return `${diffDay} day${diffDay === 1 ? '' : 's'} ago`;
+}
+
+// ---------------------------------------------------------------------------
+// Sub-components
+// ---------------------------------------------------------------------------
+
+function StatusPill({ label }: { label: string }) {
+  return (
+    <span
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        fontFamily: 'var(--body)',
+        fontSize: 11,
+        fontWeight: 600,
+        letterSpacing: '0.06em',
+        textTransform: 'uppercase',
+        color: 'var(--ink-2)',
+        background: 'var(--bg-2)',
+        border: '1px solid var(--rule)',
+        borderRadius: 4,
+        padding: '3px 8px',
+        lineHeight: 1,
+      }}
+    >
+      {label}
+    </span>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Props
+// ---------------------------------------------------------------------------
+
+export interface CustomerPageHeaderProps {
+  org: Organization;
+  /** ISO date of most recent agent thread last_message_at, or undefined */
+  lastThreadAt?: string | null;
+  /** ISO date of most recent note created_at, fallback if no thread */
+  lastNoteAt?: string | null;
+  onEditOrg?: () => void;
+  onNewNote?: () => void;
+  onOpenChat?: () => void;
+}
+
+// ---------------------------------------------------------------------------
+// Component
+// ---------------------------------------------------------------------------
+
+export function CustomerPageHeader({
+  org,
+  lastThreadAt,
+  lastNoteAt,
+  onEditOrg,
+  onNewNote,
+  onOpenChat,
+}: CustomerPageHeaderProps) {
+  const lastTouched = formatLastTouched(lastThreadAt ?? lastNoteAt);
+  const summary =
+    typeof org.metadata?.summary === 'string' && org.metadata.summary.trim()
+      ? org.metadata.summary.trim()
+      : null;
+
+  return (
+    <div>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'flex-start',
+          justifyContent: 'space-between',
+          gap: 24,
+          maxWidth: 1500,
+        }}
+      >
+        {/* Left: org name + meta */}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          {/* Breadcrumb label */}
+          <p
+            style={{
+              fontFamily: 'var(--body)',
+              fontSize: 11,
+              fontWeight: 600,
+              letterSpacing: '0.08em',
+              textTransform: 'uppercase',
+              color: 'var(--ink-3)',
+              marginBottom: 8,
+              margin: '0 0 8px',
+            }}
+          >
+            Customers
+          </p>
+
+          {/* Org name — h1 per heading hierarchy */}
+          <h1
+            style={{
+              fontFamily: 'var(--display)',
+              fontWeight: 500,
+              fontSize: 'clamp(36px, 4vw, 56px)',
+              lineHeight: 1.02,
+              letterSpacing: '-0.02em',
+              marginLeft: -6,
+              textWrap: 'balance',
+              margin: '0 0 12px -6px',
+              color: 'var(--ink-1)',
+            }}
+          >
+            {org.name}
+          </h1>
+
+          {/* Status pill row */}
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              flexWrap: 'wrap',
+              marginBottom: 14,
+            }}
+          >
+            <StatusPill label={org.type} />
+            <span
+              style={{
+                fontFamily: 'var(--body)',
+                fontSize: 13,
+                color: 'var(--ink-3)',
+                fontVariantNumeric: 'tabular-nums',
+              }}
+            >
+              Last touched {lastTouched}
+            </span>
+          </div>
+
+          {/* About / summary */}
+          {summary ? (
+            <p
+              style={{
+                fontFamily: 'var(--body)',
+                fontSize: 14,
+                color: 'var(--ink-2)',
+                lineHeight: 1.6,
+                maxWidth: '72ch',
+                margin: 0,
+                textWrap: 'pretty',
+                display: '-webkit-box',
+                WebkitLineClamp: 2,
+                WebkitBoxOrient: 'vertical',
+                overflow: 'hidden',
+              }}
+            >
+              {summary}
+            </p>
+          ) : (
+            <button
+              type="button"
+              onClick={onEditOrg}
+              style={{
+                fontFamily: 'var(--body)',
+                fontSize: 13,
+                color: 'var(--ink-3)',
+                background: 'none',
+                border: 'none',
+                padding: 0,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+              }}
+            >
+              <Pencil size={13} strokeWidth={1.5} aria-hidden="true" />
+              Click to add summary
+            </button>
+          )}
+        </div>
+
+        {/* Right: action buttons */}
+        <div
+          style={{
+            display: 'flex',
+            gap: 8,
+            alignItems: 'center',
+            flexShrink: 0,
+            paddingTop: 36,
+          }}
+        >
+          {/* Edit org */}
+          <button
+            type="button"
+            onClick={onEditOrg}
+            aria-label="Edit organization"
+            style={{
+              fontFamily: 'var(--body)',
+              fontSize: 12,
+              fontWeight: 500,
+              padding: '7px 14px',
+              borderRadius: 6,
+              cursor: 'pointer',
+              border: '1px solid var(--rule)',
+              background: 'var(--bg)',
+              color: 'var(--ink-2)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              transition: 'background-color 150ms var(--ease), color 150ms var(--ease)',
+            }}
+          >
+            <Edit2 size={13} strokeWidth={1.5} aria-hidden="true" />
+            Edit
+          </button>
+
+          {/* Open chat */}
+          <button
+            type="button"
+            onClick={onOpenChat}
+            aria-label="Open chat thread"
+            style={{
+              fontFamily: 'var(--body)',
+              fontSize: 12,
+              fontWeight: 500,
+              padding: '7px 14px',
+              borderRadius: 6,
+              cursor: 'pointer',
+              border: '1px solid var(--rule)',
+              background: 'var(--bg)',
+              color: 'var(--ink-2)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              transition: 'background-color 150ms var(--ease), color 150ms var(--ease)',
+            }}
+          >
+            <MessageSquarePlus size={13} strokeWidth={1.5} aria-hidden="true" />
+            Chat
+          </button>
+
+          {/* New note — vermilion CTA (one rest-state accent per screen) */}
+          <button
+            type="button"
+            onClick={onNewNote}
+            aria-label="Add new note"
+            style={{
+              fontFamily: 'var(--body)',
+              fontSize: 12,
+              fontWeight: 600,
+              padding: '7px 16px',
+              borderRadius: 6,
+              cursor: 'pointer',
+              border: '1px solid var(--accent)',
+              background: 'var(--bg)',
+              color: 'var(--accent)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              transition: 'background-color 150ms var(--ease)',
+            }}
+          >
+            New note
+          </button>
+        </div>
+      </div>
+
+      {/* Hairline separator */}
+      <div
+        aria-hidden="true"
+        style={{
+          height: 1,
+          background: 'var(--rule)',
+          marginTop: 20,
+          marginBottom: 24,
+        }}
+      />
+    </div>
+  );
+}

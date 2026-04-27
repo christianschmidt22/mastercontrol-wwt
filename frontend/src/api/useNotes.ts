@@ -21,6 +21,8 @@ export const noteKeys = {
   list: (orgId: number, includeUnconfirmed: boolean) =>
     ['notes', orgId, { includeUnconfirmed }] as const,
   unconfirmedAll: (limit: number) => ['notes_unconfirmed_all', { limit }] as const,
+  crossOrgInsights: (orgId: number, limit: number) =>
+    ['notes_cross_org', orgId, { limit }] as const,
 };
 
 // ---------------------------------------------------------------------------
@@ -40,6 +42,29 @@ export function useNotes(
         : `/api/organizations/${orgId}/notes`;
       return request<Note[]>('GET', url);
     },
+    enabled: orgId > 0,
+  });
+}
+
+/**
+ * Cross-org insights mentioning a specific org — used by the customer detail
+ * page "Mentioned by other orgs" panel.
+ *
+ * Hits GET /api/notes/cross-org-insights?org_id=X&limit=N.
+ * Returns NoteWithOrg[] where org_name/org_type belong to the SOURCE org
+ * (the one whose agent thread produced the insight).
+ */
+export function useCrossOrgInsights(
+  orgId: number,
+  limit = 20,
+): UseQueryResult<NoteWithOrg[]> {
+  return useQuery({
+    queryKey: noteKeys.crossOrgInsights(orgId, limit),
+    queryFn: () =>
+      request<NoteWithOrg[]>(
+        'GET',
+        `/api/notes/cross-org-insights?org_id=${orgId}&limit=${limit}`,
+      ),
     enabled: orgId > 0,
   });
 }
@@ -103,6 +128,7 @@ export function useConfirmInsight(): UseMutationResult<
     onSuccess: (_data, { orgId }) => {
       void qc.invalidateQueries({ queryKey: noteKeys.all(orgId) });
       void qc.invalidateQueries({ queryKey: ['notes_unconfirmed_all'] });
+      void qc.invalidateQueries({ queryKey: ['notes_cross_org'] });
     },
   });
 }
@@ -122,6 +148,7 @@ export function useRejectInsight(): UseMutationResult<
     onSuccess: (_data, { orgId }) => {
       void qc.invalidateQueries({ queryKey: noteKeys.all(orgId) });
       void qc.invalidateQueries({ queryKey: ['notes_unconfirmed_all'] });
+      void qc.invalidateQueries({ queryKey: ['notes_cross_org'] });
     },
   });
 }

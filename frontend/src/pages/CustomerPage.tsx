@@ -11,6 +11,8 @@ import { ContactsTile } from '../components/tiles/customer/ContactsTile';
 import { ReferenceTile } from '../components/tiles/customer/ReferenceTile';
 import { DocumentsTile } from '../components/tiles/customer/DocumentsTile';
 import { useOrganization } from '../api/useOrganizations';
+import { CustomerPageHeader } from '../components/customers/CustomerPageHeader';
+import { CrossOrgInsightsPanel } from '../components/customers/CrossOrgInsightsPanel';
 
 /**
  * Default 12-col layout per DESIGN.md § Tile dashboard.
@@ -104,123 +106,73 @@ export function CustomerPage() {
 
   return (
     <div>
-      {/* Page header */}
+      {/* Rich page header */}
+      {org ? (
+        <CustomerPageHeader
+          org={org}
+          lastThreadAt={undefined}
+          lastNoteAt={undefined}
+        />
+      ) : (
+        /* Skeleton / loading state — minimal inline header while org loads */
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'flex-end',
+            justifyContent: 'space-between',
+            gap: 24,
+            marginBottom: 28,
+            maxWidth: 1500,
+          }}
+        >
+          <div>
+            <p
+              style={{
+                fontSize: 11,
+                letterSpacing: '0.08em',
+                textTransform: 'uppercase',
+                color: 'var(--ink-3)',
+                fontWeight: 500,
+                marginBottom: 8,
+                fontFamily: 'var(--body)',
+              }}
+            >
+              Customers
+            </p>
+            <h1
+              style={{
+                fontFamily: 'var(--display)',
+                fontWeight: 500,
+                fontSize: 56,
+                lineHeight: 1.02,
+                letterSpacing: '-0.02em',
+                marginLeft: -6,
+                textWrap: 'balance',
+              }}
+            >
+              {orgName}
+            </h1>
+          </div>
+        </div>
+      )}
+
+      {/* Layout-customize toolbar */}
       <div
         style={{
           display: 'flex',
-          alignItems: 'flex-end',
-          justifyContent: 'space-between',
-          gap: 24,
-          marginBottom: 28,
-          maxWidth: 1500,
+          justifyContent: 'flex-end',
+          marginBottom: 16,
         }}
       >
-        <div>
-          <p
-            style={{
-              fontSize: 11,
-              letterSpacing: '0.08em',
-              textTransform: 'uppercase',
-              color: 'var(--ink-3)',
-              fontWeight: 500,
-              marginBottom: 8,
-              fontFamily: 'var(--body)',
-            }}
-          >
-            Customers
-          </p>
-          <h1
-            style={{
-              fontFamily: 'var(--display)',
-              fontWeight: 500,
-              fontSize: 56,
-              lineHeight: 1.02,
-              letterSpacing: '-0.02em',
-              marginLeft: -6,
-              textWrap: 'balance',
-            }}
-          >
-            {orgName}
-          </h1>
-        </div>
-
-        {/* Header actions */}
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0 }}>
-          {editMode ? (
-            <>
-              <button
-                type="button"
-                onClick={() => void handleReset()}
-                style={{
-                  fontFamily: 'var(--body)',
-                  fontSize: 12,
-                  fontWeight: 500,
-                  padding: '7px 14px',
-                  borderRadius: 6,
-                  cursor: 'pointer',
-                  border: '1px solid var(--rule)',
-                  background: 'var(--bg)',
-                  color: 'var(--ink-2)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 6,
-                }}
-              >
-                Reset to default
-              </button>
-              <button
-                type="button"
-                onClick={handleCancel}
-                style={{
-                  fontFamily: 'var(--body)',
-                  fontSize: 12,
-                  fontWeight: 500,
-                  padding: '7px 14px',
-                  borderRadius: 6,
-                  cursor: 'pointer',
-                  border: '1px solid var(--rule)',
-                  background: 'var(--bg)',
-                  color: 'var(--ink-2)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 6,
-                }}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleSave}
-                disabled={!isDirty}
-                style={{
-                  fontFamily: 'var(--body)',
-                  fontSize: 12,
-                  fontWeight: 500,
-                  padding: '7px 14px',
-                  borderRadius: 6,
-                  cursor: isDirty ? 'pointer' : 'default',
-                  border: '1px solid var(--rule)',
-                  background: isDirty ? 'var(--bg-2)' : 'var(--bg)',
-                  color: isDirty ? 'var(--ink-1)' : 'var(--ink-3)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 6,
-                  transition: 'background-color 150ms var(--ease), color 150ms var(--ease)',
-                }}
-              >
-                Save
-              </button>
-            </>
-          ) : (
+        {editMode ? (
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             <button
               type="button"
-              onClick={() => setEditMode(true)}
-              aria-label="Customize tile layout"
+              onClick={() => void handleReset()}
               style={{
                 fontFamily: 'var(--body)',
                 fontSize: 12,
                 fontWeight: 500,
-                letterSpacing: '0.02em',
                 padding: '7px 14px',
                 borderRadius: 6,
                 cursor: 'pointer',
@@ -230,14 +182,79 @@ export function CustomerPage() {
                 display: 'flex',
                 alignItems: 'center',
                 gap: 6,
-                transition: 'background-color 150ms var(--ease), color 150ms var(--ease), border-color 150ms var(--ease)',
               }}
             >
-              <LayoutGrid size={14} strokeWidth={1.5} aria-hidden="true" />
-              Customize layout
+              Reset to default
             </button>
-          )}
-        </div>
+            <button
+              type="button"
+              onClick={handleCancel}
+              style={{
+                fontFamily: 'var(--body)',
+                fontSize: 12,
+                fontWeight: 500,
+                padding: '7px 14px',
+                borderRadius: 6,
+                cursor: 'pointer',
+                border: '1px solid var(--rule)',
+                background: 'var(--bg)',
+                color: 'var(--ink-2)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+              }}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={!isDirty}
+              style={{
+                fontFamily: 'var(--body)',
+                fontSize: 12,
+                fontWeight: 500,
+                padding: '7px 14px',
+                borderRadius: 6,
+                cursor: isDirty ? 'pointer' : 'default',
+                border: '1px solid var(--rule)',
+                background: isDirty ? 'var(--bg-2)' : 'var(--bg)',
+                color: isDirty ? 'var(--ink-1)' : 'var(--ink-3)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                transition: 'background-color 150ms var(--ease), color 150ms var(--ease)',
+              }}
+            >
+              Save
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setEditMode(true)}
+            aria-label="Customize tile layout"
+            style={{
+              fontFamily: 'var(--body)',
+              fontSize: 12,
+              fontWeight: 500,
+              letterSpacing: '0.02em',
+              padding: '7px 14px',
+              borderRadius: 6,
+              cursor: 'pointer',
+              border: '1px solid var(--rule)',
+              background: 'var(--bg)',
+              color: 'var(--ink-2)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              transition: 'background-color 150ms var(--ease), color 150ms var(--ease), border-color 150ms var(--ease)',
+            }}
+          >
+            <LayoutGrid size={14} strokeWidth={1.5} aria-hidden="true" />
+            Customize layout
+          </button>
+        )}
       </div>
 
       {/* Org loading / error states */}
@@ -285,6 +302,11 @@ export function CustomerPage() {
             Retry
           </button>
         </div>
+      )}
+
+      {/* Cross-org insights panel — above tile grid, collapses when empty */}
+      {!orgLoading && !orgError && (
+        <CrossOrgInsightsPanel orgId={orgId} />
       )}
 
       {/* Tile grid */}

@@ -250,6 +250,56 @@ const listUnconfirmedAcrossOrgsStmt = db.prepare<[number], NoteWithOrgRow>(
    LIMIT ?`,
 );
 
+/**
+ * Cross-org insights mentioning a specific org — used by the customer detail
+ * page's "Mentioned by other orgs" panel.
+ *
+ * Returns agent_insight notes from threads belonging to other orgs (i.e. the
+ * note lives on a different org's thread) where:
+ *   - notes.organization_id = orgId (the insight was recorded FOR this org), OR
+ *   - the note appears in note_mentions for orgId (AI-extracted cross-reference)
+ * …AND the note's owning agent thread belongs to a different org (not orgId),
+ * so we never surface an org's own self-authored insights here.
+ *
+ * Joins with the thread's org to surface the source org name for display.
+ */
+const listInsightsMentioningOrgStmt = db.prepare<[number, number, number], NoteWithOrgRow>(
+  `SELECT
+     n.id,
+     n.organization_id,
+     src_org.name  AS org_name,
+     src_org.type  AS org_type,
+     n.content,
+     n.ai_response,
+     n.source_path,
+     n.file_mtime,
+     n.role,
+     n.thread_id,
+     n.provenance,
+     n.confirmed,
+     n.created_at
+   FROM notes n
+   -- Resolve the source org via the thread that produced the insight.
+   -- provenance->source_org_id is also an option but thread_id is the
+   -- canonical link; fall back to organization_id if thread_id is NULL.
+   LEFT JOIN agent_threads at2 ON at2.id = n.thread_id
+   JOIN organizations src_org
+     ON src_org.id = COALESCE(at2.organization_id, n.organization_id)
+   WHERE n.role = 'agent_insight'
+     -- The insight targets this org directly, or is mentioned via note_mentions
+     AND (
+       n.organization_id = ?
+       OR EXISTS (
+         SELECT 1 FROM note_mentions nm
+         WHERE nm.note_id = n.id AND nm.mentioned_org_id = ?
+       )
+     )
+     -- The source org is different from the target org (cross-org only)
+     AND src_org.id != ?
+   ORDER BY n.created_at DESC
+   LIMIT 20`,
+);
+
 function hydrateWithOrg(row: NoteWithOrgRow): NoteWithOrg {
   return {
     ...row,
@@ -487,4 +537,16 @@ export const noteModel = {
    *  joined with the org's name and type. Used by GET /api/notes/unconfirmed. */
   listUnconfirmedAcrossOrgs: (limit: number): NoteWithOrg[] =>
     listUnconfirmedAcrossOrgsStmt.all(limit).map(hydrateWithOrg),
+
+  /**
+   * Cross-org insights mentioning a given org — used by the customer detail
+   * page's "Mentioned by other orgs" panel.
+   *
+   * Returns agent_insight notes that were authored from a DIFFERENT org's
+   * agent thread but target this org (either directly via organization_id,
+   * or via a note_mention row). Both confirmed and unconfirmed are included
+   * so the user can act on them inline.
+   */
+  listInsightsMentioningOrg: (orgId: number, limit = 20): NoteWithOrg[] =>
+    listInsightsMentioningOrgStmt.all(orgId, orgId, orgId).slice(0, limit).map(hydrateWithOrg),
 };

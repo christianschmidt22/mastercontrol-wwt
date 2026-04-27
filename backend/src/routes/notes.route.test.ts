@@ -3,7 +3,7 @@ import request from 'supertest';
 import type { Express } from 'express';
 import { db } from '../db/database.js';
 import { buildApp } from '../test/app.js';
-import { makeOrg, makeNote } from '../test/factories.js';
+import { makeOrg, makeNote, makeThread } from '../test/factories.js';
 import { noteModel } from '../models/note.model.js';
 
 let app: Express;
@@ -259,6 +259,92 @@ describe('GET /api/notes/unconfirmed', () => {
 
   it('rejects limit > 200 with 400', async () => {
     const res = await request(app).get('/api/notes/unconfirmed?limit=201');
+    expect(res.status).toBe(400);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/notes/cross-org-insights?org_id=X — cross-org panel
+// ---------------------------------------------------------------------------
+
+describe('GET /api/notes/cross-org-insights', () => {
+  it('returns insights authored FROM another org that target this org', async () => {
+    const sourceOrg = makeOrg({ type: 'oem', name: 'Cisco Source' });
+    const targetOrg = makeOrg({ type: 'customer', name: 'Target Customer' });
+
+    // Insight recorded FOR targetOrg but originated from sourceOrg's thread
+    const thread = makeThread(sourceOrg.id);
+    const insight = noteModel.createInsight(targetOrg.id, 'Cisco mentioned you in a thread', {
+      tool: 'record_insight',
+      source_thread_id: thread.id,
+      source_org_id: sourceOrg.id,
+    });
+    // Manually set thread_id to link insight to sourceOrg's thread
+    db.prepare('UPDATE notes SET thread_id = ? WHERE id = ?').run(thread.id, insight.id);
+
+    const res = await request(app).get(
+      `/api/notes/cross-org-insights?org_id=${targetOrg.id}`,
+    );
+    expect(res.status).toBe(200);
+    const contents = (res.body as Array<{ content: string }>).map((n) => n.content);
+    expect(contents).toContain('Cisco mentioned you in a thread');
+  });
+
+  it('includes org_name and org_type of the SOURCE org', async () => {
+    const sourceOrg = makeOrg({ type: 'oem', name: 'NetApp OEM' });
+    const targetOrg = makeOrg({ type: 'customer', name: 'Cross Org Target' });
+
+    const thread = makeThread(sourceOrg.id);
+    const insight = noteModel.createInsight(targetOrg.id, 'NetApp cross insight', {
+      tool: 'record_insight',
+      source_thread_id: thread.id,
+      source_org_id: sourceOrg.id,
+    });
+    db.prepare('UPDATE notes SET thread_id = ? WHERE id = ?').run(thread.id, insight.id);
+
+    const res = await request(app).get(
+      `/api/notes/cross-org-insights?org_id=${targetOrg.id}`,
+    );
+    expect(res.status).toBe(200);
+    const row = (res.body as Array<{ org_name: string; org_type: string; content: string }>).find(
+      (n) => n.content === 'NetApp cross insight',
+    );
+    expect(row).toBeDefined();
+    expect(row!.org_name).toBe('NetApp OEM');
+    expect(row!.org_type).toBe('oem');
+  });
+
+  it('does NOT return self-authored insights (same org as thread)', async () => {
+    const org = makeOrg({ type: 'customer', name: 'Self-authored Org' });
+
+    // insight targeted at the same org whose thread produced it
+    const thread = makeThread(org.id);
+    const insight = noteModel.createInsight(org.id, 'Self insight', {
+      tool: 'record_insight',
+      source_thread_id: thread.id,
+      source_org_id: org.id,
+    });
+    db.prepare('UPDATE notes SET thread_id = ? WHERE id = ?').run(thread.id, insight.id);
+
+    const res = await request(app).get(
+      `/api/notes/cross-org-insights?org_id=${org.id}`,
+    );
+    expect(res.status).toBe(200);
+    const contents = (res.body as Array<{ content: string }>).map((n) => n.content);
+    expect(contents).not.toContain('Self insight');
+  });
+
+  it('returns empty array when no cross-org insights exist', async () => {
+    const org = makeOrg({ type: 'customer', name: 'No Cross Insights Org' });
+    const res = await request(app).get(
+      `/api/notes/cross-org-insights?org_id=${org.id}`,
+    );
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body)).toBe(true);
+  });
+
+  it('requires org_id — rejects missing with 400', async () => {
+    const res = await request(app).get('/api/notes/cross-org-insights');
     expect(res.status).toBe(400);
   });
 });

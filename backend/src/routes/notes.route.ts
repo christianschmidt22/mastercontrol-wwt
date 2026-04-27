@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { noteModel } from '../models/note.model.js';
-import { NoteCreateSchema, UnconfirmedInsightsQuerySchema } from '../schemas/note.schema.js';
+import { NoteCreateSchema, UnconfirmedInsightsQuerySchema, CrossOrgInsightsQuerySchema } from '../schemas/note.schema.js';
 import { validateBody, validateQuery } from '../lib/validate.js';
 import { bumpOrgVersion } from '../services/claude.service.js';
 import { extractMentions } from '../services/mention.service.js';
@@ -12,6 +12,12 @@ export const notesRouter = Router();
 notesRouter.get('/unconfirmed', validateQuery(UnconfirmedInsightsQuerySchema), (req, res) => {
   const { limit } = req.validated as { limit?: number };
   res.json(noteModel.listUnconfirmedAcrossOrgs(limit ?? 50));
+});
+
+// GET /cross-org-insights?org_id=X&limit=N — insights mentioning a specific org from OTHER orgs
+notesRouter.get('/cross-org-insights', validateQuery(CrossOrgInsightsQuerySchema), (req, res) => {
+  const { org_id, limit } = req.validated as { org_id: number; limit?: number };
+  res.json(noteModel.listInsightsMentioningOrg(org_id, limit ?? 20));
 });
 
 // POST / — manual note save

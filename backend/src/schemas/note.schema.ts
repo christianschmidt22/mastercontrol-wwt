@@ -44,6 +44,12 @@ export const UnconfirmedInsightsQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(200).optional(),
 });
 
+/** GET /api/notes/cross-org-insights query params */
+export const CrossOrgInsightsQuerySchema = z.object({
+  org_id: z.coerce.number().int().min(1),
+  limit: z.coerce.number().int().min(1).max(100).optional(),
+});
+
 /** Shape returned by GET /api/notes/unconfirmed — Note + org fields */
 export const NoteWithOrgSchema = NoteSchema.extend({
   org_name: z.string(),
