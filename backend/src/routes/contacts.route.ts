@@ -16,6 +16,7 @@ contactsRouter.post('/', validateBody(ContactCreateSchema), (req, res) => {
     email?: string | null;
     phone?: string | null;
     role?: string | null;
+    assigned_org_ids?: number[];
   };
   const contact = contactModel.create(input);
   bumpOrgVersion(input.organization_id);
@@ -34,6 +35,7 @@ contactsRouter.put('/:id', validateBody(ContactUpdateSchema), (req, res, next) =
     email?: string | null;
     phone?: string | null;
     role?: string | null;
+    assigned_org_ids?: number[];
   };
   const updated = contactModel.update(id, patch);
   if (!updated) return next(new HttpError(404, 'Contact not found'));

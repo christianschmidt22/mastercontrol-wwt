@@ -7,6 +7,7 @@ export interface Contact {
   phone: string | null;
   role?: string | null;
   created_at: string;
+  assigned_org_ids: number[];
 }
 
 export interface ContactCreate {
@@ -16,6 +17,7 @@ export interface ContactCreate {
   email?: string | null;
   phone?: string | null;
   role?: string | null;
+  assigned_org_ids?: number[];
 }
 
 export interface ContactUpdate {
@@ -24,4 +26,5 @@ export interface ContactUpdate {
   email?: string | null;
   phone?: string | null;
   role?: string | null;
+  assigned_org_ids?: number[];
 }

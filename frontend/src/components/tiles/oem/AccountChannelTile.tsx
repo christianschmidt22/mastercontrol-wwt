@@ -257,6 +257,7 @@ export function AccountChannelTile({
         phone: null,
         role: roleVal,
         created_at: new Date().toISOString(),
+        assigned_org_ids: [],
       };
       setOptimisticContacts((prev) => [...prev, optimistic]);
 

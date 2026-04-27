@@ -118,6 +118,7 @@ export function ContactsTile({ orgId, _useContacts, _useCreateContact }: Contact
         phone: phoneVal.trim() || null,
         role: roleVal || null,
         created_at: new Date().toISOString(),
+        assigned_org_ids: [],
       };
       setOptimisticContacts((prev) => [...prev, optimistic]);
 

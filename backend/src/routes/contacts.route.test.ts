@@ -163,3 +163,108 @@ describe('contacts — full round-trip', () => {
     expect(delRes.status).toBe(204);
   });
 });
+
+// ---------------------------------------------------------------------------
+// account assignments (OEM contacts → customer orgs)
+// ---------------------------------------------------------------------------
+
+describe('contacts — assigned_org_ids', () => {
+  it('creates a contact with no assignments and returns assigned_org_ids = []', async () => {
+    const oem = makeOrg({ type: 'oem' });
+
+    const res = await request(app)
+      .post('/api/contacts')
+      .send({ organization_id: oem.id, name: 'Unassigned Rep' });
+
+    expect(res.status).toBe(201);
+    expect(res.body.assigned_org_ids).toEqual([]);
+  });
+
+  it('creates an OEM contact with account assignments and returns them', async () => {
+    const oem = makeOrg({ type: 'oem' });
+    const customer1 = makeOrg({ type: 'customer' });
+    const customer2 = makeOrg({ type: 'customer' });
+
+    const res = await request(app)
+      .post('/api/contacts')
+      .send({
+        organization_id: oem.id,
+        name: 'Assigned Rep',
+        role: 'channel',
+        assigned_org_ids: [customer1.id, customer2.id],
+      });
+
+    expect(res.status).toBe(201);
+    expect(res.body.assigned_org_ids).toHaveLength(2);
+    expect(res.body.assigned_org_ids).toContain(customer1.id);
+    expect(res.body.assigned_org_ids).toContain(customer2.id);
+  });
+
+  it('updates assigned_org_ids via PUT', async () => {
+    const oem = makeOrg({ type: 'oem' });
+    const customer1 = makeOrg({ type: 'customer' });
+    const customer2 = makeOrg({ type: 'customer' });
+
+    const createRes = await request(app)
+      .post('/api/contacts')
+      .send({
+        organization_id: oem.id,
+        name: 'Rep To Reassign',
+        assigned_org_ids: [customer1.id],
+      });
+    expect(createRes.status).toBe(201);
+    const id: number = (createRes.body as { id: number }).id;
+
+    // Replace assignment with customer2 only
+    const putRes = await request(app)
+      .put(`/api/contacts/${id}`)
+      .send({ assigned_org_ids: [customer2.id] });
+
+    expect(putRes.status).toBe(200);
+    expect(putRes.body.assigned_org_ids).toEqual([customer2.id]);
+  });
+
+  it('clears all assignments when PUT sends empty array', async () => {
+    const oem = makeOrg({ type: 'oem' });
+    const customer = makeOrg({ type: 'customer' });
+
+    const createRes = await request(app)
+      .post('/api/contacts')
+      .send({
+        organization_id: oem.id,
+        name: 'Rep To Unassign',
+        assigned_org_ids: [customer.id],
+      });
+    const id: number = (createRes.body as { id: number }).id;
+
+    const putRes = await request(app)
+      .put(`/api/contacts/${id}`)
+      .send({ assigned_org_ids: [] });
+
+    expect(putRes.status).toBe(200);
+    expect(putRes.body.assigned_org_ids).toEqual([]);
+  });
+
+  it('does not change assignments when PUT omits assigned_org_ids', async () => {
+    const oem = makeOrg({ type: 'oem' });
+    const customer = makeOrg({ type: 'customer' });
+
+    const createRes = await request(app)
+      .post('/api/contacts')
+      .send({
+        organization_id: oem.id,
+        name: 'Stable Assignments Rep',
+        assigned_org_ids: [customer.id],
+      });
+    const id: number = (createRes.body as { id: number }).id;
+
+    // PUT without assigned_org_ids — assignments must be unchanged
+    const putRes = await request(app)
+      .put(`/api/contacts/${id}`)
+      .send({ name: 'Updated Name' });
+
+    expect(putRes.status).toBe(200);
+    expect(putRes.body.name).toBe('Updated Name');
+    expect(putRes.body.assigned_org_ids).toEqual([customer.id]);
+  });
+});

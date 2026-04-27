@@ -9,6 +9,7 @@ export const ContactSchema = z.object({
   phone: z.string().nullable(),
   role: z.string().optional().nullable(),
   created_at: z.string(),
+  assigned_org_ids: z.array(z.number().int()).default([]),
 });
 
 export const ContactCreateSchema = z.object({
@@ -18,6 +19,7 @@ export const ContactCreateSchema = z.object({
   email: z.string().optional().nullable(),
   phone: z.string().optional().nullable(),
   role: z.string().optional().nullable(),
+  assigned_org_ids: z.array(z.number().int()).optional(),
 });
 
 export const ContactUpdateSchema = z.object({
@@ -26,6 +28,7 @@ export const ContactUpdateSchema = z.object({
   email: z.string().optional().nullable(),
   phone: z.string().optional().nullable(),
   role: z.string().optional().nullable(),
+  assigned_org_ids: z.array(z.number().int()).optional(),
 });
 
 export type Contact = z.infer<typeof ContactSchema>;

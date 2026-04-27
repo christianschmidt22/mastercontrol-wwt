@@ -9,6 +9,7 @@ export interface Contact {
   phone: string | null;
   role: string | null;
   created_at: string;
+  assigned_org_ids: number[];
 }
 
 export interface ContactInput {
@@ -18,23 +19,88 @@ export interface ContactInput {
   email?: string | null;
   phone?: string | null;
   role?: string | null;
+  assigned_org_ids?: number[];
 }
 
-const listStmt = db.prepare<[number], Contact>(
-  'SELECT * FROM contacts WHERE organization_id = ? ORDER BY name COLLATE NOCASE'
+// Raw row returned by GROUP_CONCAT queries before assignment hydration.
+interface ContactRow {
+  id: number;
+  organization_id: number;
+  name: string;
+  title: string | null;
+  email: string | null;
+  phone: string | null;
+  role: string | null;
+  created_at: string;
+  _assigned_csv: string | null;
+}
+
+function hydrate(row: ContactRow): Contact {
+  const { _assigned_csv, ...rest } = row;
+  return {
+    ...rest,
+    assigned_org_ids: _assigned_csv
+      ? _assigned_csv.split(',').map(Number)
+      : [],
+  };
+}
+
+const listStmt = db.prepare<[number], ContactRow>(`
+  SELECT c.*, GROUP_CONCAT(caa.organization_id) AS _assigned_csv
+  FROM contacts c
+  LEFT JOIN contact_account_assignments caa ON caa.contact_id = c.id
+  WHERE c.organization_id = ?
+  GROUP BY c.id
+  ORDER BY c.name COLLATE NOCASE
+`);
+
+const getStmt = db.prepare<[number], ContactRow>(`
+  SELECT c.*, GROUP_CONCAT(caa.organization_id) AS _assigned_csv
+  FROM contacts c
+  LEFT JOIN contact_account_assignments caa ON caa.contact_id = c.id
+  WHERE c.id = ?
+  GROUP BY c.id
+`);
+
+const insertStmt = db.prepare<
+  [number, string, string | null, string | null, string | null, string | null]
+>(
+  'INSERT INTO contacts (organization_id, name, title, email, phone, role) VALUES (?, ?, ?, ?, ?, ?)',
 );
-const getStmt = db.prepare<[number], Contact>('SELECT * FROM contacts WHERE id = ?');
-const insertStmt = db.prepare<[number, string, string | null, string | null, string | null, string | null]>(
-  'INSERT INTO contacts (organization_id, name, title, email, phone, role) VALUES (?, ?, ?, ?, ?, ?)'
+
+const updateStmt = db.prepare<
+  [string, string | null, string | null, string | null, string | null, number]
+>(
+  'UPDATE contacts SET name = ?, title = ?, email = ?, phone = ?, role = ? WHERE id = ?',
 );
+
 const deleteStmt = db.prepare<[number]>('DELETE FROM contacts WHERE id = ?');
-const updateStmt = db.prepare<[string, string | null, string | null, string | null, string | null, number]>(
-  'UPDATE contacts SET name = ?, title = ?, email = ?, phone = ?, role = ? WHERE id = ?'
+
+const deleteAssignmentsStmt = db.prepare<[number]>(
+  'DELETE FROM contact_account_assignments WHERE contact_id = ?',
+);
+
+const insertAssignmentStmt = db.prepare<[number, number]>(
+  'INSERT OR IGNORE INTO contact_account_assignments (contact_id, organization_id) VALUES (?, ?)',
+);
+
+const replaceAssignments = db.transaction(
+  (contactId: number, orgIds: number[]) => {
+    deleteAssignmentsStmt.run(contactId);
+    for (const orgId of orgIds) {
+      insertAssignmentStmt.run(contactId, orgId);
+    }
+  },
 );
 
 export const contactModel = {
-  listFor: (orgId: number): Contact[] => listStmt.all(orgId),
-  get: (id: number): Contact | undefined => getStmt.get(id),
+  listFor: (orgId: number): Contact[] => listStmt.all(orgId).map(hydrate),
+
+  get: (id: number): Contact | undefined => {
+    const row = getStmt.get(id);
+    return row ? hydrate(row) : undefined;
+  },
+
   create: (input: ContactInput): Contact => {
     const result = insertStmt.run(
       input.organization_id,
@@ -42,12 +108,20 @@ export const contactModel = {
       input.title ?? null,
       input.email ?? null,
       input.phone ?? null,
-      input.role ?? null
+      input.role ?? null,
     );
-    return getStmt.get(Number(result.lastInsertRowid))!;
+    const id = Number(result.lastInsertRowid);
+    if (input.assigned_org_ids?.length) {
+      replaceAssignments(id, input.assigned_org_ids);
+    }
+    return contactModel.get(id)!;
   },
-  update: (id: number, patch: Partial<Omit<ContactInput, 'organization_id'>>): Contact | undefined => {
-    const current = getStmt.get(id);
+
+  update: (
+    id: number,
+    patch: Partial<Omit<ContactInput, 'organization_id'>>,
+  ): Contact | undefined => {
+    const current = contactModel.get(id);
     if (!current) return undefined;
     updateStmt.run(
       patch.name ?? current.name,
@@ -55,9 +129,13 @@ export const contactModel = {
       patch.email !== undefined ? (patch.email ?? null) : current.email,
       patch.phone !== undefined ? (patch.phone ?? null) : current.phone,
       patch.role !== undefined ? (patch.role ?? null) : current.role,
-      id
+      id,
     );
-    return getStmt.get(id);
+    if (patch.assigned_org_ids !== undefined) {
+      replaceAssignments(id, patch.assigned_org_ids);
+    }
+    return contactModel.get(id);
   },
+
   remove: (id: number): boolean => deleteStmt.run(id).changes > 0,
 };

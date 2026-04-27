@@ -22,6 +22,7 @@ const baseContact: Contact = {
   phone: null,
   role: 'account',
   created_at: '2026-01-01T00:00:00Z',
+  assigned_org_ids: [],
 };
 
 function makeHook(data: Contact[] | undefined, isLoading = false) {
