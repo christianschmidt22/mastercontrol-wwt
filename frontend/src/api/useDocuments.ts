@@ -33,15 +33,52 @@ export function useDocuments(orgId: number): UseQueryResult<Document[]> {
 // Mutations — writes go to the flat /api/documents route
 // ---------------------------------------------------------------------------
 
+type CreateDocContext = { previous: Document[] | undefined };
+
 export function useCreateDocument(): UseMutationResult<
   Document,
   Error,
-  DocumentCreate
+  DocumentCreate,
+  CreateDocContext
 > {
   const qc = useQueryClient();
-  return useMutation({
+  return useMutation<Document, Error, DocumentCreate, CreateDocContext>({
     mutationFn: (body) => request<Document>('POST', '/api/documents', body),
+    onMutate: async (newDoc) => {
+      // Cancel in-flight refetches so they don't overwrite our optimistic row
+      await qc.cancelQueries({ queryKey: documentKeys.list(newDoc.organization_id) });
+      const previous = qc.getQueryData<Document[]>(
+        documentKeys.list(newDoc.organization_id),
+      );
+      // Append an optimistic placeholder (negative id so it never collides)
+      qc.setQueryData<Document[]>(
+        documentKeys.list(newDoc.organization_id),
+        (old) => [
+          ...(old ?? []),
+          {
+            id: -Date.now(),
+            organization_id: newDoc.organization_id,
+            kind: newDoc.kind,
+            label: newDoc.label,
+            url_or_path: newDoc.url_or_path,
+            source: newDoc.source ?? 'manual',
+            created_at: new Date().toISOString(),
+          },
+        ],
+      );
+      return { previous };
+    },
+    onError: (_err, newDoc, context) => {
+      // Roll back to the snapshot taken before the optimistic update
+      if (context?.previous !== undefined) {
+        qc.setQueryData(
+          documentKeys.list(newDoc.organization_id),
+          context.previous,
+        );
+      }
+    },
     onSuccess: (doc) => {
+      // Replace the optimistic placeholder with real server data
       void qc.invalidateQueries({
         queryKey: documentKeys.list(doc.organization_id),
       });

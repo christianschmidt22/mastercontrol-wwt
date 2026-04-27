@@ -70,6 +70,10 @@ export async function buildApp(): Promise<Express> {
     ['/api/tasks',         '../routes/tasks.route.js'],
     ['/api/agents',        '../routes/agents.route.js'],
     ['/api/settings',      '../routes/settings.route.js'],
+    ['/api/reports',       '../routes/reports.route.js'],
+    ['/api/ingest',        '../routes/ingest.route.js'],
+    ['/api/oem',           '../routes/oem-scan.route.js'],
+    ['/api/subagent',      '../routes/subagent.route.js'],
   ];
 
   for (const [prefix, specifier] of mounts) {

@@ -23,10 +23,10 @@ import '../test/reportsSchema.js';
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mkdtempSync, readFileSync, statSync, existsSync } from 'node:fs';
-import type * as SettingsModule from '../models/settings.model.js';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
+import type * as SettingsMod from '../models/settings.model.js';
 
 // ---------------------------------------------------------------------------
 // Mock @anthropic-ai/sdk — controls the response generateReport builds.
@@ -47,7 +47,7 @@ vi.mock('@anthropic-ai/sdk', () => {
 // resolveDefaultModel() for the model id.  Stub it so neither call hits
 // real DPAPI / settings rows.
 vi.mock('../models/settings.model.js', async (importOriginal) => {
-  const actual = await importOriginal<typeof SettingsModule>();
+  const actual = await importOriginal<typeof SettingsMod>();
   return {
     ...actual,
     settingsModel: {

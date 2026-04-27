@@ -35,9 +35,19 @@ export const OrganizationUpdateSchema = z
   // be silently ignored and let invalid payloads reach the model.
   .strict();
 
+/** GET /organizations/recent?limit= query */
+export const RecentOrgsQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(100).optional(),
+});
+
 /** GET /organizations?type= query */
 export const OrgTypeQuerySchema = z.object({
   type: OrgTypeSchema.optional(),
+});
+
+/** GET /organizations/last-touched?type= query — type is required */
+export const OrgLastTouchedQuerySchema = z.object({
+  type: OrgTypeSchema,
 });
 
 /** GET /organizations/:id/notes?limit=&include_unconfirmed= query */

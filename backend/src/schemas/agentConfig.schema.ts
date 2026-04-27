@@ -19,15 +19,25 @@ export const AgentConfigUpdateSchema = z.object({
   model: z.string().optional(),
 });
 
+/** POST /agents/configs body — create a per-org override row. */
+export const AgentConfigCreateSchema = z.object({
+  section: AgentSectionSchema,
+  organization_id: z.number().int().positive(),
+  system_prompt_template: z.string().optional(),
+  tools_enabled: z.record(z.string(), z.unknown()).optional(),
+  model: z.string().optional(),
+});
+
 /** POST /agents/threads body */
 export const AgentThreadCreateSchema = z.object({
   organization_id: z.number().int().positive(),
   title: z.string().optional(),
 });
 
-/** GET /agents/threads?org_id= query */
+/** GET /agents/threads?org_id=&limit= query — org_id is optional; omit for all-orgs list */
 export const AgentThreadListQuerySchema = z.object({
-  org_id: z.coerce.number().int().positive(),
+  org_id: z.coerce.number().int().positive().optional(),
+  limit: z.coerce.number().int().min(1).max(200).optional(),
 });
 
 /** POST /agents/:org_id/chat body */
@@ -44,5 +54,6 @@ export const AuditListQuerySchema = z.object({
 export type AgentSection = z.infer<typeof AgentSectionSchema>;
 export type AgentConfig = z.infer<typeof AgentConfigSchema>;
 export type AgentConfigUpdate = z.infer<typeof AgentConfigUpdateSchema>;
+export type AgentConfigCreate = z.infer<typeof AgentConfigCreateSchema>;
 export type AgentThreadCreate = z.infer<typeof AgentThreadCreateSchema>;
 export type AgentChatBody = z.infer<typeof AgentChatBodySchema>;

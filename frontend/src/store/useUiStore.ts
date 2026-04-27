@@ -13,9 +13,12 @@ interface UiState {
    * defers to the OS via the prefers-color-scheme @media block.
    */
   theme: Theme;
+  /** Whether the Command Palette (Ctrl+K) is open. Ephemeral — not persisted. */
+  commandPaletteOpen: boolean;
   setSidebarCollapsed: (collapsed: boolean) => void;
   setTheme: (theme: Theme) => void;
   toggleSidebar: () => void;
+  setCommandPaletteOpen: (open: boolean) => void;
 }
 
 export const useUiStore = create<UiState>()(
@@ -23,10 +26,12 @@ export const useUiStore = create<UiState>()(
     (set) => ({
       sidebarCollapsed: false,
       theme: 'system',
+      commandPaletteOpen: false,
       setSidebarCollapsed: (collapsed) => set({ sidebarCollapsed: collapsed }),
       setTheme: (theme) => set({ theme }),
       toggleSidebar: () =>
         set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
+      setCommandPaletteOpen: (open) => set({ commandPaletteOpen: open }),
     }),
     {
       name: 'mastercontrol-ui',

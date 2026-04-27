@@ -20,6 +20,10 @@ const upsertStmt = db.prepare<[string, string]>(
  */
 export const SECRET_KEYS: ReadonlySet<string> = new Set([
   'anthropic_api_key',
+  // R-003: personal subscription key for /api/subagent/delegate. Stored
+  // separately from the per-org-chat key so the user can use a different
+  // billing account for ad-hoc subagent tasks.
+  'personal_anthropic_api_key',
 ]);
 
 const ENC_PREFIX = 'enc:';
@@ -64,17 +68,30 @@ async function getDpapi(): Promise<DpapiModule | null> {
 
   try {
     // Dynamic import keeps the native module out of the module graph on
-    // non-Windows. @primno/dpapi exports named functions `protectData` and
-    // `unprotectData`. We wrap the named exports into the DpapiModule shape.
+    // non-Windows. @primno/dpapi v1.1.x exports a `Dpapi` object (also the
+    // default export) that carries `protectData` and `unprotectData` methods.
+    // Earlier versions exposed bare named exports — both shapes are normalized
+    // here so the rest of the model stays decoupled from the SDK shape.
     const mod = await import('@primno/dpapi');
-    // Cast through unknown — the SDK's Buffer<ArrayBufferLike> generic shape
-    // doesn't match our nominally-typed DpapiModule literally, but the runtime
-    // call shape is identical (protectData/unprotectData with the same args).
-    const { protectData, unprotectData } = mod as unknown as {
-      protectData: DpapiModule['protectData'];
-      unprotectData: DpapiModule['unprotectData'];
+    const modUnknown = mod as unknown as {
+      Dpapi?: { protectData?: DpapiModule['protectData']; unprotectData?: DpapiModule['unprotectData'] };
+      default?: { protectData?: DpapiModule['protectData']; unprotectData?: DpapiModule['unprotectData'] };
+      protectData?: DpapiModule['protectData'];
+      unprotectData?: DpapiModule['unprotectData'];
     };
-    _dpapi = { protectData, unprotectData };
+    const source =
+      (modUnknown.Dpapi && modUnknown.Dpapi.protectData ? modUnknown.Dpapi : null) ??
+      (modUnknown.default && modUnknown.default.protectData ? modUnknown.default : null) ??
+      (modUnknown.protectData ? modUnknown : null);
+    if (!source || !source.protectData || !source.unprotectData) {
+      throw new Error(
+        '@primno/dpapi loaded but did not expose protectData/unprotectData on Dpapi, default, or top-level',
+      );
+    }
+    _dpapi = {
+      protectData: source.protectData,
+      unprotectData: source.unprotectData,
+    };
     return _dpapi;
   } catch (err) {
     if (!_warnedOnce) {

@@ -20,6 +20,7 @@ import { noteModel } from '../models/note.model.js';
 import { ingestSourceModel } from '../models/ingestSource.model.js';
 import { resolveSafePath } from '../lib/safePath.js';
 import { extractMentions, clearOrgCache } from './mention.service.js';
+import { HttpError } from '../middleware/errorHandler.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -376,6 +377,229 @@ export async function scanWorkvault(opts: ScanOptions): Promise<ScanResult> {
 
   // Stamp the source row with the scan completion time.
   ingestSourceModel.updateLastScanAt(sourceId, new Date().toISOString());
+
+  return result;
+}
+
+// ---------------------------------------------------------------------------
+// Per-error retry
+// ---------------------------------------------------------------------------
+
+export interface RetryResult {
+  resolved: boolean;
+  /** True when the file no longer exists at the error path. */
+  path_not_found: boolean;
+}
+
+/**
+ * Retry a single ingest error by re-scanning the specific file associated
+ * with the error row.
+ *
+ * - Returns `{ resolved: true, path_not_found: false }` on a successful
+ *   single-file scan. The error row is deleted.
+ * - Returns `{ resolved: true, path_not_found: true }` if the file no longer
+ *   exists on disk. The error row is deleted (treat as resolved).
+ * - Throws an HttpError(404) if the error row doesn't exist.
+ * - On a new scan failure the original error is preserved and the function
+ *   rethrows so the caller can surface a 500.
+ */
+export async function retrySingleError(errorId: number): Promise<RetryResult> {
+  const errRow = ingestSourceModel.getError(errorId);
+  if (!errRow) {
+    throw new HttpError(404, `Ingest error ${errorId} not found`);
+  }
+
+  const source = ingestSourceModel.get(errRow.source_id);
+  if (!source) {
+    throw new HttpError(404, `Source ${errRow.source_id} for error ${errorId} not found`);
+  }
+
+  // If the file no longer exists, mark the error resolved.
+  if (!fs.existsSync(errRow.path)) {
+    ingestSourceModel.deleteError(errorId);
+    return { resolved: true, path_not_found: true };
+  }
+
+  // Validate path is inside root before scanning.
+  try {
+    resolveSafePath(errRow.path, source.root_path);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new Error(`safe-path-rejected for retry: ${msg}`);
+  }
+
+  // Run a single-file scan by wrapping the file in a minimal ScanResult
+  // accumulator. We don't walk the whole directory — only re-process this file.
+  const singleResult = await scanSingleFile({
+    sourceId: source.id,
+    rootPath: source.root_path,
+    filePath: errRow.path,
+  });
+
+  if (singleResult.errors === 0) {
+    // Success — delete the error row.
+    ingestSourceModel.deleteError(errorId);
+    return { resolved: true, path_not_found: false };
+  }
+
+  // Scan still produced an error. Keep the original error row and throw.
+  throw new Error('Single-file rescan still produced an error — check ingest_errors for details');
+}
+
+// ---------------------------------------------------------------------------
+// Single-file scan (shared by scanWorkvault per-file loop and retrySingleError)
+// ---------------------------------------------------------------------------
+
+interface SingleFileScanOptions {
+  sourceId: number;
+  rootPath: string;
+  filePath: string;
+}
+
+/**
+ * Process exactly one file through the ingest pipeline.
+ * Returns a ScanResult summarising what happened (errors > 0 means the file
+ * was not successfully processed).
+ *
+ * This is intentionally kept private to this module; external callers use
+ * scanWorkvault or retrySingleError.
+ */
+async function scanSingleFile(opts: SingleFileScanOptions): Promise<ScanResult> {
+  const { sourceId, rootPath, filePath } = opts;
+  const result: ScanResult = {
+    files_scanned: 1,
+    inserted: 0,
+    updated: 0,
+    touched: 0,
+    tombstoned: 0,
+    conflicts: 0,
+    errors: 0,
+  };
+
+  // Validate path.
+  let safePath: string;
+  try {
+    safePath = resolveSafePath(filePath, rootPath);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    ingestSourceModel.recordError(sourceId, filePath, `safe-path-rejected: ${msg}`);
+    result.errors += 1;
+    return result;
+  }
+
+  // Read.
+  let fileContent: string;
+  try {
+    fileContent = fs.readFileSync(safePath, 'utf8');
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    ingestSourceModel.recordError(sourceId, safePath, `read-failed: ${msg}`);
+    result.errors += 1;
+    return result;
+  }
+
+  // Stat.
+  let mtime: Date;
+  try {
+    mtime = fs.statSync(safePath).mtime;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    ingestSourceModel.recordError(sourceId, safePath, `stat-failed: ${msg}`);
+    result.errors += 1;
+    return result;
+  }
+
+  // Frontmatter.
+  const { fileId: parsedFileId, body, raw } = parseFrontmatter(fileContent);
+  let fileId = parsedFileId;
+
+  if (!fileId) {
+    fileId = crypto.randomUUID();
+    try {
+      stampFileId(safePath, body, fileId, raw);
+      mtime = fs.statSync(safePath).mtime;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      ingestSourceModel.recordError(sourceId, safePath, `frontmatter-write-failed: ${msg}`);
+      result.errors += 1;
+      return result;
+    }
+  }
+
+  const contentSha256 = sha256(body);
+  const fileMtimeIso = mtime.toISOString();
+
+  const existing = noteModel.getByFileId(fileId);
+
+  if (!existing) {
+    const defaultOrgId = getDefaultOrgId();
+    if (!defaultOrgId) {
+      ingestSourceModel.recordError(
+        sourceId,
+        safePath,
+        'no-org-available: create at least one organization before scanning',
+      );
+      result.errors += 1;
+      return result;
+    }
+
+    try {
+      const note = noteModel.createImported({
+        organization_id: defaultOrgId,
+        content: body,
+        source_path: safePath,
+        file_mtime: fileMtimeIso,
+        file_id: fileId,
+        content_sha256: contentSha256,
+      });
+      result.inserted += 1;
+      await runMentionExtraction(note.id, body, sourceId, safePath);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      ingestSourceModel.recordError(sourceId, safePath, `insert-failed: ${msg}`);
+      result.errors += 1;
+    }
+    return result;
+  }
+
+  const dbLastSeen = existing.last_seen_at ? new Date(existing.last_seen_at) : null;
+  const mtimeAdvanced = dbLastSeen === null || mtime > dbLastSeen;
+
+  if (mtimeAdvanced) {
+    try {
+      noteModel.updateByIngest(existing.id, body, contentSha256, fileMtimeIso);
+      result.updated += 1;
+      await runMentionExtraction(existing.id, body, sourceId, safePath);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      ingestSourceModel.recordError(sourceId, safePath, `update-failed: ${msg}`);
+      result.errors += 1;
+    }
+    return result;
+  }
+
+  if (existing.content_sha256 === contentSha256) {
+    try {
+      noteModel.touchLastSeenAt(existing.id);
+      result.touched += 1;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      ingestSourceModel.recordError(sourceId, safePath, `touch-failed: ${msg}`);
+      result.errors += 1;
+    }
+    return result;
+  }
+
+  // Conflict.
+  ingestSourceModel.recordError(sourceId, safePath, 'sha256 mismatch at unchanged mtime');
+  try {
+    noteModel.createConflict(existing, body, contentSha256, fileMtimeIso);
+    result.conflicts += 1;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    ingestSourceModel.recordError(sourceId, safePath, `conflict-insert-failed: ${msg}`);
+    result.errors += 1;
+  }
 
   return result;
 }

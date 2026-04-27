@@ -83,3 +83,11 @@ export {
 
 export { useStreamChat } from './useStreamChat';
 export type { UseStreamChat, StreamChatMessage } from './useStreamChat';
+
+export {
+  subagentKeys,
+  useUsage,
+  useRecentUsage,
+  useDelegate,
+  useDelegateAgentic,
+} from './useSubagent';

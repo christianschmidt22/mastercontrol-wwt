@@ -74,6 +74,13 @@ const upsertOverrideStmt = db.prepare<[AgentSection, number, string, string, str
    VALUES (?, ?, ?, ?, ?, datetime('now'))`
 );
 
+// Only override rows (organization_id IS NOT NULL) are deletable. The two
+// section archetypes are immutable from the API surface — they're seeded by
+// initSchema() and act as the fallback default for every org.
+const deleteOverrideByIdStmt = db.prepare<[number]>(
+  'DELETE FROM agent_configs WHERE id = ? AND organization_id IS NOT NULL'
+);
+
 function hydrate(row: AgentConfigRow): AgentConfig {
   return {
     ...row,
@@ -152,5 +159,15 @@ export const agentConfigModel = {
       input.model ?? 'claude-sonnet-4-6'
     );
     return hydrate(getByOrgStmt.get(section, organizationId)!);
+  },
+
+  /**
+   * Delete a per-org override row. Returns true if a row was deleted, false
+   * if no matching override existed (or the id pointed at an archetype row,
+   * which is intentionally protected from deletion).
+   */
+  deleteOverride: (id: number): boolean => {
+    const result = deleteOverrideByIdStmt.run(id);
+    return result.changes > 0;
   },
 };

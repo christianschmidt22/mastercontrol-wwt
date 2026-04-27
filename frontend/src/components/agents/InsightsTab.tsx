@@ -1,78 +1,27 @@
-import { useState, useCallback, useId, useEffect, useMemo, useRef } from 'react';
-import type { Note } from '../../types';
-import { useNotes, useConfirmInsight, useRejectInsight } from '../../api/useNotes';
-import { useOrganizations } from '../../api/useOrganizations';
-import type { Organization } from '../../types';
-
-// ---------------------------------------------------------------------------
-// Per-org insights fetcher
-// ---------------------------------------------------------------------------
-
-/**
- * OrgInsights renders nothing visible — it fetches unconfirmed insights for one
- * org and calls onInsights when the data lands or changes.
- *
- * NOTE: A backend aggregator endpoint (`GET /api/notes/unconfirmed`) would be
- * more efficient once org count grows past ~20. For now we fan-out per org
- * from the client — see architecture discussion in InsightsTab body.
- */
-function OrgInsightsFetcher({
-  org,
-  onInsights,
-}: {
-  org: Organization;
-  onInsights: (orgId: number, notes: Note[]) => void;
-}) {
-  const { data } = useNotes(org.id, { includeUnconfirmed: true });
-
-  // Filter to unconfirmed agent_insight notes
-  const insights =
-    data?.filter((n) => n.role === 'agent_insight' && !n.confirmed) ?? [];
-
-  // Use a ref to hold the callback so the effect doesn't need it as a dep
-  const onInsightsRef = useRef(onInsights);
-  useEffect(() => {
-    onInsightsRef.current = onInsights;
-  });
-
-  // Report upstream whenever the insights array identity changes
-  const insightsRef = useRef<Note[]>([]);
-  useEffect(() => {
-    // Only notify when IDs actually change
-    const prev = insightsRef.current;
-    const changed =
-      prev.length !== insights.length ||
-      prev.some((n, i) => n.id !== insights[i]?.id);
-    if (changed) {
-      insightsRef.current = insights;
-      onInsightsRef.current(org.id, insights);
-    }
-  });
-
-  return null;
-}
+import { useState, useCallback, useId, useEffect, useMemo } from 'react';
+import type { NoteWithOrg } from '../../types';
+import { useUnconfirmedInsightsAcrossOrgs, useConfirmInsight, useRejectInsight } from '../../api/useNotes';
 
 // ---------------------------------------------------------------------------
 // Single insight row
 // ---------------------------------------------------------------------------
 
 interface InsightRowProps {
-  note: Note;
-  orgName: string;
+  note: NoteWithOrg;
   selected: boolean;
   onSelect: (id: number, checked: boolean) => void;
-  onAccept: (note: Note) => void;
-  onDismiss: (note: Note) => void;
+  onAccept: (note: NoteWithOrg) => void;
+  onDismiss: (note: NoteWithOrg) => void;
   accepting: boolean;
   dismissing: boolean;
   checkboxGroupId: string;
 }
 
-function formatProvenance(note: Note, orgName: string): string {
+function formatProvenance(note: NoteWithOrg): string {
   const prov = note.provenance;
   const src = prov?.source_org_id
-    ? `org #${prov.source_org_id}’s agent thread`
-    : `${orgName}’s agent thread`;
+    ? `org #${prov.source_org_id}'s agent thread`
+    : `${note.org_name}'s agent thread`;
 
   const ts = new Intl.DateTimeFormat(undefined, {
     month: 'short',
@@ -86,7 +35,6 @@ function formatProvenance(note: Note, orgName: string): string {
 
 function InsightRow({
   note,
-  orgName,
   selected,
   onSelect,
   onAccept,
@@ -117,11 +65,11 @@ function InsightRow({
           name={checkboxGroupId}
           checked={selected}
           onChange={(e) => onSelect(note.id, e.target.checked)}
-          aria-label={`Select insight from ${orgName}`}
+          aria-label={`Select insight from ${note.org_name}`}
           style={{
             width: 15,
             height: 15,
-            accentColor: 'var(--accent)',
+            accentColor: 'var(--ink-3)',
             cursor: 'pointer',
           }}
         />
@@ -157,7 +105,7 @@ function InsightRow({
             whiteSpace: 'nowrap',
           }}
         >
-          {orgName}
+          {note.org_name}
         </p>
 
         {/* Note content — line-clamp-2 */}
@@ -186,7 +134,7 @@ function InsightRow({
             fontFamily: 'var(--body)',
           }}
         >
-          {formatProvenance(note, orgName)}
+          {formatProvenance(note)}
         </p>
       </div>
 
@@ -204,7 +152,7 @@ function InsightRow({
           type="button"
           onClick={() => onAccept(note)}
           disabled={isBusy}
-          aria-label={`Accept insight from ${orgName}`}
+          aria-label={`Accept insight from ${note.org_name}`}
           style={{
             padding: '6px 14px',
             fontSize: 13,
@@ -226,7 +174,7 @@ function InsightRow({
           type="button"
           onClick={() => onDismiss(note)}
           disabled={isBusy}
-          aria-label={`Dismiss insight from ${orgName}`}
+          aria-label={`Dismiss insight from ${note.org_name}`}
           style={{
             padding: '6px 14px',
             fontSize: 13,
@@ -280,7 +228,7 @@ function BulkBar({ count, onBulkAccept, onBulkDismiss, isBusy }: BulkBarProps) {
         display: 'flex',
         alignItems: 'center',
         gap: 16,
-        boxShadow: '0 4px 24px rgba(0,0,0,0.18)',
+        boxShadow: 'none',
         zIndex: 100,
       }}
     >
@@ -295,7 +243,7 @@ function BulkBar({ count, onBulkAccept, onBulkDismiss, isBusy }: BulkBarProps) {
         <strong style={{ color: 'var(--ink-1)' }} className="tnum">
           {count}
         </strong>
-        {' '}selected
+        {' '}selected
       </span>
       <button
         type="button"
@@ -342,72 +290,20 @@ function BulkBar({ count, onBulkAccept, onBulkDismiss, isBusy }: BulkBarProps) {
 }
 
 // ---------------------------------------------------------------------------
-// Aggregated state
-// ---------------------------------------------------------------------------
-
-interface InsightWithOrg {
-  note: Note;
-  orgId: number;
-  orgName: string;
-}
-
-// ---------------------------------------------------------------------------
 // Tab panel
 // ---------------------------------------------------------------------------
 
 export function InsightsTab({ onCountChange }: { onCountChange?: (n: number) => void }) {
-  /*
-   * Architecture note: We fan-out one `useNotes` query per org to collect
-   * unconfirmed insights. This is acceptable at the current org count (~5–20).
-   * If org count grows past ~20, a dedicated backend endpoint
-   * `GET /api/notes/unconfirmed` that aggregates server-side should replace
-   * this pattern. The OrgInsightsFetcher components mount as data-only
-   * renderless nodes — they produce no DOM.
-   */
-  const { data: orgs, isLoading: orgsLoading } = useOrganizations();
+  const { data: insights, isLoading } = useUnconfirmedInsightsAcrossOrgs(50);
   const confirmMutation = useConfirmInsight();
   const rejectMutation = useRejectInsight();
-
-  // Map<orgId, Note[]> — updated by OrgInsightsFetcher children via callback
-  const [orgInsightsMap, setOrgInsightsMap] = useState<Map<number, Note[]>>(
-    new Map(),
-  );
 
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [busyIds, setBusyIds] = useState<Set<number>>(new Set());
 
   const checkboxGroupId = useId();
 
-  const handleOrgInsights = useCallback(
-    (orgId: number, notes: Note[]) => {
-      setOrgInsightsMap((prev) => {
-        const next = new Map(prev);
-        next.set(orgId, notes);
-        return next;
-      });
-    },
-    [],
-  );
-
-  // Flatten + sort newest first
-  const allInsights: InsightWithOrg[] = useMemo(() => {
-    const orgMap = new Map<number, string>(
-      (orgs ?? []).map((o) => [o.id, o.name]),
-    );
-    const result: InsightWithOrg[] = [];
-  for (const [orgId, notes] of orgInsightsMap) {
-    const orgName = orgMap.get(orgId) ?? `Org #${orgId}`;
-    for (const note of notes) {
-      result.push({ note, orgId, orgName });
-    }
-  }
-    result.sort(
-      (a, b) =>
-        new Date(b.note.created_at).getTime() -
-        new Date(a.note.created_at).getTime(),
-    );
-    return result;
-  }, [orgInsightsMap, orgs]);
+  const allInsights = useMemo(() => insights ?? [], [insights]);
 
   // Notify parent of count — run in effect to avoid setState-in-render
   const currentCount = allInsights.length;
@@ -415,7 +311,6 @@ export function InsightsTab({ onCountChange }: { onCountChange?: (n: number) => 
     onCountChange?.(currentCount);
   }, [currentCount, onCountChange]);
 
-  // Handlers
   const handleSelect = useCallback((id: number, checked: boolean) => {
     setSelectedIds((prev) => {
       const next = new Set(prev);
@@ -426,7 +321,7 @@ export function InsightsTab({ onCountChange }: { onCountChange?: (n: number) => 
   }, []);
 
   const handleAccept = useCallback(
-    async (note: Note) => {
+    async (note: NoteWithOrg) => {
       setBusyIds((prev) => { const s = new Set(prev); s.add(note.id); return s; });
       try {
         await confirmMutation.mutateAsync({ id: note.id, orgId: note.organization_id });
@@ -443,7 +338,7 @@ export function InsightsTab({ onCountChange }: { onCountChange?: (n: number) => 
   );
 
   const handleDismiss = useCallback(
-    async (note: Note) => {
+    async (note: NoteWithOrg) => {
       setBusyIds((prev) => { const s = new Set(prev); s.add(note.id); return s; });
       try {
         await rejectMutation.mutateAsync({ id: note.id, orgId: note.organization_id });
@@ -461,23 +356,23 @@ export function InsightsTab({ onCountChange }: { onCountChange?: (n: number) => 
 
   const handleBulkAccept = useCallback(async () => {
     const ids = [...selectedIds];
-    const targets = allInsights.filter((i) => ids.includes(i.note.id));
-    for (const { note } of targets) {
+    const targets = allInsights.filter((n) => ids.includes(n.id));
+    for (const note of targets) {
       await handleAccept(note);
     }
   }, [selectedIds, allInsights, handleAccept]);
 
   const handleBulkDismiss = useCallback(async () => {
     const ids = [...selectedIds];
-    const targets = allInsights.filter((i) => ids.includes(i.note.id));
-    for (const { note } of targets) {
+    const targets = allInsights.filter((n) => ids.includes(n.id));
+    for (const note of targets) {
       await handleDismiss(note);
     }
   }, [selectedIds, allInsights, handleDismiss]);
 
   const isBulkBusy = busyIds.size > 0;
 
-  if (orgsLoading) {
+  if (isLoading) {
     return (
       <div
         role="status"
@@ -496,11 +391,6 @@ export function InsightsTab({ onCountChange }: { onCountChange?: (n: number) => 
 
   return (
     <div>
-      {/* Mount a renderless fetcher per org — aggregates via callback */}
-      {(orgs ?? []).map((org) => (
-        <OrgInsightsFetcher key={org.id} org={org} onInsights={handleOrgInsights} />
-      ))}
-
       {/* Heading */}
       <div
         style={{
@@ -554,11 +444,10 @@ export function InsightsTab({ onCountChange }: { onCountChange?: (n: number) => 
           aria-label="Unconfirmed agent insights"
           style={{ listStyle: 'none', margin: 0, padding: 0 }}
         >
-          {allInsights.map(({ note, orgName }) => (
+          {allInsights.map((note) => (
             <InsightRow
               key={note.id}
               note={note}
-              orgName={orgName}
               selected={selectedIds.has(note.id)}
               onSelect={handleSelect}
               onAccept={(n) => void handleAccept(n)}

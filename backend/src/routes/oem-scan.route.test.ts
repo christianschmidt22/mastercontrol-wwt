@@ -23,8 +23,8 @@ import express, { type Express } from 'express';
 import request from 'supertest';
 import { errorHandler } from '../middleware/errorHandler.js';
 import { db } from '../db/database.js';
-import type * as OrganizationModule from '../models/organization.model.js';
-import type * as SettingsModule from '../models/settings.model.js';
+import type * as OrganizationMod from '../models/organization.model.js';
+import type * as SettingsMod from '../models/settings.model.js';
 
 // ---------------------------------------------------------------------------
 // Mock organizationModel and settingsModel.
@@ -40,7 +40,7 @@ const { mockOrgGet, mockSettingsGet } = vi.hoisted(() => ({
 }));
 
 vi.mock('../models/organization.model.js', async (importOriginal) => {
-  const actual = await importOriginal<typeof OrganizationModule>();
+  const actual = await importOriginal<typeof OrganizationMod>();
   return {
     ...actual,
     organizationModel: {
@@ -51,7 +51,7 @@ vi.mock('../models/organization.model.js', async (importOriginal) => {
 });
 
 vi.mock('../models/settings.model.js', async (importOriginal) => {
-  const actual = await importOriginal<typeof SettingsModule>();
+  const actual = await importOriginal<typeof SettingsMod>();
   return {
     ...actual,
     settingsModel: {

@@ -34,6 +34,8 @@ import { agentToolAuditModel } from '../models/agentToolAudit.model.js';
 import { openSse } from '../lib/sse.js';
 import { HttpError } from '../middleware/errorHandler.js';
 import { resolveSafePath, enforceSizeLimit } from '../lib/safePath.js';
+import { anthropicUsageModel, type UsageSource } from '../models/anthropicUsage.model.js';
+import { computeCostMicros } from '../lib/anthropicPricing.js';
 
 // ---------------------------------------------------------------------------
 // Model imports (Agent 1 parallel build — these types are assumed; adjust if
@@ -201,6 +203,65 @@ function getClient(): Anthropic {
 }
 
 // ---------------------------------------------------------------------------
+// Usage instrumentation — record every Anthropic call in anthropic_usage_events
+// so the AgentsPage tile shows real cross-source cost & token totals (not just
+// /api/subagent/delegate calls).
+// ---------------------------------------------------------------------------
+
+interface AnthropicUsageBlock {
+  input_tokens?: number;
+  output_tokens?: number;
+  cache_read_input_tokens?: number | null;
+  cache_creation_input_tokens?: number | null;
+}
+
+/**
+ * Record one usage event from a finalized Anthropic Message. Safe to call from
+ * any non-streaming or final-stream callback. Failures here are swallowed —
+ * the user's request must not fail because we couldn't write to the usage
+ * table. We log to stderr so it shows up in operator output.
+ */
+function recordUsageFromMessage(
+  source: UsageSource,
+  model: string,
+  message: { id?: string; usage?: AnthropicUsageBlock; model?: string } | null | undefined,
+  taskSummary?: string | null,
+): void {
+  try {
+    const usage: AnthropicUsageBlock = message?.usage ?? {};
+    const inputTokens = usage.input_tokens ?? 0;
+    const outputTokens = usage.output_tokens ?? 0;
+    const cacheRead = usage.cache_read_input_tokens ?? 0;
+    const cacheCreation = usage.cache_creation_input_tokens ?? 0;
+    const effectiveModel = message?.model ?? model;
+    const cost = computeCostMicros(
+      effectiveModel,
+      inputTokens,
+      outputTokens,
+      cacheRead,
+      cacheCreation,
+    );
+    anthropicUsageModel.record({
+      source,
+      model: effectiveModel,
+      input_tokens: inputTokens,
+      output_tokens: outputTokens,
+      cache_read_input_tokens: cacheRead,
+      cache_creation_input_tokens: cacheCreation,
+      cost_usd_micros: cost,
+      request_id: message?.id ?? null,
+      task_summary: taskSummary ?? null,
+    });
+  } catch (err) {
+    // Log but never propagate — instrumentation should never fail the call.
+    console.warn(
+      '[claude.service] recordUsageFromMessage failed:',
+      err instanceof Error ? err.message : String(err),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Org version cache — lets model writes invalidate the stable system-prompt
 // block so the cache is rebuilt on next turn.
 // ---------------------------------------------------------------------------
@@ -342,6 +403,12 @@ async function buildVolatileBlock(
     ? insights
         .map((n) => {
           const prov = n.provenance ? JSON.parse(n.provenance) as Record<string, unknown> : null;
+          const toStr = (v: unknown): string => {
+            if (v === null || v === undefined) return '?';
+            if (typeof v === 'string') return v;
+            if (typeof v === 'number' || typeof v === 'boolean') return String(v);
+            return JSON.stringify(v);
+          };
           const provStr = prov
             ? ` | source_thread=${toStr(prov['source_thread_id'])}, source_org=${toStr(prov['source_org_id'])}`
             : '';
@@ -444,11 +511,9 @@ function buildWebSearchTool(toolsEnabled: string): Anthropic.Tool {
   } catch {
     // malformed JSON — use default
   }
-  // The Anthropic SDK represents native web_search as a special tool block
-  // shape (`web_search_20250305`) that the typed `Anthropic.Tool` union
-  // doesn't yet model. The shape is per Anthropic docs and is accepted by
-  // the SDK at runtime; the double cast bridges the type-system gap until
-  // the SDK ships a discriminated `web_search_20250305` member.
+  // The native web_search_20250305 tool shape isn't modeled by `Anthropic.Tool`
+  // (no `input_schema`) but is accepted by the SDK at runtime. Double cast
+  // bridges the gap until the SDK ships a discriminated member.
   return {
     type: 'web_search_20250305' as const,
     name: 'web_search',
@@ -836,6 +901,10 @@ export async function streamChat({
 
       // Get the final message with fully assembled tool_use blocks.
       const finalMessage = await stream.finalMessage();
+
+      // Record the call in anthropic_usage_events so the AgentsPage tile
+      // shows real per-org chat cost. Non-blocking on failure.
+      recordUsageFromMessage('chat', agentConfig.model, finalMessage);
 
       for (const block of finalMessage.content) {
         if (block.type === 'tool_use') {
@@ -1448,13 +1517,6 @@ async function handleRecordInsight({
 // Utility
 // ---------------------------------------------------------------------------
 
-/** Safely coerce an unknown provenance field to a display string. */
-function toStr(v: unknown): string {
-  if (v === null || v === undefined) return '?';
-  if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') return String(v);
-  return '?';
-}
-
 function escapeXml(s: string): string {
   return s
     .replace(/&/g, '&amp;')
@@ -1502,6 +1564,10 @@ export async function generateReport(prompt: string): Promise<string> {
     messages: [{ role: 'user', content: prompt }],
   });
 
+  // Record the call in anthropic_usage_events so the tile's "report" source
+  // reflects actual scheduled-report runs.
+  recordUsageFromMessage('report', model, response);
+
   let text = '';
   for (const block of response.content) {
     if (block.type === 'text') {
@@ -1545,8 +1611,9 @@ export async function extractOrgMentions(
   const client = getClient();
   const nameList = candidateNames.join(', ');
 
+  const ingestModel = 'claude-haiku-4-5';
   const response = await client.messages.create({
-    model: 'claude-haiku-4-5',
+    model: ingestModel,
     max_tokens: 256,
     // R-021: no tools when processing untrusted document content.
     tools: [],
@@ -1564,6 +1631,10 @@ export async function extractOrgMentions(
       },
     ],
   });
+
+  // Record the call in anthropic_usage_events under 'ingest' so the tile
+  // reflects the cost of mention extraction during note imports.
+  recordUsageFromMessage('ingest', ingestModel, response, 'extractOrgMentions');
 
   try {
     const firstBlock = response.content[0];

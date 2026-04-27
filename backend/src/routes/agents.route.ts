@@ -5,6 +5,7 @@ import { agentMessageModel } from '../models/agentMessage.model.js';
 import { agentToolAuditModel } from '../models/agentToolAudit.model.js';
 import { organizationModel } from '../models/organization.model.js';
 import {
+  AgentConfigCreateSchema,
   AgentConfigUpdateSchema,
   AgentThreadCreateSchema,
   AgentThreadListQuerySchema,
@@ -36,10 +37,61 @@ agentsRouter.put('/configs/:id', validateBody(AgentConfigUpdateSchema), (req, re
   res.json(updated);
 });
 
-// GET /threads?org_id=
+// POST /configs — create a per-org override row.
+// system_prompt_template defaults to the section archetype's template when
+// omitted, so the AgentsPage "Add override" flow can create a starter row
+// in one click without having to first fetch the archetype client-side.
+agentsRouter.post('/configs', validateBody(AgentConfigCreateSchema), (req, res, next) => {
+  const body = req.validated as {
+    section: 'customer' | 'oem';
+    organization_id: number;
+    system_prompt_template?: string;
+    tools_enabled?: Record<string, unknown>;
+    model?: string;
+  };
+
+  if (!organizationModel.get(body.organization_id)) {
+    return next(new HttpError(404, 'Organization not found'));
+  }
+
+  // Inherit archetype template/tools/model defaults for fields not supplied.
+  const archetype = agentConfigModel.getArchetype(body.section);
+  const template = body.system_prompt_template ?? archetype?.system_prompt_template ?? '';
+  // tools_enabled is stored as a string[] in the model layer; route schema
+  // accepts arbitrary JSON to match the PUT shape, so coerce here.
+  const toolsArray = Array.isArray(body.tools_enabled)
+    ? (body.tools_enabled as unknown[]).map((t) => (typeof t === 'string' ? t : JSON.stringify(t)))
+    : (archetype?.tools_enabled ?? []);
+  const model = body.model ?? archetype?.model ?? 'claude-sonnet-4-6';
+
+  const row = agentConfigModel.upsertOverride(body.section, body.organization_id, {
+    system_prompt_template: template,
+    tools_enabled: toolsArray,
+    model,
+  });
+  res.status(201).json(row);
+});
+
+// DELETE /configs/:id — drop a per-org override row.
+// Archetype rows (organization_id IS NULL) are intentionally protected by the
+// model layer and will return 404 here, since deleting them would leave orgs
+// without a fallback default.
+agentsRouter.delete('/configs/:id', (req, res, next) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) return next(new HttpError(400, 'Invalid id'));
+  const deleted = agentConfigModel.deleteOverride(id);
+  if (!deleted) return next(new HttpError(404, 'Override not found'));
+  res.status(204).end();
+});
+
+// GET /threads?org_id=&limit=  — org_id is optional; omit for cross-org list
 agentsRouter.get('/threads', validateQuery(AgentThreadListQuerySchema), (req, res) => {
-  const { org_id } = req.validated as { org_id: number };
-  res.json(agentThreadModel.listFor(org_id));
+  const { org_id, limit } = req.validated as { org_id?: number; limit?: number };
+  if (org_id !== undefined) {
+    res.json(agentThreadModel.listFor(org_id));
+  } else {
+    res.json(agentThreadModel.listAll(limit ?? 50));
+  }
 });
 
 // POST /threads

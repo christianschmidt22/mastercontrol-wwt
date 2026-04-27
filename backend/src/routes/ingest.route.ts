@@ -13,7 +13,9 @@ import { Router } from 'express';
 import { HttpError } from '../middleware/errorHandler.js';
 import { settingsModel } from '../models/settings.model.js';
 import { ingestSourceModel } from '../models/ingestSource.model.js';
-import { scanWorkvault } from '../services/ingest.service.js';
+import { scanWorkvault, retrySingleError } from '../services/ingest.service.js';
+import { validateParams } from '../lib/validate.js';
+import { IngestErrorIdParamSchema } from '../schemas/ingest.schema.js';
 
 export const ingestRouter = Router();
 
@@ -41,6 +43,28 @@ ingestRouter.post('/scan', async (_req, res, next) => {
     next(err);
   }
 });
+
+// ---------------------------------------------------------------------------
+// POST /errors/:id/retry
+//
+// Re-scans the specific file that caused the error row.
+// On success (or path-not-found), the error row is deleted and 200 is returned.
+// 404 if the error id doesn't exist.
+// ---------------------------------------------------------------------------
+
+ingestRouter.post(
+  '/errors/:id/retry',
+  validateParams(IngestErrorIdParamSchema),
+  async (req, res, next) => {
+    try {
+      const { id } = req.validatedParams as { id: number };
+      const result = await retrySingleError(id);
+      res.json(result);
+    } catch (err) {
+      next(err);
+    }
+  },
+);
 
 // ---------------------------------------------------------------------------
 // GET /status

@@ -14,6 +14,7 @@ import { settingsRouter } from './routes/settings.route.js';
 import { reportsRouter } from './routes/reports.route.js';
 import { ingestRouter } from './routes/ingest.route.js';
 import { oemScanRouter } from './routes/oem-scan.route.js';
+import { subagentRouter } from './routes/subagent.route.js';
 import { seedDailyTaskReview } from './services/reports.service.js';
 import {
   runMissedJobs,
@@ -78,6 +79,7 @@ app.use('/api/settings', settingsRouter);
 app.use('/api/reports', reportsRouter);
 app.use('/api/ingest', ingestRouter);
 app.use('/api/oem', oemScanRouter);
+app.use('/api/subagent', subagentRouter);
 
 app.use(errorHandler);
 

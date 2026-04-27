@@ -11,4 +11,5 @@ Thumbs.db
 *.log
 coverage/
 .vite/
+agent-*
 .claude/worktrees/

@@ -19,7 +19,9 @@
 // Bootstrap reports tables BEFORE the router (and its model imports) load.
 import '../test/reportsSchema.js';
 
-import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest';
+import { mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import path from 'node:path';
 import express, { type Express } from 'express';
 import request from 'supertest';
 import { errorHandler } from '../middleware/errorHandler.js';
@@ -35,15 +37,14 @@ const { mockRunReport } = vi.hoisted(() => ({
   mockRunReport: vi.fn(),
 }));
 vi.mock('../services/reports.service.js', async (importOriginal) => {
-  const actual = await importOriginal<typeof ReportsService>();
+  const actual = await importOriginal<typeof ReportsServiceMod>();
   return {
     ...actual,
     runReport: mockRunReport,
   };
 });
 
-import type * as ReportsService from '../services/reports.service.js';
-
+import type * as ReportsServiceMod from '../services/reports.service.js';
 import { reportsRouter } from './reports.route.js';
 import { reportModel } from '../models/report.model.js';
 import { reportScheduleModel } from '../models/reportSchedule.model.js';
@@ -330,5 +331,84 @@ describe('GET /api/reports/:id/runs', () => {
     const res = await request(app).get(`/api/reports/${r.id}/runs`);
     expect(res.status).toBe(200);
     expect(res.body).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/reports/:id/runs/:run_id/output
+// ---------------------------------------------------------------------------
+
+describe('GET /api/reports/:id/runs/:run_id/output', () => {
+  // Each test creates a temp directory under process.cwd()/reports so
+  // resolveSafePath's containment check passes.
+  let tmpReportDir: string;
+  let tmpFilePath: string;
+
+  beforeEach(() => {
+    // We create a real file so resolveSafePath + readFileSync succeed.
+    tmpReportDir = path.join(process.cwd(), 'reports', '__test__');
+    mkdirSync(tmpReportDir, { recursive: true });
+    tmpFilePath = path.join(tmpReportDir, 'test_output.md');
+    writeFileSync(tmpFilePath, '# Hello\n\nTest output.', 'utf8');
+  });
+
+  afterEach(() => {
+    try { rmSync(tmpReportDir, { recursive: true, force: true }); } catch { /* ignore */ }
+  });
+
+  it('happy path: returns { content, output_path, output_sha256 }', async () => {
+    const r = reportModel.create({ name: 'Output happy', prompt_template: 't' });
+    const s = reportScheduleModel.upsert(r.id, { cron_expr: '0 7 * * *' });
+    const { run } = reportRunModel.create({ schedule_id: s.id, fire_time: 999 });
+    reportRunModel.updateStatus(run.id, 'done', {
+      output_path: tmpFilePath,
+      output_sha256: 'deadbeef'.repeat(8),
+    });
+
+    const res = await request(app).get(`/api/reports/${r.id}/runs/${run.id}/output`);
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({
+      content: '# Hello\n\nTest output.',
+      output_path: tmpFilePath,
+    });
+    expect(typeof res.body.output_sha256).toBe('string');
+  });
+
+  it('returns 404 for a run_id that does not exist', async () => {
+    const r = reportModel.create({ name: 'Output missing run', prompt_template: 't' });
+    const res = await request(app).get(`/api/reports/${r.id}/runs/9999999/output`);
+    expect(res.status).toBe(404);
+  });
+
+  it('returns 404 when report is found but report_id does not match', async () => {
+    // Create two separate reports and use a run from one with the other's id.
+    const r1 = reportModel.create({ name: 'Output report A', prompt_template: 't' });
+    const r2 = reportModel.create({ name: 'Output report B', prompt_template: 't' });
+    const s1 = reportScheduleModel.upsert(r1.id, { cron_expr: '0 7 * * *' });
+    const { run } = reportRunModel.create({ schedule_id: s1.id, fire_time: 1234 });
+    reportRunModel.updateStatus(run.id, 'done', {
+      output_path: tmpFilePath,
+      output_sha256: null,
+    });
+
+    // Query run under r2 — should 400 (mismatch).
+    const res = await request(app).get(`/api/reports/${r2.id}/runs/${run.id}/output`);
+    expect(res.status).toBe(400);
+  });
+
+  it('returns 404 when the run is not done (status=queued)', async () => {
+    const r = reportModel.create({ name: 'Output queued', prompt_template: 't' });
+    const s = reportScheduleModel.upsert(r.id, { cron_expr: '0 7 * * *' });
+    const { run } = reportRunModel.create({ schedule_id: s.id, fire_time: 5678, status: 'queued' });
+
+    const res = await request(app).get(`/api/reports/${r.id}/runs/${run.id}/output`);
+    expect(res.status).toBe(404);
+    expect(res.body.error).toMatch(/no output/i);
+  });
+
+  it('returns 400 for an invalid run_id param', async () => {
+    const r = reportModel.create({ name: 'Output bad id', prompt_template: 't' });
+    const res = await request(app).get(`/api/reports/${r.id}/runs/not-a-number/output`);
+    expect(res.status).toBe(400);
   });
 });

@@ -5,6 +5,7 @@ export type {
   Organization,
   OrganizationCreate,
   OrganizationUpdate,
+  OrgWithLastTouched,
 } from './organization';
 
 export type {
@@ -32,6 +33,7 @@ export type {
   NoteProvenance,
   Note,
   NoteCreate,
+  NoteWithOrg,
 } from './note';
 
 export type {
@@ -56,3 +58,20 @@ export type {
   SettingPut,
   SettingGetResponse,
 } from './settings';
+
+export type {
+  DelegateRequest,
+  DelegateResult,
+  DelegateResultOk,
+  DelegateResultErr,
+  UsagePeriod,
+  UsageAggregate,
+  UsageEventSource,
+  UsageEvent,
+  DelegateTool,
+  AgenticDelegateRequest,
+  TranscriptEntry,
+  AgenticResult,
+  AgenticResultOk,
+  AgenticResultErr,
+} from './subagent';

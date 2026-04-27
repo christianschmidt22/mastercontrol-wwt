@@ -22,3 +22,12 @@ export interface OrganizationUpdate {
   name?: string;
   metadata?: Metadata | null;
 }
+
+/** Shape returned by GET /api/organizations/recent — org with last-touched timestamp. */
+export interface OrgWithLastTouched {
+  id: number;
+  name: string;
+  type: OrgType;
+  /** ISO date string of last note or agent thread message; '1970-01-01' when no activity. */
+  last_touched: string;
+}

@@ -4,9 +4,237 @@
 
 Phase 2 ships in two five-stream parallel-agent batches off the verified
 Phase 1 baseline, merged onto `main` as commit `3650106` together with the
-ESLint v9 setup contributed by a parallel OpenAI Codex CLI session. 11 of
-12 plan steps (`docs/plans/phase-2.md`) shipped; only Step 12 (manual
-browser walkthrough) remains.
+ESLint v9 setup contributed by a parallel OpenAI Codex CLI session, and
+then continues with the polish rounds tracked in the checkpoints below.
+11 of 12 plan steps (`docs/plans/phase-2.md`) shipped; only Step 12
+(manual browser walkthrough) remains.
+
+### Checkpoint `phase2-checkpoint-6` — 2026-04-27 morning
+
+**A focused product polish round.** With Fairview + C.H. Robinson seeded
+and the per-org chat / cross-org insights surface live, this round
+chased the rough edges that kept the dashboard from feeling finished:
+the customer + OEM dashboards needed inline-add flows, the home page
+agent-insights widget was throwing on empty arrays, the OEM page was an
+empty-state, the Tasks page lacked filters and inline complete, the
+sidebar didn't communicate which org had fresh activity, and the agents
++ settings pages needed real configuration UIs.
+
+Six SDK delegations on the user's Max subscription ran in parallel for
+the bulk of this round; Tasks F + L + K + H + I shipped end-to-end (J
+hit max_iterations after the backend half landed and the frontend
+widgets were deferred). Three subsequent commits cleaned up regressions
+the agents introduced (AuthModeSection dropped from SettingsPage,
+Threads/Insights/Delegate tabs dropped from AgentsPage) and wired the
+final backend half (POST + DELETE `/api/agents/configs`) so the
+override Add/Delete UI works end-to-end.
+
+Backend **535** tests · frontend **429** tests · both workspaces
+typecheck + lint clean. Five-org seed visible on first boot:
+Fairview Health Services + C.H. Robinson (customer), Cisco + NetApp
++ Nutanix (oem) with cross-org `note_mentions` populating both the
+customer-side cross-org insights panel and the OEM-side mentioned-by
+panel.
+
+- **OEM seed migration** (`0b4d486`): `012_seed_oem_partners.sql` —
+  3 OEMs · 7 contacts · 12 notes · 3 threads · 2 cross-refs. 4 of the
+  notes are `agent_insight` rows (3 confirmed, 1 unconfirmed) so the
+  inline accept/dismiss flow has data to drive.
+- **Tasks page polish** (`1ae1708`): inline-add at top (vermilion
+  Save when open), inline complete checkbox per row with optimistic
+  slide-out animation respecting `prefers-reduced-motion`, four
+  filter pills (All / Today / This week / Overdue) with
+  `role=radiogroup` + arrow-key nav + filter-specific empty states.
+  Suite 5 → 18.
+- **Backend `/notes/recent` + `/organizations/recent`** (`74d98eb`):
+  two aggregator endpoints for the home page enrichment widgets.
+  Joined query against `notes`, `organizations`, and `agent_threads`
+  for the last-touched-per-org map. Frontend widgets pending —
+  endpoints + types are ready for the next round.
+- **OEM tile inline-add** (`8ab77ac`): mirrors the customer-tile
+  polish across `AccountChannelTile` (contacts) and
+  `OemQuickLinksTile` (links). Esc cancels, Enter saves, optimistic
+  insert, Save vermilion only when dirty. `OemDocsTile` empty-state
+  copy bumped to "OEM document scan lands in Phase 2 — check back
+  after WorkVault ingest." +10 tests.
+- **Sidebar polish** (`daf4ead`): per-org vermilion activity dot
+  when latest note or agent thread message landed in the last 48
+  hours, sourced from a new `useOrgLastTouched(type)` hook hitting
+  `/api/organizations/last-touched?type=...`. Refetches every 60s.
+  Active-route treatment tightened: 2px var(--accent) left border
+  + var(--bg-2) background + `aria-current='page'`. Empty
+  customer-list hint copy. +27 sidebar tests + 6 backend route tests.
+- **AgentsPage Phase 1** (`453a584` then restored to its full shape
+  by `910ec13`): the original 4-tab structure (Templates / Threads /
+  Insights queue / Delegate) is preserved, with the Templates panel
+  now hosting the new `AgentSectionEditor` (Customer/OEM sub-strip
+  + variable reference panel + tools toggles + model picker + dirty-
+  gated Save) and `AgentOverridesPanel` (per-org override list +
+  inline expanding editor + Add/Delete flow). The redundant
+  `TemplatesTab.tsx` is removed; H's components fully replace it.
+  +25 page tests.
+- **SettingsPage Phase 1** (`c540784` then restored by `f7e1e97`):
+  five sections — Anthropic API key (masked / Edit / Save), the full
+  `AuthModeSection` for Delegation Authentication (subscription-
+  login status + API-key fallback in one component), default model,
+  theme (Light/Dark/System wired through Zustand + document.document-
+  Element + backend), and read-only paths. +8 page tests;
+  `AuthModeSection` is stubbed in the page test (its full behaviour
+  lives in `AuthModeSection.test.tsx`).
+- **Backend agent config CRUD** (`fc22e84`): `POST /api/agents/configs`
+  to create a per-org override (defaults inherited from the section
+  archetype when fields are omitted) and `DELETE /api/agents/configs/:id`
+  for override removal. The model layer's WHERE filter protects
+  archetype rows (organization_id IS NULL) from deletion — they're
+  the fallback default every org relies on. +6 route tests.
+
+### Checkpoint `phase2-checkpoint-3` — 2026-04-26 night
+
+**Subscription-login delegation lands.** The user's recurring concern was
+the metered API price; this round wires up the **second auth path** the
+Claude Agent SDK supports: OAuth credentials from `claude /login`. Usage
+counts against the Claude.ai Pro/Max/Team allotment instead of pay-per-
+token. Both paths are now available behind a UI toggle on the Delegate
+tab; subscription is the default.
+
+Backend 495 tests · frontend 282 tests · lint + typecheck clean both.
+
+- **Agent SDK integration** (`53fbf5d` + this commit): added
+  `@anthropic-ai/claude-agent-sdk@0.2.119` to backend deps (installed
+  with `--legacy-peer-deps` for the zod 3 vs 4 peer-dep mismatch — the
+  SDK ships its own zod runtime). New service
+  `backend/src/services/subagentSdk.service.ts` with
+  `delegateViaSubscription()`, returning the same `AgenticResult` shape
+  as `delegateAgentic()` so the frontend can swap mutations
+  transparently. Pre-flight check for `~/.claude/.credentials.json`
+  short-circuits the subprocess spawn with a clean
+  "Run `claude /login` first" message instead of surfacing the SDK's
+  generic "process exited with code 1". New route
+  `POST /api/subagent/delegate-sdk` plus `GET /api/subagent/auth-status`
+  for the frontend's live status badge. Tool-name translation map
+  (`read_file → Read`, `bash → Bash`, etc.) lives in the service so the
+  same Console form drives both paths. +15 backend tests.
+- **Delegate Console mode toggle + Settings revamp** (`5871148` cherry-
+  picked from worktree): two-button Authentication toggle at the top of
+  the Delegate form; choice persists via localStorage (default
+  `subscription`). New `AuthModeSection.tsx` component shows
+  side-by-side cards for both modes with a live status pill — green on
+  authenticated, grey when `claude /login` is needed. The cards
+  gracefully degrade when the auth-status endpoint isn't responding
+  (treated as "unknown — try delegating to verify"). +22 frontend tests.
+- **`docs/DELEGATION.md` rewrite**: now leads with the subscription
+  flow as the recommended path and demotes the API-key path to
+  fallback. Includes `claude /login` walkthrough, `curl` examples for
+  both endpoints, and security notes covering OAuth credential read
+  semantics (server reads `~/.claude/.credentials.json` directly; never
+  proxies or stores them).
+
+End-to-end smoke verified: both endpoints reach the SDK, auth-status
+returns the right state, the missing-credentials path returns the clean
+actionable message instead of subprocess exit codes.
+
+### Checkpoint `phase2-checkpoint-2` — 2026-04-26 evening
+
+User-facing milestone: **personal-subscription delegation works end-to-end.**
+Set the key in Settings → Personal Claude Subscription, then use the new
+Agents → Delegate tab (or `POST /api/subagent/delegate-agentic` directly)
+to delegate coding tasks with file tools. See `docs/DELEGATION.md` for
+the full login + delegation flow.
+
+Backend 480 tests · frontend 260 tests · both lint + typecheck clean.
+
+- **Agentic delegation loop** (`5692c15`): `subagent.service.ts` gets
+  `delegateAgentic()` — multi-turn tool-use loop bounded at 50 iterations
+  hard, default 25. Five tools shipped in `subagentTools.service.ts`:
+  `read_file`, `list_files`, `write_file`, `edit_file`, and (opt-in)
+  `bash`. Each file tool routes through a new `assertSafeRelPath` helper
+  rather than reusing `lib/safePath.ts` (the existing helper is locked
+  to a `.md/.txt/.pdf` extension allowlist for the per-org chat's
+  `read_document` tool). New route `POST /api/subagent/delegate-agentic`.
+  +39 backend tests (10 service + 30 tools-unit + 9 route-integration).
+  Also captures the chat-usage instrumentation that was held in working
+  tree from a parallel self-edit:
+  - `recordUsageFromMessage()` helper in `claude.service.ts`
+  - per-org chat (`messages.stream` final message), `generateReport`
+    (scheduled report runs), and `extractOrgMentions` (ingest mention
+    extraction) all now record to `anthropic_usage_events` so the tile
+    shows real cross-source usage instead of just delegate-only.
+- **Delegate Console UI** (`6d9520f`): new 4th tab in AgentsPage
+  ("Delegate"). Form with task textarea, working-dir field, tool
+  checkbox group (bash off by default), model select, advanced
+  disclosure (max_iterations / max_tokens / system). Live cost meter
+  pulling `useUsage('session'|'today')`. Transcript view renders the
+  three entry kinds with collapsible tool-use input and truncatable
+  tool results. +21 frontend tests (23 component + 11 hook minus the
+  9 from the legacy `useSubagent.test.tsx` we replaced).
+- **Round 9 audit punch list** (`850e839`): 7 fixes shipped, 2
+  deferred. CommandPalette input now respects `:focus-visible`;
+  TasksPage ChipGroup outline fixed; backdrop rgba values use the
+  palette tokens; SettingsPage redundant `textWrap` declarations
+  removed (global `h1, h2, h3 { text-wrap: balance }` rule covers
+  them). Sidebar OEM icon fix, HomePage h1 textWrap, ReportsPage h2
+  section header. Findings doc at `docs/REVIEW-ROUND9.md` is
+  annotated with `(FIXED in <commit>)` / `(DEFERRED — <reason>)`.
+- **DPAPI module-shape fix** (this commit): `@primno/dpapi` v1.1.x
+  exposes `protectData`/`unprotectData` under a `Dpapi` object (also
+  the default export), not as bare named exports. The previous
+  destructure quietly produced `undefined` references and
+  `decryptSync` blew up with "dpapi.unprotectData is not a function"
+  the first time a route tried to read an encrypted setting. The
+  loader now normalizes both the new `Dpapi`-object shape, the
+  default-export shape, and the legacy bare-named-exports shape.
+  Discovered during the smoke-test pass; without this the personal
+  key couldn't actually be read at runtime.
+- **`docs/DELEGATION.md`** (this commit): operator guide for the
+  login + delegation flow. Covers Settings UI, `curl` examples for
+  both endpoints, security notes, and known gaps for next round
+  (streaming, per-call cost cap, per-error retry on the activity
+  feed).
+
+### Checkpoint `phase2-checkpoint-1` — 2026-04-26 PM
+
+Clean state after a multi-agent integration push. Backend 394 tests · frontend
+216 tests · both workspaces typecheck + lint clean. Three meaningful additions
+since the morning batch that shipped the cron editor + command palette + tile
+empty states:
+
+- **AgentsPage test coverage** (`4b10693`): 42 new RTL tests across the four
+  tab components (`TabStrip` 13, `TemplatesTab` 10, `InsightsTab` 11,
+  `ThreadsTab` 8). The four components themselves were already in `5e4a952`;
+  this round filled the coverage gap. Frontend tests 174 → 216. Two backend
+  gaps surfaced for follow-up: `GET /api/agents/threads` requires `?org_id=`
+  but `ThreadsTab.tsx` calls it without (runtime 400 in real use), and there's
+  no aggregator endpoint for cross-org unconfirmed insights (the component
+  fans out per-org queries — fine for ≤20 orgs but worth tracking).
+
+- **`validate.ts` collision defused** (`f8c22b2`): the three
+  `validate{Body,Query,Params}` middlewares all wrote to the same
+  `req.validated` field. No shipped route chains two validators today, but
+  the next one to do so would have silently clobbered the first result.
+  Added dedicated `validatedBody` / `validatedQuery` / `validatedParams`
+  fields; legacy `validated` still populated last-writer-wins so existing
+  routes keep working unchanged. Cherry-picked from the parallel
+  `claude/great-tesla-6c5416` branch (the only piece of that branch worth
+  bringing forward; the rest was a parallel implementation of features
+  this branch already covered better — see commit log for the comparison).
+
+- **WorkVault Ingest UI + per-error retry** (`ac63997`): backend adds
+  `POST /api/ingest/errors/:id/retry` (validates with `IngestErrorIdParamSchema`,
+  calls `retrySingleError()` in `ingest.service.ts` which re-scans the
+  specific file and deletes the error row on success, or marks it resolved if
+  the file no longer exists). Frontend adds `frontend/src/types/ingest.ts`
+  (hand-mirrored types), updates `useIngest.ts` with `useRetryIngestError`
+  (optimistic error-row removal + revert-on-error), and three new components
+  in `frontend/src/components/ingest/`: `IngestStatusPanel` (last scan time,
+  error count, "Scan Now" CTA), `SourcePathConfig` (source list with
+  middle-truncated paths and hover title), `IngestErrorList` (error rows with
+  per-row Retry button, `role="status"` + `aria-live="polite"`). Ingest
+  section wired into `SettingsPage.tsx` between Scheduler and Agent Overrides.
+  Backend: 390 → 394 tests. Frontend: 154 → 174 tests. Both workspaces
+  typecheck + lint clean.
+
+Five-stream parallel-agent batch off the verified Phase 1 baseline. Backend
+332 + frontend 43 = 375/375 tests green; both workspaces typecheck clean.
 
 Verification on Windows + Node 24.15.0 from the consolidated `main`:
 

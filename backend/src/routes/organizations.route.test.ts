@@ -308,6 +308,122 @@ describe('GET /api/organizations/:id/notes', () => {
 });
 
 // ---------------------------------------------------------------------------
+// GET /api/organizations/recent
+// ---------------------------------------------------------------------------
+
+describe('GET /api/organizations/recent', () => {
+  it('returns all orgs with id, name, type, and last_touched fields', async () => {
+    const org = makeOrg({ name: 'Recent Org Beta', type: 'oem' });
+
+    const res = await request(app).get('/api/organizations/recent');
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body)).toBe(true);
+
+    const found = (
+      res.body as Array<{ id: number; name: string; type: string; last_touched: string }>
+    ).find((o) => o.id === org.id);
+    expect(found).toBeDefined();
+    expect(found!.name).toBe('Recent Org Beta');
+    expect(found!.type).toBe('oem');
+    expect(found!.last_touched).toBeTruthy();
+  });
+
+  it('last_touched advances when a note is added', async () => {
+    const org = makeOrg({ name: 'Touch Org' });
+    makeNote(org.id, { content: 'Touch this org via note' });
+
+    const res = await request(app).get('/api/organizations/recent');
+    expect(res.status).toBe(200);
+
+    const found = (res.body as Array<{ id: number; last_touched: string }>)
+      .find((o) => o.id === org.id);
+    expect(found).toBeDefined();
+    // Should NOT be the epoch default since a note exists
+    expect(found!.last_touched.startsWith('1970')).toBe(false);
+  });
+
+  it('respects ?limit= parameter', async () => {
+    for (let i = 0; i < 5; i++) makeOrg();
+
+    const res = await request(app).get('/api/organizations/recent?limit=2');
+    expect(res.status).toBe(200);
+    expect((res.body as unknown[]).length).toBeLessThanOrEqual(2);
+  });
+
+  it('rejects limit > 100 with 400', async () => {
+    const res = await request(app).get('/api/organizations/recent?limit=101');
+    expect(res.status).toBe(400);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/organizations/last-touched
+// ---------------------------------------------------------------------------
+
+describe('GET /api/organizations/last-touched', () => {
+  it('returns 400 when type param is missing', async () => {
+    const res = await request(app).get('/api/organizations/last-touched');
+    expect(res.status).toBe(400);
+  });
+
+  it('returns 400 when type param is invalid', async () => {
+    const res = await request(app).get('/api/organizations/last-touched?type=agent');
+    expect(res.status).toBe(400);
+  });
+
+  it('returns 200 with a { [orgId]: ISO } map for type=customer', async () => {
+    const org = makeOrg({ type: 'customer', name: 'LastTouched Cust' });
+
+    const res = await request(app).get('/api/organizations/last-touched?type=customer');
+    expect(res.status).toBe(200);
+    expect(typeof res.body).toBe('object');
+    expect(Object.prototype.hasOwnProperty.call(res.body, String(org.id))).toBe(true);
+    // Value must be a parseable ISO string
+    const ts = new Date((res.body as Record<string, string>)[String(org.id)]).getTime();
+    expect(Number.isNaN(ts)).toBe(false);
+  });
+
+  it('last_touched is epoch when org has no notes or threads', async () => {
+    const org = makeOrg({ type: 'customer', name: 'Empty Touch Org' });
+
+    const res = await request(app).get('/api/organizations/last-touched?type=customer');
+    expect(res.status).toBe(200);
+    const ts = new Date((res.body as Record<string, string>)[String(org.id)]).getTime();
+    expect(ts).toBe(new Date('1970-01-01T00:00:00Z').getTime());
+  });
+
+  it('last_touched advances after a note is created for that org', async () => {
+    const org = makeOrg({ type: 'customer', name: 'NoteTouch Org' });
+
+    const before = await request(app).get('/api/organizations/last-touched?type=customer');
+    const epochTs = new Date((before.body as Record<string, string>)[String(org.id)]).getTime();
+    expect(epochTs).toBe(new Date('1970-01-01T00:00:00Z').getTime());
+
+    makeNote(org.id, { content: 'Recent activity!' });
+
+    const after = await request(app).get('/api/organizations/last-touched?type=customer');
+    const noteTs = new Date((after.body as Record<string, string>)[String(org.id)]).getTime();
+    expect(noteTs).toBeGreaterThan(epochTs);
+  });
+
+  it('does not include OEM orgs when type=customer', async () => {
+    const oem = makeOrg({ type: 'oem', name: 'OEM Excluded From Customer Map' });
+
+    const res = await request(app).get('/api/organizations/last-touched?type=customer');
+    expect(res.status).toBe(200);
+    expect(Object.prototype.hasOwnProperty.call(res.body, String(oem.id))).toBe(false);
+  });
+
+  it('does not include customer orgs when type=oem', async () => {
+    const cust = makeOrg({ type: 'customer', name: 'Cust Excluded From OEM Map' });
+
+    const res = await request(app).get('/api/organizations/last-touched?type=oem');
+    expect(res.status).toBe(200);
+    expect(Object.prototype.hasOwnProperty.call(res.body, String(cust.id))).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Full CRUD round-trip (create → list → get → update → delete)
 // ---------------------------------------------------------------------------
 

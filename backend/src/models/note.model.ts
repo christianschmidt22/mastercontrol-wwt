@@ -182,6 +182,159 @@ const insertConflictStmt = db.prepare<
 );
 
 // ---------------------------------------------------------------------------
+// Cross-org unconfirmed insights (Gap #2 aggregator)
+// ---------------------------------------------------------------------------
+
+/**
+ * Row shape returned by listUnconfirmedAcrossOrgs — a Note joined with
+ * the owning org's name and type so the UI can render in one pass.
+ */
+export interface NoteWithOrgRow {
+  id: number;
+  organization_id: number;
+  org_name: string;
+  org_type: string;
+  content: string;
+  ai_response: string | null;
+  source_path: string | null;
+  file_mtime: string | null;
+  role: NoteRole;
+  thread_id: number | null;
+  provenance: string | null;
+  confirmed: number;
+  created_at: string;
+}
+
+/**
+ * Public shape returned by the aggregator. Built from the JOIN above; only
+ * the fields the InsightsTab actually renders are projected. We intentionally
+ * do NOT extend `Note` here to keep the wire shape small and decoupled from
+ * the file-ingest fields (file_id / content_sha256 / etc.) which are always
+ * null on agent_insight rows anyway.
+ */
+export interface NoteWithOrg {
+  id: number;
+  organization_id: number;
+  org_name: string;
+  org_type: string;
+  content: string;
+  ai_response: string | null;
+  source_path: string | null;
+  file_mtime: string | null;
+  role: NoteRole;
+  thread_id: number | null;
+  provenance: NoteProvenance | null;
+  confirmed: boolean;
+  created_at: string;
+}
+
+// ---------------------------------------------------------------------------
+// GET /api/notes/recent — most recent user/assistant notes across all orgs
+// ---------------------------------------------------------------------------
+
+const listRecentWithOrgStmt = db.prepare<[number], NoteWithOrgRow>(
+  `SELECT
+     n.id,
+     n.organization_id,
+     o.name  AS org_name,
+     o.type  AS org_type,
+     n.content,
+     n.ai_response,
+     n.source_path,
+     n.file_mtime,
+     n.role,
+     n.thread_id,
+     n.provenance,
+     n.confirmed,
+     n.created_at
+   FROM notes n
+   JOIN organizations o ON o.id = n.organization_id
+   WHERE n.role IN ('user', 'assistant')
+   ORDER BY n.created_at DESC
+   LIMIT ?`,
+);
+
+const listUnconfirmedAcrossOrgsStmt = db.prepare<[number], NoteWithOrgRow>(
+  `SELECT
+     n.id,
+     n.organization_id,
+     o.name  AS org_name,
+     o.type  AS org_type,
+     n.content,
+     n.ai_response,
+     n.source_path,
+     n.file_mtime,
+     n.role,
+     n.thread_id,
+     n.provenance,
+     n.confirmed,
+     n.created_at
+   FROM notes n
+   JOIN organizations o ON o.id = n.organization_id
+   WHERE n.role = 'agent_insight' AND n.confirmed = 0
+   ORDER BY n.created_at DESC
+   LIMIT ?`,
+);
+
+/**
+ * Cross-org insights mentioning a specific org — used by the customer detail
+ * page's "Mentioned by other orgs" panel.
+ *
+ * Returns agent_insight notes from threads belonging to other orgs (i.e. the
+ * note lives on a different org's thread) where:
+ *   - notes.organization_id = orgId (the insight was recorded FOR this org), OR
+ *   - the note appears in note_mentions for orgId (AI-extracted cross-reference)
+ * …AND the note's owning agent thread belongs to a different org (not orgId),
+ * so we never surface an org's own self-authored insights here.
+ *
+ * Joins with the thread's org to surface the source org name for display.
+ */
+const listInsightsMentioningOrgStmt = db.prepare<[number, number, number], NoteWithOrgRow>(
+  `SELECT
+     n.id,
+     n.organization_id,
+     src_org.name  AS org_name,
+     src_org.type  AS org_type,
+     n.content,
+     n.ai_response,
+     n.source_path,
+     n.file_mtime,
+     n.role,
+     n.thread_id,
+     n.provenance,
+     n.confirmed,
+     n.created_at
+   FROM notes n
+   -- Resolve the source org via the thread that produced the insight.
+   -- provenance->source_org_id is also an option but thread_id is the
+   -- canonical link; fall back to organization_id if thread_id is NULL.
+   LEFT JOIN agent_threads at2 ON at2.id = n.thread_id
+   JOIN organizations src_org
+     ON src_org.id = COALESCE(at2.organization_id, n.organization_id)
+   WHERE n.role = 'agent_insight'
+     -- The insight targets this org directly, or is mentioned via note_mentions
+     AND (
+       n.organization_id = ?
+       OR EXISTS (
+         SELECT 1 FROM note_mentions nm
+         WHERE nm.note_id = n.id AND nm.mentioned_org_id = ?
+       )
+     )
+     -- The source org is different from the target org (cross-org only)
+     AND src_org.id != ?
+   ORDER BY n.created_at DESC
+   LIMIT 20`,
+);
+
+function hydrateWithOrg(row: NoteWithOrgRow): NoteWithOrg {
+  return {
+    ...row,
+    provenance: row.provenance ? (JSON.parse(row.provenance) as NoteProvenance) : null,
+    confirmed: row.confirmed === 1,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // notes_unified VIEW queries (R-005)
 // ---------------------------------------------------------------------------
 
@@ -405,4 +558,28 @@ export const noteModel = {
     );
     return hydrate(getStmt.get(Number(result.lastInsertRowid))!);
   },
+
+  /**
+   * GET /api/notes/recent — most recent user/assistant notes across all orgs,
+   * joined with org name + type for display. Limit capped at 50 by the route.
+   */
+  listRecentWithOrg: (limit: number): NoteWithOrg[] =>
+    listRecentWithOrgStmt.all(limit).map(hydrateWithOrg),
+
+  /** Aggregator: return all unconfirmed agent_insight notes across all orgs,
+   *  joined with the org's name and type. Used by GET /api/notes/unconfirmed. */
+  listUnconfirmedAcrossOrgs: (limit: number): NoteWithOrg[] =>
+    listUnconfirmedAcrossOrgsStmt.all(limit).map(hydrateWithOrg),
+
+  /**
+   * Cross-org insights mentioning a given org — used by the customer detail
+   * page's "Mentioned by other orgs" panel.
+   *
+   * Returns agent_insight notes that were authored from a DIFFERENT org's
+   * agent thread but target this org (either directly via organization_id,
+   * or via a note_mention row). Both confirmed and unconfirmed are included
+   * so the user can act on them inline.
+   */
+  listInsightsMentioningOrg: (orgId: number, limit = 20): NoteWithOrg[] =>
+    listInsightsMentioningOrgStmt.all(orgId, orgId, orgId).slice(0, limit).map(hydrateWithOrg),
 };
