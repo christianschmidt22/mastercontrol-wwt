@@ -91,6 +91,21 @@ describe('streamChat', () => {
     expect(onText).not.toHaveBeenCalled();
   });
 
+  it('calls onThread for thread frames', async () => {
+    const chunks = [
+      sseFrame({ type: 'thread', thread_id: 42 }),
+      'data: [DONE]\n\n',
+    ];
+
+    vi.mocked(fetch).mockResolvedValueOnce(fakeResponse(chunks));
+
+    const onThread = vi.fn();
+
+    await streamChat({ orgId: 1, content: 'hi', onText: vi.fn(), onThread });
+
+    expect(onThread).toHaveBeenCalledWith(42);
+  });
+
   // -------------------------------------------------------------------------
   // Abort mid-stream
   // -------------------------------------------------------------------------

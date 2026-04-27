@@ -12,7 +12,7 @@
  *   5.  AuthModeSection renders (delegation auth surface)
  *   6.  Model select calls mutation immediately on change (no separate Save)
  *   7.  Theme radio updates document.documentElement class + mutation
- *   8.  Paths inputs are read-only
+ *   8.  Paths inputs save the backend root keys
  *
  * AuthModeSection (subscription-login + API-key fallback) is stubbed
  * here — its full behaviour is covered by AuthModeSection.test.tsx.
@@ -39,12 +39,16 @@ vi.mock('../api/useSettings', () => ({
         value: 'sk-ant-...EFGH',
       },
       default_model: { key: 'default_model', value: 'claude-sonnet-4-6' },
-      workvault_path: {
-        key: 'workvault_path',
+      mastercontrol_root: {
+        key: 'mastercontrol_root',
+        value: 'C:\\Users\\test\\mastercontrol',
+      },
+      workvault_root: {
+        key: 'workvault_root',
         value: 'C:\\Users\\test\\WorkVault',
       },
-      onedrive_path: {
-        key: 'onedrive_path',
+      onedrive_root: {
+        key: 'onedrive_root',
         value: 'C:\\Users\\test\\OneDrive',
       },
     };
@@ -92,6 +96,7 @@ function renderPage() {
 
 describe('SettingsPage', () => {
   beforeEach(() => {
+    mutateMock.mockClear();
     mutateMock.mockResolvedValue(undefined);
     setThemeMock.mockReset();
     document.documentElement.classList.remove('light', 'dark');
@@ -222,13 +227,38 @@ describe('SettingsPage', () => {
   });
 
   // 10 ─────────────────────────────────────────────────────────────────────────
-  it('both paths inputs are read-only', () => {
+  it('paths save the backend root keys', async () => {
+    const user = userEvent.setup();
     renderPage();
 
+    const mastercontrol = screen.getByDisplayValue('C:\\Users\\test\\mastercontrol');
     const workvault = screen.getByDisplayValue('C:\\Users\\test\\WorkVault');
     const onedrive = screen.getByDisplayValue('C:\\Users\\test\\OneDrive');
 
-    expect(workvault).toHaveAttribute('readonly');
-    expect(onedrive).toHaveAttribute('readonly');
+    expect(mastercontrol).not.toHaveAttribute('readonly');
+    expect(workvault).not.toHaveAttribute('readonly');
+    expect(onedrive).not.toHaveAttribute('readonly');
+
+    await user.clear(mastercontrol);
+    await user.type(mastercontrol, 'C:\\New\\mastercontrol');
+    await user.click(screen.getByRole('button', { name: /save mastercontrol/i }));
+
+    await waitFor(() => {
+      expect(mutateMock).toHaveBeenCalledWith({
+        key: 'mastercontrol_root',
+        value: 'C:\\New\\mastercontrol',
+      });
+    });
+
+    await user.clear(workvault);
+    await user.type(workvault, 'C:\\New\\WorkVault');
+    await user.click(screen.getByRole('button', { name: /save workvault/i }));
+
+    await waitFor(() => {
+      expect(mutateMock).toHaveBeenCalledWith({
+        key: 'workvault_root',
+        value: 'C:\\New\\WorkVault',
+      });
+    });
   });
 });

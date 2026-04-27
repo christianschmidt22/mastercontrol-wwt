@@ -40,9 +40,17 @@ export interface UseStreamChat {
 
 export function useStreamChat(orgId: number, threadId?: number): UseStreamChat {
   const qc = useQueryClient();
+  const [activeThreadId, setActiveThreadId] = useState<number | undefined>(threadId);
+  const activeThreadIdRef = useRef<number | undefined>(threadId);
 
   // Persisted history from the backend
-  const { data: persistedMessages = [] } = useAgentMessages(threadId ?? 0);
+  const { data: persistedMessages = [] } = useAgentMessages(activeThreadId ?? 0);
+
+  // Refs so callbacks always see latest values without stale closures
+  const lastUserMessageRef = useRef<string>('');
+  const abortControllerRef = useRef<AbortController | null>(null);
+  // Track accumulated partial across the entire stream so onDone can read it
+  const accumulatedRef = useRef<string>('');
 
   // Optimistic messages added locally until the persisted query catches up
   const [optimisticPending, setOptimisticPending] = useState<StreamChatMessage[]>([]);
@@ -52,11 +60,16 @@ export function useStreamChat(orgId: number, threadId?: number): UseStreamChat {
   const [partialText, setPartialText] = useState('');
   const [failed, setFailed] = useState<string | null>(null);
 
-  // Refs so callbacks always see latest values without stale closures
-  const lastUserMessageRef = useRef<string>('');
-  const abortControllerRef = useRef<AbortController | null>(null);
-  // Track accumulated partial across the entire stream so onDone can read it
-  const accumulatedRef = useRef<string>('');
+  useEffect(() => {
+    abortControllerRef.current?.abort();
+    setActiveThreadId(threadId);
+    activeThreadIdRef.current = threadId;
+    setOptimisticPending([]);
+    setPartialText('');
+    accumulatedRef.current = '';
+    setStreaming(false);
+    setFailed(null);
+  }, [orgId, threadId]);
 
   const send = useCallback(
     (content: string) => {
@@ -90,8 +103,15 @@ export function useStreamChat(orgId: number, threadId?: number): UseStreamChat {
 
       streamChat({
         orgId,
-        threadId,
+        threadId: activeThreadIdRef.current,
         content,
+        onThread: (nextThreadId) => {
+          activeThreadIdRef.current = nextThreadId;
+          setActiveThreadId(nextThreadId);
+          const url = new URL(window.location.href);
+          url.searchParams.set('thread', String(nextThreadId));
+          window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`);
+        },
         onText: (delta: string) => {
           accumulatedRef.current += delta;
           setPartialText((prev) => prev + delta);
@@ -111,8 +131,9 @@ export function useStreamChat(orgId: number, threadId?: number): UseStreamChat {
           setStreaming(false);
           setPartialText('');
           // Invalidate persisted queries so TanStack Query syncs from backend
-          if (threadId !== undefined) {
-            void qc.invalidateQueries({ queryKey: threadKeys.messages(threadId) });
+          const threadForInvalidation = activeThreadIdRef.current;
+          if (threadForInvalidation !== undefined) {
+            void qc.invalidateQueries({ queryKey: threadKeys.messages(threadForInvalidation) });
           }
           void qc.invalidateQueries({ queryKey: noteKeys.all(orgId) });
         },
@@ -130,7 +151,7 @@ export function useStreamChat(orgId: number, threadId?: number): UseStreamChat {
         setStreaming(false);
       });
     },
-    [orgId, threadId, qc],
+    [orgId, qc],
   );
 
   const stop = useCallback(() => {

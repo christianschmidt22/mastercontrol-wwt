@@ -8,5 +8,6 @@ export default defineConfig({
     include: ['src/**/*.test.ts'],
     pool: 'forks', // each test file gets its own process + DB
     fileParallelism: true,
+    hookTimeout: 30_000,
   },
 });

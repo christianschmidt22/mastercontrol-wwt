@@ -81,7 +81,8 @@ export interface ReportRun {
 /** Result of POST /api/reports/:id/run-now */
 export interface RunNowResult {
   run_id: number;
-  output_path: string;
+  output_path: string | null;
+  executed: boolean;
 }
 
 /** Result of POST /api/ingest/scan */

@@ -100,6 +100,8 @@ today (Phase 2), recent agent insights.
 - Anthropic API key (write-only; mask after save).
 - Default model (`claude-sonnet-4-6` default; pickable: Opus 4.7, Sonnet
   4.6, Haiku 4.5).
+- MasterControl files root path (default
+  `C:\Users\schmichr\OneDrive - WWT\Documents\mastercontrol`).
 - WorkVault root path (default
   `C:\Users\schmichr\OneDrive - WWT\Documents\redqueen\WorkVault`).
 - OneDrive root path.
@@ -175,14 +177,35 @@ today (Phase 2), recent agent insights.
   `mtime`. Single-user → simultaneous-edit conflicts are rare; this is the
   simplest correct rule.
 
+### MasterControl file space
+- General customer/OEM files live under the configured MasterControl files
+  root, defaulting to
+  `C:\Users\schmichr\OneDrive - WWT\Documents\mastercontrol`.
+- Customer folders live under `customers\<folder>`, OEM folders under
+  `oems\<folder>`. Existing short folder names are preferred when they match
+  the org name or acronym, e.g. `customers\fairview`, `customers\chr`,
+  `oems\cohesity`, `oems\commvault`.
+- Customer/OEM notes live in scoped `_notes` folders, not a top-level notes
+  folder. Agent exports and accepted durable summaries live in scoped
+  `_agent` folders; canonical agent memory remains in SQLite.
+- New projects automatically link to a subfolder under the owning customer
+  or OEM folder. Example: Fairview project `VCF9 Adoption` links to
+  `...\customers\fairview\projects\vcf9_adoption`.
+- Research outputs and day-to-day working files should be saved into the
+  relevant org or project folder, then indexed as `documents` rows so they
+  can show up in the app and be read by agent tools.
+- Full vault contract: `docs/VAULT.md`.
+
 ## Reports (Phase 2)
 
 ### Scheduling
 - Cron-style expression per report (e.g. `0 8 * * MON`).
 - Runs recorded with start/end timestamps, status, output path, prompt/data
   inputs hashed.
-- Outputs default to markdown at
-  `C:\mastercontrol\reports\<report-id>\<run-id>.md` and indexed in DB.
+- Final report outputs default to markdown at
+  `<mastercontrol_root>\reports\<report-slug>\<run-id>.md` and are indexed
+  in DB. Current code may still need migration from the earlier repo-level
+  `C:\mastercontrol\reports` path; see `docs/VAULT.md`.
 
 ### Scheduler design (Windows + suspend-prone laptop)
 
@@ -307,8 +330,9 @@ request after schema rewrite)*
 - Cross-org mention auto-extraction on every live note save.
 - OneDrive directory listing for OEM Project Documentation tile (shallow
   walk via `safePath` + new `/api/oem/:id/documents/scan` endpoint).
-- Reports CRUD + Daily Task Review report (default schedule `0 7 * * *`,
-  output to `C:\mastercontrol\reports\`).
+- Reports CRUD + Daily Task Review report (default schedule `0 7 * * *`;
+  final output target is `<mastercontrol_root>\reports\`, see
+  `docs/VAULT.md`).
 - Scheduler: Task Scheduler only (ADR-0004). In-process `node-cron` +
   `runMissedJobs()` catch-up on startup + `scheduler:tick` CLI for the
   hourly Task Scheduler safety-net entry. No Windows Service.
@@ -319,7 +343,8 @@ request after schema rewrite)*
 
 **Phase 3 — Polish**
 - Email / Outlook integration.
-- Notes export back to WorkVault for OneDrive backup.
+- Notes/writeback into the MasterControl vault (`customers/<slug>/_notes`,
+  `oems/<slug>/_notes`) with WorkVault retained as legacy import material.
 - Visual design pass per the loaded design skills.
 
 ## Decisions Locked (planning session, 2026-04-25)
@@ -354,11 +379,10 @@ request after schema rewrite)*
    Phase 2 only if query patterns demand them.
 
 3. **OEM document root paths on OneDrive** — per-OEM folder location.
-   Needed before Phase 2 directory walker can be built. Likely
-   `OneDrive\WWT\OEMs\<oem-name>\` — confirm the convention.
-   **OPEN** — gated on Phase 2 work beginning. Confirm the OneDrive folder
-   convention before building the directory walker (R-025 area). Default
-   assumption: `OneDrive\WWT\OEMs\<oem-name>\`.
+   **RESOLVED 2026-04-27**: use the configured MasterControl files root,
+   with OEM folders under `oems\<folder>` and customer folders under
+   `customers\<folder>`. Existing short names are discovered before falling
+   back to slugified org names.
 
 4. **Theme default on first load** — light, dark, or `prefers-color-scheme`?
    Default plan: respect system setting.

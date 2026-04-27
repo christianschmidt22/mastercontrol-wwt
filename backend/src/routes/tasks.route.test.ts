@@ -1,13 +1,18 @@
 import { describe, it, expect, beforeAll } from 'vitest';
+import express from 'express';
 import request from 'supertest';
 import type { Express } from 'express';
 import { db } from '../db/database.js';
-import { buildApp } from '../test/app.js';
 import { makeOrg, makeTask } from '../test/factories.js';
+import { errorHandler } from '../middleware/errorHandler.js';
+import { tasksRouter } from './tasks.route.js';
 
 let app: Express;
-beforeAll(async () => {
-  app = await buildApp();
+beforeAll(() => {
+  app = express();
+  app.use(express.json());
+  app.use('/api/tasks', tasksRouter);
+  app.use(errorHandler);
 });
 
 // ---------------------------------------------------------------------------

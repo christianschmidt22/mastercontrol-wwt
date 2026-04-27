@@ -49,18 +49,19 @@ const getStmt = db.prepare<[number], ReportScheduleRow>(
   'SELECT * FROM report_schedules WHERE id = ?',
 );
 
-const getEnabledStmt = db.prepare<[], ReportScheduleRow>(
-  'SELECT * FROM report_schedules WHERE enabled = 1',
-);
-
-const findByReportAndCronStmt = db.prepare<
-  [number, string],
-  ReportScheduleRow
->(
+const getByReportStmt = db.prepare<[number], ReportScheduleRow>(
   `SELECT * FROM report_schedules
-    WHERE report_id = ? AND cron_expr = ?
+    WHERE report_id = ?
     ORDER BY id ASC
     LIMIT 1`,
+);
+
+const getEnabledStmt = db.prepare<[], ReportScheduleRow>(
+  `SELECT s.*
+     FROM report_schedules s
+     JOIN reports r ON r.id = s.report_id
+    WHERE s.enabled = 1
+      AND r.enabled = 1`,
 );
 
 const insertStmt = db.prepare<
@@ -70,10 +71,11 @@ const insertStmt = db.prepare<
    VALUES (?, ?, ?, ?)`,
 );
 
-const updateCoreStmt = db.prepare<[string, number, number]>(
+const updateCoreStmt = db.prepare<[string, number, number | null, number]>(
   `UPDATE report_schedules
       SET cron_expr = ?,
-          enabled = ?
+          enabled = ?,
+          next_run_at = ?
     WHERE id = ?`,
 );
 
@@ -87,6 +89,29 @@ const updateNextRunStmt = db.prepare<[number | null, number]>(
 
 const deleteStmt = db.prepare<[number]>(
   'DELETE FROM report_schedules WHERE id = ?',
+);
+
+const deleteByReportExceptStmt = db.prepare<[number, number]>(
+  'DELETE FROM report_schedules WHERE report_id = ? AND id != ?',
+);
+
+const replaceScheduleForReport = db.transaction(
+  (reportId: number, input: ReportScheduleInput): number => {
+    const existing = getByReportStmt.get(reportId);
+    if (existing) {
+      const enabled = input.enabled === false ? 0 : 1;
+      updateCoreStmt.run(input.cron_expr, enabled, input.next_run_at ?? null, existing.id);
+      deleteByReportExceptStmt.run(reportId, existing.id);
+      return existing.id;
+    }
+    const result = insertStmt.run(
+      reportId,
+      input.cron_expr,
+      input.enabled === false ? 0 : 1,
+      input.next_run_at ?? null,
+    );
+    return Number(result.lastInsertRowid);
+  },
 );
 
 function hydrate(row: ReportScheduleRow): ReportSchedule {
@@ -115,27 +140,16 @@ export const reportScheduleModel = {
     getEnabledStmt.all().map(hydrate),
 
   /**
-   * Idempotent upsert keyed on (report_id, cron_expr). If a schedule with
-   * the same cron expression already exists for the report, update its
-   * enabled flag and return the existing row. Otherwise insert a new row.
+   * Idempotent upsert keyed on report_id. Phase 2 supports one canonical cron
+   * expression per report; changing the expression replaces the existing row
+   * instead of adding a second enabled schedule.
    */
   upsert: (
     reportId: number,
     input: ReportScheduleInput,
   ): ReportSchedule => {
-    const existing = findByReportAndCronStmt.get(reportId, input.cron_expr);
-    if (existing) {
-      const enabled = input.enabled === false ? 0 : 1;
-      updateCoreStmt.run(input.cron_expr, enabled, existing.id);
-      return hydrate(getStmt.get(existing.id)!);
-    }
-    const result = insertStmt.run(
-      reportId,
-      input.cron_expr,
-      input.enabled === false ? 0 : 1,
-      input.next_run_at ?? null,
-    );
-    return hydrate(getStmt.get(Number(result.lastInsertRowid))!);
+    const id = replaceScheduleForReport(reportId, input);
+    return hydrate(getStmt.get(id)!);
   },
 
   updateLastRun: (id: number, fireTime: number): void => {

@@ -24,9 +24,18 @@
  */
 
 import cron from 'node-cron';
+import type { ScheduledTask } from 'node-cron';
 import { reportScheduleModel } from '../models/reportSchedule.model.js';
 import { runReport } from './reports.service.js';
 import { getMostRecentCronTime } from '../lib/cronUtils.js';
+
+interface RegisteredSchedule {
+  cronExpr: string;
+  task: ScheduledTask;
+}
+
+let schedulerStarted = false;
+const registered = new Map<number, RegisteredSchedule>();
 
 /**
  * Replay any cron fires whose nominal fire-time is later than the schedule's
@@ -62,20 +71,48 @@ export async function runMissedJobs(): Promise<void> {
 }
 
 /**
- * Register a live `node-cron` task per enabled schedule. Each tick fires
- * `runReport` with the current wall-clock time as the fire-time. The
+ * Register a live `node-cron` task per enabled schedule. Tasks are tracked so
+ * UI edits can reschedule them without requiring a backend restart. The
  * `report_runs` UNIQUE constraint plus `runMissedJobs()` cover the edge case
- * where the in-process tick and the catch-up path race on the same fire-time.
- *
- * Tasks are not tracked / stopped — they run for the lifetime of the
- * process. This matches Phase 2 Decision B (in-process scheduler, Task
- * Scheduler hourly safety net).
+ * where the in-process tick and the catch-up path race on the same nominal
+ * fire-time.
  */
 export function startInProcessScheduler(): void {
+  schedulerStarted = true;
+  refreshInProcessScheduler();
+}
+
+export function notifySchedulesChanged(): void {
+  if (!schedulerStarted) return;
+  refreshInProcessScheduler();
+}
+
+export function stopInProcessScheduler(): void {
+  for (const { task } of registered.values()) {
+    task.stop();
+  }
+  registered.clear();
+  schedulerStarted = false;
+}
+
+export function refreshInProcessScheduler(): void {
   const schedules = reportScheduleModel.getEnabled();
+  const enabledIds = new Set(schedules.map((s) => s.id));
+
+  for (const [id, entry] of registered) {
+    const schedule = schedules.find((s) => s.id === id);
+    if (!schedule || schedule.cron_expr !== entry.cronExpr) {
+      entry.task.stop();
+      registered.delete(id);
+    }
+  }
+
   for (const s of schedules) {
-    cron.schedule(s.cron_expr, () => {
-      const fireTime = Math.floor(Date.now() / 1000);
+    if (registered.has(s.id)) continue;
+
+    const task = cron.schedule(s.cron_expr, () => {
+      const nowSecs = Math.floor(Date.now() / 1000) + 1;
+      const fireTime = getMostRecentCronTime(s.cron_expr, nowSecs) ?? Math.floor(Date.now() / 1000);
       // Fire-and-forget: cron callbacks have no awaiter. Errors inside
       // runReport are caught and recorded on the report_runs row by the
       // reports service itself, so the catch here is just defence-in-depth
@@ -88,5 +125,14 @@ export function startInProcessScheduler(): void {
         });
       });
     });
+    registered.set(s.id, { cronExpr: s.cron_expr, task });
+  }
+
+  for (const id of registered.keys()) {
+    if (!enabledIds.has(id)) {
+      const entry = registered.get(id);
+      entry?.task.stop();
+      registered.delete(id);
+    }
   }
 }

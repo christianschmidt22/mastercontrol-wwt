@@ -873,104 +873,118 @@ export async function streamChat({
     },
   ];
 
-  try {
-    const stream = client.messages.stream({
-      model: agentConfig.model,
-      max_tokens: 4096,
-      // Cast: CachedTextBlock is structurally compatible with TextBlockParam;
-      // the extra `cache_control` field is accepted by the Anthropic API even
-      // though the SDK type omits it. Safe to remove cast when SDK types catch up.
-      system: systemBlocks,
-      messages: messagesPayload,
-      tools: filteredTools,
-    });
+  sse.send({ type: 'thread', thread_id: threadId });
 
-    // Race the stream against client disconnect so we don't hold the Anthropic
-    // connection open after the browser navigates away.
-    const streamDone = (async () => {
-      for await (const event of stream) {
-        if (event.type === 'content_block_delta') {
-          if (event.delta.type === 'text_delta') {
-            fullText += event.delta.text;
-            sse.send({ type: 'text', delta: event.delta.text });
+  try {
+    let conversation: Array<Anthropic.MessageParam> = messagesPayload;
+    const maxToolTurns = 4;
+    let finalNoToolsConversation: Array<Anthropic.MessageParam> | null = null;
+
+    for (let turn = 0; turn < maxToolTurns; turn += 1) {
+      const stream = client.messages.stream({
+        model: agentConfig.model,
+        max_tokens: 4096,
+        // Cast: CachedTextBlock is structurally compatible with TextBlockParam;
+        // the extra `cache_control` field is accepted by the Anthropic API even
+        // though the SDK type omits it. Safe to remove cast when SDK types catch up.
+        system: systemBlocks,
+        messages: conversation,
+        tools: filteredTools,
+      });
+
+      const streamDone = (async () => {
+        for await (const event of stream) {
+          if (event.type === 'content_block_delta') {
+            if (event.delta.type === 'text_delta') {
+              fullText += event.delta.text;
+              sse.send({ type: 'text', delta: event.delta.text });
+            }
           }
         }
-        // content_block_start with tool_use blocks are accumulated by the SDK
-        // into finalMessage; no per-event action needed here.
-      }
 
-      // Get the final message with fully assembled tool_use blocks.
-      const finalMessage = await stream.finalMessage();
+        return stream.finalMessage();
+      })();
+
+      const finalMessage = await Promise.race([streamDone, sse.disconnected]);
+      if (!finalMessage) return;
 
       // Record the call in anthropic_usage_events so the AgentsPage tile
       // shows real per-org chat cost. Non-blocking on failure.
       recordUsageFromMessage('chat', agentConfig.model, finalMessage);
 
-      for (const block of finalMessage.content) {
-        if (block.type === 'tool_use') {
-          toolCallsAccumulated.push(block);
+      const toolResults: ToolResultPayload[] = [];
 
-          if (block.name === 'record_insight') {
-            await handleRecordInsight({
-              toolUseId: block.id,
-              input: block.input as RecordInsightInput,
-              orgId,
-              threadId,
-              allowlist,
-              m,
-              sse,
-            });
-          } else if (block.name === 'web_search') {
-            // web_search is Anthropic-managed; results stream through the SDK
-            // automatically. We log the audit row here for observability.
-            agentToolAuditModel.append({
-              thread_id: threadId,
-              tool_name: 'web_search',
-              input: block.input,
-              output: { managed: true },
-              status: 'ok',
-            });
-          } else if (block.name === 'search_notes') {
-            handleSearchNotes({
-              toolUseId: block.id,
-              input: block.input as SearchNotesInput,
-              threadId,
-              m,
-              sse,
-            });
-          } else if (block.name === 'list_documents') {
-            handleListDocuments({
-              toolUseId: block.id,
-              input: block.input as ListDocumentsInput,
-              threadId,
-              m,
-              sse,
-            });
-          } else if (block.name === 'read_document') {
-            handleReadDocument({
-              toolUseId: block.id,
-              input: block.input as ReadDocumentInput,
-              threadId,
-              sse,
-            });
-          } else if (block.name === 'create_task') {
-            handleCreateTask({
-              toolUseId: block.id,
-              input: block.input as CreateTaskInput,
-              threadId,
-              m,
-              sse,
-            });
-          }
+      for (const block of finalMessage.content) {
+        if (block.type !== 'tool_use') continue;
+        toolCallsAccumulated.push(block);
+
+        if (block.name === 'web_search') {
+          // web_search is Anthropic-managed; results stream through the SDK
+          // automatically. We log the audit row here for observability.
+          agentToolAuditModel.append({
+            thread_id: threadId,
+            tool_name: 'web_search',
+            input: block.input,
+            output: { managed: true },
+            status: 'ok',
+          });
+          continue;
         }
-        // text blocks are already streamed via content_block_delta events above.
+
+        const toolResult = await handleCustomToolUse({
+          block,
+          orgId,
+          threadId,
+          allowlist,
+          m,
+          sse,
+        });
+        if (toolResult) toolResults.push(toolResult);
       }
 
-    })();
+      if (toolResults.length === 0) break;
 
-    // Race the stream against client disconnect so we don't hold the
-    // Anthropic connection open after the browser navigates away.
-    await Promise.race([streamDone, sse.disconnected]);
+      conversation = [
+        ...conversation,
+        {
+          role: 'assistant',
+          content: finalMessage.content,
+        },
+        {
+          role: 'user',
+          content: toolResults,
+        },
+      ];
+
+      if (turn === maxToolTurns - 1) {
+        finalNoToolsConversation = conversation;
+      }
+    }
+
+    if (finalNoToolsConversation) {
+      const stream = client.messages.stream({
+        model: agentConfig.model,
+        max_tokens: 4096,
+        system: systemBlocks,
+        messages: finalNoToolsConversation,
+        tools: [],
+      });
+
+      const streamDone = (async () => {
+        for await (const event of stream) {
+          if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
+            fullText += event.delta.text;
+            sse.send({ type: 'text', delta: event.delta.text });
+          }
+        }
+
+        return stream.finalMessage();
+      })();
+
+      const finalMessage = await Promise.race([streamDone, sse.disconnected]);
+      if (!finalMessage) return;
+      recordUsageFromMessage('chat', agentConfig.model, finalMessage);
+    }
   } catch (err) {
     // Log and surface the error without leaking the API key (R-003 / R-013).
     const message = err instanceof Error ? err.message : 'Stream error';
@@ -1028,6 +1042,79 @@ interface ToolHandlerCommon {
   sse: ReturnType<typeof openSse>;
 }
 
+interface ToolResultPayload {
+  type: 'tool_result';
+  tool_use_id: string;
+  content: string;
+  is_error?: boolean;
+}
+
+interface HandleCustomToolUseArgs {
+  block: Extract<Anthropic.Message['content'][number], { type: 'tool_use' }>;
+  orgId: number;
+  threadId: number;
+  allowlist: Map<string, number>;
+  m: Awaited<ReturnType<typeof models>>;
+  sse: ReturnType<typeof openSse>;
+}
+
+async function handleCustomToolUse({
+  block,
+  orgId,
+  threadId,
+  allowlist,
+  m,
+  sse,
+}: HandleCustomToolUseArgs): Promise<ToolResultPayload | null> {
+  if (block.name === 'record_insight') {
+    return handleRecordInsight({
+      toolUseId: block.id,
+      input: block.input as RecordInsightInput,
+      orgId,
+      threadId,
+      allowlist,
+      m,
+      sse,
+    });
+  }
+  if (block.name === 'search_notes') {
+    return handleSearchNotes({
+      toolUseId: block.id,
+      input: block.input as SearchNotesInput,
+      threadId,
+      m,
+      sse,
+    });
+  }
+  if (block.name === 'list_documents') {
+    return handleListDocuments({
+      toolUseId: block.id,
+      input: block.input as ListDocumentsInput,
+      threadId,
+      m,
+      sse,
+    });
+  }
+  if (block.name === 'read_document') {
+    return handleReadDocument({
+      toolUseId: block.id,
+      input: block.input as ReadDocumentInput,
+      threadId,
+      sse,
+    });
+  }
+  if (block.name === 'create_task') {
+    return handleCreateTask({
+      toolUseId: block.id,
+      input: block.input as CreateTaskInput,
+      threadId,
+      m,
+      sse,
+    });
+  }
+  return null;
+}
+
 interface HandleSearchNotesArgs extends ToolHandlerCommon {
   input: SearchNotesInput;
 }
@@ -1038,7 +1125,7 @@ function handleSearchNotes({
   threadId,
   m,
   sse,
-}: HandleSearchNotesArgs): void {
+}: HandleSearchNotesArgs): ToolResultPayload {
   const query = typeof input.query === 'string' ? input.query.trim() : '';
   const orgId =
     typeof input.org_id === 'number' && Number.isInteger(input.org_id) && input.org_id > 0
@@ -1046,7 +1133,7 @@ function handleSearchNotes({
       : null;
 
   if (!query) {
-    sendToolError(sse, toolUseId, "search_notes: 'query' must be a non-empty string.");
+    const result = sendToolError(sse, 'search_notes', toolUseId, "search_notes: 'query' must be a non-empty string.");
     agentToolAuditModel.append({
       thread_id: threadId,
       tool_name: 'search_notes',
@@ -1054,7 +1141,7 @@ function handleSearchNotes({
       output: { rejected_reason: 'invalid_query' },
       status: 'rejected',
     });
-    return;
+    return result;
   }
 
   try {
@@ -1067,14 +1154,12 @@ function handleSearchNotes({
     }));
 
     const payload = JSON.stringify({ results });
-    sse.send({
+    const result: ToolResultPayload = {
       type: 'tool_result',
-      payload: {
-        type: 'tool_result' as const,
-        tool_use_id: toolUseId,
-        content: payload,
-      },
-    });
+      tool_use_id: toolUseId,
+      content: payload,
+    };
+    emitToolResult(sse, 'search_notes', result);
 
     agentToolAuditModel.append({
       thread_id: threadId,
@@ -1083,9 +1168,10 @@ function handleSearchNotes({
       output: { result_count: results.length },
       status: 'ok',
     });
+    return result;
   } catch (err) {
     const message = err instanceof Error ? err.message : 'search_notes failed';
-    sendToolError(sse, toolUseId, `search_notes: ${message}`);
+    const result = sendToolError(sse, 'search_notes', toolUseId, `search_notes: ${message}`);
     agentToolAuditModel.append({
       thread_id: threadId,
       tool_name: 'search_notes',
@@ -1093,6 +1179,7 @@ function handleSearchNotes({
       output: { error: message },
       status: 'error',
     });
+    return result;
   }
 }
 
@@ -1106,7 +1193,7 @@ function handleListDocuments({
   threadId,
   m,
   sse,
-}: HandleListDocumentsArgs): void {
+}: HandleListDocumentsArgs): ToolResultPayload {
   const orgId =
     typeof input.org_id === 'number' && Number.isInteger(input.org_id) && input.org_id > 0
       ? input.org_id
@@ -1116,7 +1203,7 @@ function handleListDocuments({
     kindRaw === 'link' || kindRaw === 'file' ? kindRaw : 'all';
 
   if (orgId === null) {
-    sendToolError(sse, toolUseId, "list_documents: 'org_id' must be a positive integer.");
+    const result = sendToolError(sse, 'list_documents', toolUseId, "list_documents: 'org_id' must be a positive integer.");
     agentToolAuditModel.append({
       thread_id: threadId,
       tool_name: 'list_documents',
@@ -1124,21 +1211,19 @@ function handleListDocuments({
       output: { rejected_reason: 'invalid_org_id' },
       status: 'rejected',
     });
-    return;
+    return result;
   }
 
   try {
     const all = m.documentModel.listFor(orgId);
     const filtered = kind === 'all' ? all : all.filter((d) => d.kind === kind);
     const payload = JSON.stringify({ documents: filtered });
-    sse.send({
+    const result: ToolResultPayload = {
       type: 'tool_result',
-      payload: {
-        type: 'tool_result' as const,
-        tool_use_id: toolUseId,
-        content: payload,
-      },
-    });
+      tool_use_id: toolUseId,
+      content: payload,
+    };
+    emitToolResult(sse, 'list_documents', result);
     agentToolAuditModel.append({
       thread_id: threadId,
       tool_name: 'list_documents',
@@ -1146,9 +1231,10 @@ function handleListDocuments({
       output: { count: filtered.length },
       status: 'ok',
     });
+    return result;
   } catch (err) {
     const message = err instanceof Error ? err.message : 'list_documents failed';
-    sendToolError(sse, toolUseId, `list_documents: ${message}`);
+    const result = sendToolError(sse, 'list_documents', toolUseId, `list_documents: ${message}`);
     agentToolAuditModel.append({
       thread_id: threadId,
       tool_name: 'list_documents',
@@ -1156,6 +1242,7 @@ function handleListDocuments({
       output: { error: message },
       status: 'error',
     });
+    return result;
   }
 }
 
@@ -1171,11 +1258,11 @@ function handleReadDocument({
   threadId,
   input,
   sse,
-}: HandleReadDocumentArgs): void {
+}: HandleReadDocumentArgs): ToolResultPayload {
   const requestedPath = typeof input.path === 'string' ? input.path : '';
 
   if (!requestedPath) {
-    sendToolError(sse, toolUseId, "read_document: 'path' must be a non-empty string.");
+    const result = sendToolError(sse, 'read_document', toolUseId, "read_document: 'path' must be a non-empty string.");
     agentToolAuditModel.append({
       thread_id: threadId,
       tool_name: 'read_document',
@@ -1183,18 +1270,17 @@ function handleReadDocument({
       output: { rejected_reason: 'invalid_path' },
       status: 'rejected',
     });
-    return;
+    return result;
   }
 
-  // Resolve a configured root. WorkVault wins; fall back to OneDrive root.
-  // If neither is configured, refuse — there is no jail to operate inside.
-  const root =
-    settingsModel.get('workvault_root') ??
-    settingsModel.get('onedrive_root') ??
-    null;
-  if (!root) {
-    sendToolError(
+  const roots = [
+    settingsModel.get('workvault_root'),
+    settingsModel.get('onedrive_root'),
+  ].filter((root): root is string => typeof root === 'string' && root.trim().length > 0);
+  if (roots.length === 0) {
+    const result = sendToolError(
       sse,
+      'read_document',
       toolUseId,
       'read_document: no workvault_root or onedrive_root configured in settings.',
     );
@@ -1205,19 +1291,31 @@ function handleReadDocument({
       output: { rejected_reason: 'no_root_configured' },
       status: 'rejected',
     });
-    return;
+    return result;
   }
 
-  let safe: string;
+  let safe: string | null = null;
   try {
     // R-024: every check (escape via .., symlinks pointing outside, extension
     // allowlist) lives inside resolveSafePath. If the input path tries to
     // escape (e.g. contains '..'), we never reach readFileSync.
-    safe = resolveSafePath(requestedPath, root);
-    enforceSizeLimit(safe);
+    const errors: string[] = [];
+    for (const root of roots) {
+      try {
+        const resolved = resolveSafePath(requestedPath, root);
+        enforceSizeLimit(resolved);
+        safe = resolved;
+        break;
+      } catch (err) {
+        errors.push(err instanceof Error ? err.message : 'safe-path-rejected');
+      }
+    }
+    if (safe === null) {
+      throw new Error(errors[0] ?? 'safe-path-rejected');
+    }
   } catch (err) {
     const message = err instanceof Error ? err.message : 'safe-path-rejected';
-    sendToolError(sse, toolUseId, `read_document: ${message}`);
+    const result = sendToolError(sse, 'read_document', toolUseId, `read_document: ${message}`);
     agentToolAuditModel.append({
       thread_id: threadId,
       tool_name: 'read_document',
@@ -1225,54 +1323,63 @@ function handleReadDocument({
       output: { rejected_reason: message },
       status: 'rejected',
     });
-    return;
+    return result;
   }
+  if (safe === null) {
+    const result = sendToolError(sse, 'read_document', toolUseId, 'read_document: safe-path-rejected');
+    agentToolAuditModel.append({
+      thread_id: threadId,
+      tool_name: 'read_document',
+      input: { path: requestedPath },
+      output: { rejected_reason: 'safe-path-rejected' },
+      status: 'rejected',
+    });
+    return result;
+  }
+  const safePath = safe;
 
   // PDF support is deferred to Phase 3 — return an explicit notice rather
   // than dumping binary bytes into the model context.
-  if (safe.toLowerCase().endsWith('.pdf')) {
-    const notice = `<untrusted_document src="${safe}">\n[binary content not supported in Phase 2]\n</untrusted_document>`;
-    sse.send({
+  if (safePath.toLowerCase().endsWith('.pdf')) {
+    const notice = `<untrusted_document src="${safePath}">\n[binary content not supported in Phase 2]\n</untrusted_document>`;
+    const result: ToolResultPayload = {
       type: 'tool_result',
-      payload: {
-        type: 'tool_result' as const,
-        tool_use_id: toolUseId,
-        content: notice,
-      },
-    });
+      tool_use_id: toolUseId,
+      content: notice,
+    };
+    emitToolResult(sse, 'read_document', result);
     agentToolAuditModel.append({
       thread_id: threadId,
       tool_name: 'read_document',
       input: { path: requestedPath },
-      output: { resolved_path: safe, kind: 'pdf_unsupported' },
+      output: { resolved_path: safePath, kind: 'pdf_unsupported' },
       status: 'ok',
     });
-    return;
+    return result;
   }
 
   try {
-    const content = fs.readFileSync(safe, 'utf8');
+    const content = fs.readFileSync(safePath, 'utf8');
     // R-026: every untrusted-content payload is wrapped so the model treats
     // any directives inside as data, not instructions.
-    const wrapped = `<untrusted_document src="${safe}">\n${content}\n</untrusted_document>`;
-    sse.send({
+    const wrapped = `<untrusted_document src="${safePath}">\n${content}\n</untrusted_document>`;
+    const result: ToolResultPayload = {
       type: 'tool_result',
-      payload: {
-        type: 'tool_result' as const,
-        tool_use_id: toolUseId,
-        content: wrapped,
-      },
-    });
+      tool_use_id: toolUseId,
+      content: wrapped,
+    };
+    emitToolResult(sse, 'read_document', result);
     agentToolAuditModel.append({
       thread_id: threadId,
       tool_name: 'read_document',
       input: { path: requestedPath },
-      output: { resolved_path: safe, bytes: content.length },
+      output: { resolved_path: safePath, bytes: content.length },
       status: 'ok',
     });
+    return result;
   } catch (err) {
     const message = err instanceof Error ? err.message : 'read failed';
-    sendToolError(sse, toolUseId, `read_document: ${message}`);
+    const result = sendToolError(sse, 'read_document', toolUseId, `read_document: ${message}`);
     agentToolAuditModel.append({
       thread_id: threadId,
       tool_name: 'read_document',
@@ -1280,6 +1387,7 @@ function handleReadDocument({
       output: { error: message },
       status: 'error',
     });
+    return result;
   }
 }
 
@@ -1293,7 +1401,7 @@ function handleCreateTask({
   threadId,
   m,
   sse,
-}: HandleCreateTaskArgs): void {
+}: HandleCreateTaskArgs): ToolResultPayload {
   const title = typeof input.title === 'string' ? input.title.trim() : '';
   const dueDate =
     typeof input.due_date === 'string' && input.due_date.trim().length > 0
@@ -1311,7 +1419,7 @@ function handleCreateTask({
       : null;
 
   if (!title) {
-    sendToolError(sse, toolUseId, "create_task: 'title' must be a non-empty string.");
+    const result = sendToolError(sse, 'create_task', toolUseId, "create_task: 'title' must be a non-empty string.");
     agentToolAuditModel.append({
       thread_id: threadId,
       tool_name: 'create_task',
@@ -1319,7 +1427,7 @@ function handleCreateTask({
       output: { rejected_reason: 'invalid_title' },
       status: 'rejected',
     });
-    return;
+    return result;
   }
 
   // Service-layer cross-org validation. The DB trigger from migration 003 is
@@ -1328,7 +1436,7 @@ function handleCreateTask({
   if (contactId !== null && orgId !== null) {
     const contact = m.contactModel.get(contactId);
     if (!contact) {
-      sendToolError(sse, toolUseId, `create_task: contact ${contactId} not found.`);
+      const result = sendToolError(sse, 'create_task', toolUseId, `create_task: contact ${contactId} not found.`);
       agentToolAuditModel.append({
         thread_id: threadId,
         tool_name: 'create_task',
@@ -1336,11 +1444,12 @@ function handleCreateTask({
         output: { rejected_reason: 'contact_not_found' },
         status: 'rejected',
       });
-      return;
+      return result;
     }
     if (contact.organization_id !== orgId) {
-      sendToolError(
+      const result = sendToolError(
         sse,
+        'create_task',
         toolUseId,
         `create_task: contact org mismatch (contact ${contactId} belongs to org ${contact.organization_id}, not ${orgId}).`,
       );
@@ -1354,7 +1463,7 @@ function handleCreateTask({
         },
         status: 'rejected',
       });
-      return;
+      return result;
     }
   }
 
@@ -1365,14 +1474,12 @@ function handleCreateTask({
       organization_id: orgId,
       contact_id: contactId,
     });
-    sse.send({
+    const result: ToolResultPayload = {
       type: 'tool_result',
-      payload: {
-        type: 'tool_result' as const,
-        tool_use_id: toolUseId,
-        content: JSON.stringify({ task_id: task.id }),
-      },
-    });
+      tool_use_id: toolUseId,
+      content: JSON.stringify({ task_id: task.id }),
+    };
+    emitToolResult(sse, 'create_task', result);
     agentToolAuditModel.append({
       thread_id: threadId,
       tool_name: 'create_task',
@@ -1380,9 +1487,10 @@ function handleCreateTask({
       output: { task_id: task.id },
       status: 'ok',
     });
+    return result;
   } catch (err) {
     const message = err instanceof Error ? err.message : 'create_task failed';
-    sendToolError(sse, toolUseId, `create_task: ${message}`);
+    const result = sendToolError(sse, 'create_task', toolUseId, `create_task: ${message}`);
     agentToolAuditModel.append({
       thread_id: threadId,
       tool_name: 'create_task',
@@ -1390,6 +1498,7 @@ function handleCreateTask({
       output: { error: message },
       status: 'error',
     });
+    return result;
   }
 }
 
@@ -1400,17 +1509,31 @@ function handleCreateTask({
  */
 function sendToolError(
   sse: ReturnType<typeof openSse>,
+  toolName: string,
   toolUseId: string,
   message: string,
+): ToolResultPayload {
+  const result: ToolResultPayload = {
+    type: 'tool_result',
+    tool_use_id: toolUseId,
+    is_error: true,
+    content: message,
+  };
+  emitToolResult(sse, toolName, result);
+  return result;
+}
+
+function emitToolResult(
+  sse: ReturnType<typeof openSse>,
+  toolName: string,
+  payload: ToolResultPayload,
 ): void {
   sse.send({
     type: 'tool_result',
-    payload: {
-      type: 'tool_result' as const,
-      tool_use_id: toolUseId,
-      is_error: true,
-      content: message,
-    },
+    tool: toolName,
+    ok: payload.is_error !== true,
+    message: payload.content,
+    payload,
   });
 }
 
@@ -1446,20 +1569,20 @@ async function handleRecordInsight({
   allowlist,
   m,
   sse,
-}: HandleRecordInsightArgs): Promise<void> {
+}: HandleRecordInsightArgs): Promise<ToolResultPayload> {
   const targetNameLower = (input.target_org_name ?? '').toLowerCase().trim();
   const targetOrgId = allowlist.get(targetNameLower);
 
   if (!targetOrgId) {
     // R-002: reject writes to orgs outside the allowlist.
-    const rejection = {
+    const rejection: ToolResultPayload = {
       type: 'tool_result' as const,
       tool_use_id: toolUseId,
       is_error: true,
       content: `Target org '${input.target_org_name}' is not in the allowlist for this turn. ` +
         `Only these orgs are writable: ${[...allowlist.keys()].join(', ')}.`,
     };
-    sse.send({ type: 'tool_result', payload: rejection });
+    emitToolResult(sse, 'record_insight', rejection);
 
     agentToolAuditModel.append({
       thread_id: threadId,
@@ -1468,7 +1591,7 @@ async function handleRecordInsight({
       output: { rejected_reason: 'org_not_in_allowlist', target: input.target_org_name },
       status: 'rejected',
     });
-    return;
+    return rejection;
   }
 
   // Build provenance object (R-002). The model's createInsight handles JSON.stringify.
@@ -1486,12 +1609,12 @@ async function handleRecordInsight({
     // chat turn against that org sees the newly-recorded insight.
     bumpOrgVersion(targetOrgId);
 
-    const toolResult = {
+    const toolResult: ToolResultPayload = {
       type: 'tool_result' as const,
       tool_use_id: toolUseId,
       content: `Insight recorded (note id=${note.id}, org=${input.target_org_name}, status=unconfirmed).`,
     };
-    sse.send({ type: 'tool_result', payload: toolResult });
+    emitToolResult(sse, 'record_insight', toolResult);
 
     agentToolAuditModel.append({
       thread_id: threadId,
@@ -1500,8 +1623,10 @@ async function handleRecordInsight({
       output: { note_id: note.id, target_org_id: targetOrgId, status: 'unconfirmed' },
       status: 'ok',
     });
+    return toolResult;
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error';
+    const result = sendToolError(sse, 'record_insight', toolUseId, `record_insight: ${message}`);
     agentToolAuditModel.append({
       thread_id: threadId,
       tool_name: 'record_insight',
@@ -1509,7 +1634,7 @@ async function handleRecordInsight({
       output: { error: message },
       status: 'error',
     });
-    throw err;
+    return result;
   }
 }
 
@@ -1594,6 +1719,12 @@ export interface OrgMention {
   confidence: number;
 }
 
+export interface OrgPrimaryAndMentions {
+  primary_org_name: string | null;
+  primary_confidence: number | null;
+  mentions: OrgMention[];
+}
+
 /**
  * Ask the model which of the `candidateNames` appear in `noteContent`.
  *
@@ -1653,5 +1784,76 @@ export async function extractOrgMentions(
     // JSON parse failure or unexpected shape — return empty to avoid crashing
     // the scan. The caller (mention.service / ingest.service) logs this.
     return [];
+  }
+}
+
+export async function extractPrimaryOrgAndMentions(
+  noteContent: string,
+  candidateNames: string[],
+): Promise<OrgPrimaryAndMentions> {
+  if (candidateNames.length === 0) {
+    return { primary_org_name: null, primary_confidence: null, mentions: [] };
+  }
+
+  const client = getClient();
+  const nameList = candidateNames.join(', ');
+
+  const ingestModel = 'claude-haiku-4-5';
+  const response = await client.messages.create({
+    model: ingestModel,
+    max_tokens: 384,
+    tools: [],
+    system:
+      `You classify WorkVault notes against a fixed organization list: ${nameList}. ` +
+      `Choose the single primary organization the note is mainly about, then list ` +
+      `other organizations that are mentioned. Only use exact names from the list. ` +
+      `Return valid JSON only with this shape: ` +
+      `{"primary_org_name": string|null, "primary_confidence": number|null, ` +
+      `"mentions": [{"name": string, "confidence": number}]}. ` +
+      `If no listed organization is the primary subject, use null. Do not include ` +
+      `the primary organization in mentions unless it is also separately referenced.`,
+    messages: [
+      {
+        role: 'user',
+        content: `<untrusted_document src="note">\n${noteContent}\n</untrusted_document>`,
+      },
+    ],
+  });
+
+  recordUsageFromMessage('ingest', ingestModel, response, 'extractPrimaryOrgAndMentions');
+
+  try {
+    const firstBlock = response.content[0];
+    if (!firstBlock || firstBlock.type !== 'text') {
+      return { primary_org_name: null, primary_confidence: null, mentions: [] };
+    }
+    const parsed = JSON.parse(firstBlock.text) as unknown;
+    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return { primary_org_name: null, primary_confidence: null, mentions: [] };
+    }
+
+    const obj = parsed as Record<string, unknown>;
+    const mentionsRaw = Array.isArray(obj['mentions']) ? obj['mentions'] : [];
+    const mentions = mentionsRaw.filter(
+      (item): item is OrgMention =>
+        typeof item === 'object' &&
+        item !== null &&
+        typeof (item as Record<string, unknown>)['name'] === 'string' &&
+        typeof (item as Record<string, unknown>)['confidence'] === 'number',
+    );
+
+    return {
+      primary_org_name:
+        typeof obj['primary_org_name'] === 'string'
+          ? obj['primary_org_name']
+          : null,
+      primary_confidence:
+        typeof obj['primary_confidence'] === 'number'
+          ? obj['primary_confidence']
+          : null,
+      mentions,
+    };
+  } catch {
+    return { primary_org_name: null, primary_confidence: null, mentions: [] };
   }
 }

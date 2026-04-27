@@ -103,8 +103,8 @@ function dayName(n: number): string {
 }
 
 /**
- * Five-field whitespace-separated; each field made of digits, `*`, `/`,
- * `,`, `-`. This is a shape check, not a semantic one. The plan calls
+ * Five-field whitespace-separated; each field made of digits, letters, `*`,
+ * `/`, `,`, `-`. This is a shape check, not a semantic one. The plan calls
  * out that a real cron validator (`/api/reports/validate-cron`) is
  * desirable but not yet shipped.
  *
@@ -116,7 +116,7 @@ export function isCronShapeValid(expr: string): boolean {
   if (!expr) return false;
   const fields = expr.trim().split(/\s+/);
   if (fields.length !== 5) return false;
-  return fields.every((f) => /^[\d*/,\-]+$/.test(f));
+  return fields.every((f) => /^[\dA-Za-z*/,\-]+$/.test(f));
 }
 
 function formatEpoch(secs: number | null): string {
@@ -1201,8 +1201,10 @@ export function ReportsPage() {
       runNowMutation.mutate(id, {
         onSuccess: (res) => {
           pushToast({
-            message: `${name} ran. Output saved.`,
-            meta: res.output_path,
+            message: res.executed
+              ? `${name} ran. Output saved.`
+              : `${name} was already run for this fire time.`,
+            meta: res.output_path ?? undefined,
             variant: 'confirm',
           });
           setPendingRunId((cur) => (cur === id ? null : cur));

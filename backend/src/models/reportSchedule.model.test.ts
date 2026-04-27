@@ -35,7 +35,7 @@ describe('reportScheduleModel.upsert', () => {
     expect(s.last_run_at).toBeNull();
   });
 
-  it('returns the existing row when called twice with the same cron_expr', () => {
+  it('returns the existing row when called twice for the same report', () => {
     const report = makeReport('upsert dedupe');
     const first = reportScheduleModel.upsert(report.id, {
       cron_expr: '0 7 * * *',
@@ -63,15 +63,13 @@ describe('reportScheduleModel.upsert', () => {
 });
 
 describe('reportScheduleModel.listByReport / get', () => {
-  it('listByReport returns multiple schedules attached to the same report', () => {
+  it('listByReport returns the canonical schedule after cron changes', () => {
     const report = makeReport('multi sched');
     reportScheduleModel.upsert(report.id, { cron_expr: '0 7 * * *' });
     reportScheduleModel.upsert(report.id, { cron_expr: '0 19 * * *' });
     const list = reportScheduleModel.listByReport(report.id);
-    expect(list.map((s) => s.cron_expr).sort()).toEqual([
-      '0 19 * * *',
-      '0 7 * * *',
-    ]);
+    expect(list).toHaveLength(1);
+    expect(list[0]?.cron_expr).toBe('0 19 * * *');
   });
 
   it('get fetches by id', () => {
@@ -89,12 +87,13 @@ describe('reportScheduleModel.listByReport / get', () => {
 
 describe('reportScheduleModel.getEnabled', () => {
   it('returns only enabled=true schedules', () => {
-    const report = makeReport('enabled-filter');
-    const a = reportScheduleModel.upsert(report.id, {
+    const enabledReport = makeReport('enabled-filter-on');
+    const disabledReport = makeReport('enabled-filter-off');
+    const a = reportScheduleModel.upsert(enabledReport.id, {
       cron_expr: '0 1 * * *',
       enabled: true,
     });
-    const b = reportScheduleModel.upsert(report.id, {
+    const b = reportScheduleModel.upsert(disabledReport.id, {
       cron_expr: '0 2 * * *',
       enabled: false,
     });
@@ -102,6 +101,18 @@ describe('reportScheduleModel.getEnabled', () => {
     const ids = enabled.map((s) => s.id);
     expect(ids).toContain(a.id);
     expect(ids).not.toContain(b.id);
+  });
+
+  it('does not return schedules attached to disabled reports', () => {
+    const report = makeReport('disabled-report-filter');
+    reportModel.update(report.id, { enabled: false });
+    const schedule = reportScheduleModel.upsert(report.id, {
+      cron_expr: '0 3 * * *',
+      enabled: true,
+    });
+
+    const ids = reportScheduleModel.getEnabled().map((s) => s.id);
+    expect(ids).not.toContain(schedule.id);
   });
 });
 

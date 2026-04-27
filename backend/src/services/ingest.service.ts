@@ -15,11 +15,16 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as crypto from 'node:crypto';
-import { db } from '../db/database.js';
 import { noteModel } from '../models/note.model.js';
+import { noteMentionModel } from '../models/noteMention.model.js';
 import { ingestSourceModel } from '../models/ingestSource.model.js';
 import { resolveSafePath } from '../lib/safePath.js';
-import { extractMentions, clearOrgCache } from './mention.service.js';
+import {
+  clearOrgCache,
+  extractPrimaryOrgCandidates,
+  upsertMentionCandidates,
+  type ExtractedOrgMention,
+} from './mention.service.js';
 import { HttpError } from '../middleware/errorHandler.js';
 
 // ---------------------------------------------------------------------------
@@ -281,20 +286,15 @@ export async function scanWorkvault(opts: ScanOptions): Promise<ScanResult> {
       // For the test suite and production use: the caller may pre-create a
       // "WorkVault" org and pass its id via a convention (e.g. first org in DB).
       // For Phase 2 we use the lowest org id available as the default target.
-      const defaultOrgId = getDefaultOrgId();
-      if (!defaultOrgId) {
-        ingestSourceModel.recordError(
-          sourceId,
-          safePath,
-          'no-org-available: create at least one organization before scanning',
-        );
+      const primary = await resolvePrimaryOrg(body, sourceId, safePath);
+      if (!primary) {
         result.errors += 1;
         continue;
       }
 
       try {
         const note = noteModel.createImported({
-          organization_id: defaultOrgId,
+          organization_id: primary.orgId,
           content: body,
           source_path: safePath,
           file_mtime: fileMtimeIso,
@@ -304,7 +304,7 @@ export async function scanWorkvault(opts: ScanOptions): Promise<ScanResult> {
         result.inserted += 1;
 
         // Trigger mention extraction (best-effort — errors logged, not thrown).
-        await runMentionExtraction(note.id, body, sourceId, safePath);
+        upsertCrossOrgMentions(note.id, primary.candidates, primary.orgId);
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         ingestSourceModel.recordError(sourceId, safePath, `insert-failed: ${msg}`);
@@ -321,9 +321,21 @@ export async function scanWorkvault(opts: ScanOptions): Promise<ScanResult> {
     if (mtimeAdvanced) {
       // Case: UPDATE — file mtime is newer than last_seen_at.
       try {
-        noteModel.updateByIngest(existing.id, body, contentSha256, fileMtimeIso);
+        const primary = await resolvePrimaryOrg(body, sourceId, safePath);
+        if (!primary) {
+          result.errors += 1;
+          continue;
+        }
+
+        noteModel.updateByIngest(
+          existing.id,
+          body,
+          contentSha256,
+          fileMtimeIso,
+          primary.orgId,
+        );
         result.updated += 1;
-        await runMentionExtraction(existing.id, body, sourceId, safePath);
+        upsertCrossOrgMentions(existing.id, primary.candidates, primary.orgId);
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         ingestSourceModel.recordError(sourceId, safePath, `update-failed: ${msg}`);
@@ -532,20 +544,15 @@ async function scanSingleFile(opts: SingleFileScanOptions): Promise<ScanResult> 
   const existing = noteModel.getByFileId(fileId);
 
   if (!existing) {
-    const defaultOrgId = getDefaultOrgId();
-    if (!defaultOrgId) {
-      ingestSourceModel.recordError(
-        sourceId,
-        safePath,
-        'no-org-available: create at least one organization before scanning',
-      );
+    const primary = await resolvePrimaryOrg(body, sourceId, safePath);
+    if (!primary) {
       result.errors += 1;
       return result;
     }
 
     try {
       const note = noteModel.createImported({
-        organization_id: defaultOrgId,
+        organization_id: primary.orgId,
         content: body,
         source_path: safePath,
         file_mtime: fileMtimeIso,
@@ -553,7 +560,7 @@ async function scanSingleFile(opts: SingleFileScanOptions): Promise<ScanResult> 
         content_sha256: contentSha256,
       });
       result.inserted += 1;
-      await runMentionExtraction(note.id, body, sourceId, safePath);
+      upsertCrossOrgMentions(note.id, primary.candidates, primary.orgId);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       ingestSourceModel.recordError(sourceId, safePath, `insert-failed: ${msg}`);
@@ -567,9 +574,21 @@ async function scanSingleFile(opts: SingleFileScanOptions): Promise<ScanResult> 
 
   if (mtimeAdvanced) {
     try {
-      noteModel.updateByIngest(existing.id, body, contentSha256, fileMtimeIso);
+      const primary = await resolvePrimaryOrg(body, sourceId, safePath);
+      if (!primary) {
+        result.errors += 1;
+        return result;
+      }
+
+      noteModel.updateByIngest(
+        existing.id,
+        body,
+        contentSha256,
+        fileMtimeIso,
+        primary.orgId,
+      );
       result.updated += 1;
-      await runMentionExtraction(existing.id, body, sourceId, safePath);
+      upsertCrossOrgMentions(existing.id, primary.candidates, primary.orgId);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       ingestSourceModel.recordError(sourceId, safePath, `update-failed: ${msg}`);
@@ -608,35 +627,42 @@ async function scanSingleFile(opts: SingleFileScanOptions): Promise<ScanResult> 
 // Helpers
 // ---------------------------------------------------------------------------
 
-const getDefaultOrgStmt = db.prepare<[], { id: number }>(
-  'SELECT id FROM organizations ORDER BY id ASC LIMIT 1',
-);
-
-/**
- * Get the id of the first organization in the DB (lowest id). Used as the
- * default target org for WorkVault-sourced notes with no explicit org mapping.
- * Returns null if no orgs exist.
- */
-function getDefaultOrgId(): number | null {
-  const row = getDefaultOrgStmt.get();
-  return row ? row.id : null;
+interface PrimaryOrgResolution {
+  orgId: number;
+  candidates: ExtractedOrgMention[];
 }
 
-/**
- * Run mention extraction for a note. Errors are caught and recorded in
- * ingest_errors rather than surfaced to the caller, so a bad Anthropic
- * response doesn't abort the rest of the scan.
- */
-async function runMentionExtraction(
-  noteId: number,
+async function resolvePrimaryOrg(
   content: string,
   sourceId: number,
   filePath: string,
-): Promise<void> {
+): Promise<PrimaryOrgResolution | null> {
   try {
-    await extractMentions(noteId, content);
+    const { primary, mentions } = await extractPrimaryOrgCandidates(content);
+    if (!primary) {
+      ingestSourceModel.recordError(
+        sourceId,
+        filePath,
+        'primary-org-not-found: AI extraction returned no matching organization',
+      );
+      return null;
+    }
+    return { orgId: primary.org.id, candidates: mentions };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    ingestSourceModel.recordError(sourceId, filePath, `mention-extraction-failed: ${msg}`);
+    ingestSourceModel.recordError(sourceId, filePath, `primary-org-extraction-failed: ${msg}`);
+    return null;
   }
+}
+
+function upsertCrossOrgMentions(
+  noteId: number,
+  candidates: ExtractedOrgMention[],
+  primaryOrgId: number,
+): void {
+  noteMentionModel.deleteByNoteAndSource(noteId, 'ai_auto');
+  upsertMentionCandidates(
+    noteId,
+    candidates.filter((candidate) => candidate.org.id !== primaryOrgId),
+  );
 }

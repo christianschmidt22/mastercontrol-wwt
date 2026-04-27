@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- Documented the MasterControl vault contract in `docs/VAULT.md` and linked it
+  from `CLAUDE.md`, `docs/PRD.md`, and `docs/ARCHITECTURE.md`. The contract
+  locks the entity-first OneDrive layout, clarifies `_agent` vs. DB-backed
+  agent memory, maps legacy WorkVault folders, and calls out the remaining
+  report-output migration from repo-level `reports/` to
+  `<mastercontrol_root>\reports`.
+
 ## Phase 2 — Merged ✓ (2026-04-26)
 
 Phase 2 ships in two five-stream parallel-agent batches off the verified

@@ -163,8 +163,8 @@ extractMentions service:
   ├─ resolve to organization_id via name match (case-insensitive)
   └─ insert into note_mentions(note_id, mentioned_org_id)
   ▼
-Phase 2: also write the note to disk under the configured WorkVault root,
-record file_mtime in the row.
+Phase 2: also write the note to disk under the scoped MasterControl vault
+`_notes` folder, record `source_path` and `file_mtime` in the row.
 ```
 
 ## Knowledge graph — how cross-org context surfaces
@@ -233,6 +233,41 @@ request reconstructs the client from the current value, so the user can
 rotate keys without restarting. The key is never sent to the frontend;
 the Settings page submits the new value via `PUT /api/settings` and the
 GET response masks it as `***...last4`.
+
+Non-secret path settings are stored in the same table:
+
+| Key | Purpose |
+|---|---|
+| `mastercontrol_root` | Root for day-to-day customer/OEM/project files. Defaults in code to `C:\Users\schmichr\OneDrive - WWT\Documents\mastercontrol` when unset. |
+| `workvault_root` | Source root for WorkVault note ingestion. |
+| `onedrive_root` | Root used to resolve OneDrive-relative OEM document folders. |
+
+## MasterControl file space
+
+The file-space helper
+([`fileSpace.service.ts`](../backend/src/services/fileSpace.service.ts))
+turns org/project records into deterministic OneDrive-backed paths without
+adding a second source of truth to the schema. The complete placement
+contract is [`VAULT.md`](VAULT.md).
+
+- Customers map to `<mastercontrol_root>\customers\<folder>`.
+- OEMs map to `<mastercontrol_root>\oems\<folder>`.
+- Existing short folders are preferred when they match the org name or
+  acronym (`fairview` for Fairview Health Services, `chr` for C.H. Robinson).
+- Otherwise folder names are slugified from the org or project name.
+- Creating a project through `/api/projects` fills `doc_url` with the
+  project folder path when the caller did not provide a link. Project folders
+  live under `projects\<project_slug>` inside the scoped customer/OEM folder.
+- Customer/OEM note markdown lives in scoped `_notes` folders; the DB indexes
+  those files. Tasks, contacts, agent thread state, and report scheduling
+  metadata remain DB canonical.
+- Agent memory is not a top-level `_claude` folder. Canonical state is in
+  `agent_threads`, `agent_messages`, `notes`, and `agent_tool_audit`; durable
+  markdown exports live in scoped `_agent` folders.
+- If `mastercontrol_root` is explicitly configured, project creation also
+  creates the directory. If the setting is unset, the app computes the
+  default path but does not write outside the repo until the user saves the
+  root in Settings.
 
 ## State management split
 

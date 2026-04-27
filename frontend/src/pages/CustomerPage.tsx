@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useSearchParams } from 'react-router-dom';
 import { LayoutGrid } from 'lucide-react';
 import { TileGrid, type TileGridItem } from '../components/tiles/TileGrid';
 import { useTileLayout, type TileLayout } from '../components/tiles/useTileLayout';
@@ -42,7 +42,14 @@ const DEFAULT_CUSTOMER_LAYOUT: TileLayout[] = [
 
 export function CustomerPage() {
   const { id } = useParams<{ id: string }>();
+  const [searchParams] = useSearchParams();
   const numericId = id ? parseInt(id, 10) : 0;
+  const threadParam = searchParams.get('thread');
+  const parsedThreadId = threadParam !== null ? Number(threadParam) : undefined;
+  const threadId =
+    parsedThreadId !== undefined && Number.isInteger(parsedThreadId) && parsedThreadId > 0
+      ? parsedThreadId
+      : undefined;
   const { data: org, isLoading: orgLoading, isError: orgError, refetch: refetchOrg } = useOrganization(numericId);
   const orgId = org?.id ?? numericId;
   const orgName = org?.name ?? '…';
@@ -73,7 +80,7 @@ export function CustomerPage() {
     {
       id: 'chat',
       title: `${orgName} Agent`,
-      node: <ChatTile orgId={orgId} orgName={orgName} />,
+      node: <ChatTile orgId={orgId} orgName={orgName} threadId={threadId} />,
     },
     {
       id: 'priority-projects',

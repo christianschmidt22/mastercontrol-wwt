@@ -25,7 +25,6 @@
  */
 
 import { readFileSync } from 'node:fs';
-import path from 'node:path';
 import { Router } from 'express';
 import { reportModel } from '../models/report.model.js';
 import { reportScheduleModel } from '../models/reportSchedule.model.js';
@@ -42,6 +41,9 @@ import { validateBody } from '../lib/validate.js';
 import { HttpError } from '../middleware/errorHandler.js';
 import { runReport } from '../services/reports.service.js';
 import { resolveSafePath } from '../lib/safePath.js';
+import { getNextCronTime } from '../lib/cronUtils.js';
+import { getReportsRoot } from '../lib/appPaths.js';
+import { notifySchedulesChanged } from '../services/scheduler.service.js';
 
 export const reportsRouter = Router();
 
@@ -51,16 +53,36 @@ function parseId(raw: unknown): number | null {
   return Number.isInteger(n) && n > 0 ? n : null;
 }
 
+function getNextCronTimeOrThrow(cronExpr: string): number {
+  try {
+    return getNextCronTime(cronExpr, Math.floor(Date.now() / 1000));
+  } catch {
+    throw new HttpError(400, 'Invalid cron expression');
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Reports CRUD
 // ---------------------------------------------------------------------------
 
 reportsRouter.get('/', (_req, res) => {
-  res.json(reportModel.list());
+  const rows = reportModel.list().map((report) => {
+    const schedule = reportScheduleModel.listByReport(report.id)[0] ?? null;
+    const lastRun = schedule ? reportRunModel.getLastRun(schedule.id) : undefined;
+    return {
+      ...report,
+      cron_expr: schedule?.cron_expr,
+      next_run_at: schedule?.next_run_at ?? null,
+      last_run_at: schedule?.last_run_at ?? null,
+      last_run_status: lastRun?.status ?? null,
+    };
+  });
+  res.json(rows);
 });
 
 reportsRouter.post('/', validateBody(ReportCreateSchema), (req, res) => {
   const body = req.validated as ReportCreate;
+  const nextRunAt = body.cron_expr ? getNextCronTimeOrThrow(body.cron_expr) : undefined;
   const report = reportModel.create({
     name: body.name,
     prompt_template: body.prompt_template,
@@ -68,6 +90,15 @@ reportsRouter.post('/', validateBody(ReportCreateSchema), (req, res) => {
     output_format: body.output_format,
     enabled: body.enabled,
   });
+  if ('cron_expr' in body && body.cron_expr) {
+    const scheduleEnabled = report.enabled;
+    reportScheduleModel.upsert(report.id, {
+      cron_expr: body.cron_expr,
+      enabled: scheduleEnabled,
+      next_run_at: scheduleEnabled ? nextRunAt : null,
+    });
+    notifySchedulesChanged();
+  }
   res.status(201).json(report);
 });
 
@@ -86,8 +117,31 @@ reportsRouter.put(
     const id = parseId(req.params.id);
     if (id === null) return next(new HttpError(400, 'Invalid id'));
     const patch = req.validated as ReportUpdate;
-    const updated = reportModel.update(id, patch);
+    const { cron_expr: cronExpr, ...reportPatch } = patch;
+    const nextRunAt = cronExpr ? getNextCronTimeOrThrow(cronExpr) : undefined;
+    const updated = reportModel.update(id, reportPatch);
     if (!updated) return next(new HttpError(404, 'Report not found'));
+    if (cronExpr) {
+      const scheduleEnabled = updated.enabled;
+      reportScheduleModel.upsert(id, {
+        cron_expr: cronExpr,
+        enabled: scheduleEnabled,
+        next_run_at: scheduleEnabled ? nextRunAt : null,
+      });
+      notifySchedulesChanged();
+    } else if (patch.enabled !== undefined) {
+      const schedule = reportScheduleModel.listByReport(id)[0];
+      if (schedule) {
+        reportScheduleModel.upsert(id, {
+          cron_expr: schedule.cron_expr,
+          enabled: updated.enabled,
+          next_run_at: updated.enabled
+            ? getNextCronTimeOrThrow(schedule.cron_expr)
+            : null,
+        });
+        notifySchedulesChanged();
+      }
+    }
     res.json(updated);
   },
 );
@@ -97,6 +151,7 @@ reportsRouter.delete('/:id', (req, res, next) => {
   if (id === null) return next(new HttpError(400, 'Invalid id'));
   const removed = reportModel.remove(id);
   if (!removed) return next(new HttpError(404, 'Report not found'));
+  notifySchedulesChanged();
   res.status(204).end();
 });
 
@@ -121,11 +176,13 @@ reportsRouter.post(
     const report = reportModel.get(id);
     if (!report) return next(new HttpError(404, 'Report not found'));
     const body = req.validated as ReportScheduleUpsert;
+    const nextRunAt = getNextCronTimeOrThrow(body.cron_expr);
     const schedule = reportScheduleModel.upsert(id, {
       cron_expr: body.cron_expr,
       enabled: body.enabled,
-      next_run_at: body.next_run_at ?? null,
+      next_run_at: body.enabled === false ? null : nextRunAt,
     });
+    notifySchedulesChanged();
     res.status(201).json(schedule);
   },
 );
@@ -185,7 +242,7 @@ reportsRouter.get('/:id/runs/:run_id/output', (req, res, next) => {
   // Defense-in-depth: verify the path is inside the reports directory even
   // though it was server-derived (R-026 ethos). The output_path is absolute
   // so we pass it directly — resolveSafePath will resolve + check containment.
-  const reportsRoot = path.join(process.cwd(), 'reports');
+  const reportsRoot = getReportsRoot();
   let absPath: string;
   try {
     absPath = resolveSafePath(run.output_path, reportsRoot);

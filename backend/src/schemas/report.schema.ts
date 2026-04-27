@@ -22,6 +22,7 @@ export const ReportCreateSchema = z
     target: ReportTargetSchema.optional(),
     output_format: OutputFormatSchema.optional(),
     enabled: z.boolean().optional(),
+    cron_expr: z.string().min(1).optional(),
   })
   .strict();
 
@@ -32,6 +33,7 @@ export const ReportUpdateSchema = z
     target: ReportTargetSchema.optional(),
     output_format: OutputFormatSchema.optional(),
     enabled: z.boolean().optional(),
+    cron_expr: z.string().min(1).optional(),
   })
   .strict();
 
@@ -39,7 +41,6 @@ export const ReportScheduleUpsertSchema = z
   .object({
     cron_expr: z.string().min(1),
     enabled: z.boolean().optional(),
-    next_run_at: z.number().int().nullable().optional(),
   })
   .strict();
 

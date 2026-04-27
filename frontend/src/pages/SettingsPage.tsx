@@ -7,7 +7,7 @@
  *                                   (rendered via AuthModeSection)
  *   3. Default Model              — <select>, saves immediately on change
  *   4. Theme                      — Light / Dark / System radios, syncs Zustand + DOM + backend
- *   5. Paths                      — read-only WorkVault + OneDrive display
+ *   5. Paths                      — editable WorkVault + OneDrive roots
  *
  * Design: DESIGN.md "Field Notes" aesthetic. Fraunces h1/h2, Switzer body.
  * A11y: explicit <label htmlFor> on every input, <fieldset>/<legend> for radios,
@@ -543,13 +543,39 @@ function ThemeSection() {
 // ─── PathsSection ─────────────────────────────────────────────────────────────
 
 function PathsSection() {
-  const { data: workvaultData } = useSetting('workvault_path');
-  const { data: onedriveData } = useSetting('onedrive_path');
+  const defaultMastercontrolRoot =
+    'C:\\Users\\schmichr\\OneDrive - WWT\\Documents\\mastercontrol';
+  const { data: mastercontrolData } = useSetting('mastercontrol_root');
+  const { data: workvaultData } = useSetting('workvault_root');
+  const { data: onedriveData } = useSetting('onedrive_root');
+  const setSetting = useSetSetting();
+  const [mastercontrolDraft, setMastercontrolDraft] = useState('');
+  const [workvaultDraft, setWorkvaultDraft] = useState('');
+  const [onedriveDraft, setOnedriveDraft] = useState('');
+  const [savedAt, setSavedAt] = useState<number | null>(null);
 
-  const workvaultPath = workvaultData?.value ?? '—';
-  const onedrivePath = onedriveData?.value ?? '—';
+  useEffect(() => {
+    setMastercontrolDraft(mastercontrolData?.value ?? defaultMastercontrolRoot);
+  }, [mastercontrolData?.value]);
 
-  const readOnlyInputStyle: CSSProperties = {
+  useEffect(() => {
+    setWorkvaultDraft(workvaultData?.value ?? '');
+  }, [workvaultData?.value]);
+
+  useEffect(() => {
+    setOnedriveDraft(onedriveData?.value ?? '');
+  }, [onedriveData?.value]);
+
+  async function savePath(
+    key: 'mastercontrol_root' | 'workvault_root' | 'onedrive_root',
+    value: string,
+  ) {
+    if (!value.trim()) return;
+    await setSetting.mutateAsync({ key, value: value.trim() });
+    setSavedAt(Date.now());
+  }
+
+  const pathInputStyle: CSSProperties = {
     fontFamily: 'var(--mono)',
     fontSize: 13,
     color: 'var(--ink-2)',
@@ -559,8 +585,26 @@ function PathsSection() {
     padding: '8px 12px',
     width: '100%',
     boxSizing: 'border-box',
-    cursor: 'default',
   };
+  const pathButtonStyle = (dirty: boolean): CSSProperties => ({
+    alignSelf: 'flex-start',
+    fontFamily: 'var(--body)',
+    fontSize: 13,
+    fontWeight: 500,
+    padding: '7px 16px',
+    borderRadius: 6,
+    border: `1px solid ${dirty ? 'var(--accent)' : 'var(--rule)'}`,
+    background: 'var(--bg)',
+    color: dirty ? 'var(--accent)' : 'var(--ink-2)',
+    cursor: dirty && !setSetting.isPending ? 'pointer' : 'default',
+    opacity: setSetting.isPending ? 0.6 : 1,
+  });
+
+  const mastercontrolDirty =
+    mastercontrolDraft.trim() !==
+    (mastercontrolData?.value ?? defaultMastercontrolRoot);
+  const workvaultDirty = workvaultDraft.trim() !== (workvaultData?.value ?? '');
+  const onedriveDirty = onedriveDraft.trim() !== (onedriveData?.value ?? '');
 
   return (
     <section aria-labelledby="section-paths">
@@ -570,32 +614,73 @@ function PathsSection() {
       <div style={CARD_STYLE}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <label htmlFor="workvault_path" style={LABEL_STYLE}>
-              WorkVault
+            <label htmlFor="mastercontrol_root" style={LABEL_STYLE}>
+              MasterControl Files
             </label>
             <input
-              id="workvault_path"
+              id="mastercontrol_root"
               type="text"
-              readOnly
-              value={workvaultPath}
-              style={readOnlyInputStyle}
+              value={mastercontrolDraft}
+              onChange={(e) => { setMastercontrolDraft(e.target.value); }}
+              style={pathInputStyle}
             />
-            <p style={HELPER_STYLE}>Path-backed ingestion lands in Phase 2.</p>
+            <button
+              type="button"
+              aria-label="Save MasterControl files path"
+              onClick={() => { void savePath('mastercontrol_root', mastercontrolDraft); }}
+              disabled={!mastercontrolDirty || setSetting.isPending}
+              style={pathButtonStyle(mastercontrolDirty)}
+            >
+              {setSetting.isPending ? 'Saving...' : 'Save'}
+            </button>
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <label htmlFor="onedrive_path" style={LABEL_STYLE}>
+            <label htmlFor="workvault_root" style={LABEL_STYLE}>
+              WorkVault
+            </label>
+            <input
+              id="workvault_root"
+              type="text"
+              value={workvaultDraft}
+              onChange={(e) => { setWorkvaultDraft(e.target.value); }}
+              style={pathInputStyle}
+            />
+            <button
+              type="button"
+              aria-label="Save WorkVault path"
+              onClick={() => { void savePath('workvault_root', workvaultDraft); }}
+              disabled={!workvaultDirty || setSetting.isPending}
+              style={pathButtonStyle(workvaultDirty)}
+            >
+              {setSetting.isPending ? 'Saving...' : 'Save'}
+            </button>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <label htmlFor="onedrive_root" style={LABEL_STYLE}>
               OneDrive
             </label>
             <input
-              id="onedrive_path"
+              id="onedrive_root"
               type="text"
-              readOnly
-              value={onedrivePath}
-              style={readOnlyInputStyle}
+              value={onedriveDraft}
+              onChange={(e) => { setOnedriveDraft(e.target.value); }}
+              style={pathInputStyle}
             />
-            <p style={HELPER_STYLE}>Path-backed ingestion lands in Phase 2.</p>
+            <button
+              type="button"
+              aria-label="Save OneDrive path"
+              onClick={() => { void savePath('onedrive_root', onedriveDraft); }}
+              disabled={!onedriveDirty || setSetting.isPending}
+              style={pathButtonStyle(onedriveDirty)}
+            >
+              {setSetting.isPending ? 'Saving...' : 'Save'}
+            </button>
           </div>
+        </div>
+        <div style={{ marginTop: 8 }}>
+          <SavedBadge savedAt={savedAt} />
         </div>
       </div>
     </section>

@@ -61,6 +61,10 @@ const deleteByNoteStmt = db.prepare<[number]>(
   `DELETE FROM note_mentions WHERE note_id = ?`,
 );
 
+const deleteByNoteAndSourceStmt = db.prepare<[number, MentionSource]>(
+  `DELETE FROM note_mentions WHERE note_id = ? AND source = ?`,
+);
+
 // ---------------------------------------------------------------------------
 // Export
 // ---------------------------------------------------------------------------
@@ -91,5 +95,11 @@ export const noteMentionModel = {
   /** Remove all mention rows for a note (used before re-extraction). */
   deleteByNote(noteId: number): void {
     deleteByNoteStmt.run(noteId);
+  },
+
+  /** Remove mention rows for a note from one source only. */
+  deleteByNoteAndSource(noteId: number, source: MentionSource): void {
+    MentionSourceEnum.parse(source);
+    deleteByNoteAndSourceStmt.run(noteId, source);
   },
 };

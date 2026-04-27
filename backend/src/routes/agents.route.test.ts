@@ -64,6 +64,7 @@ interface FakeFinalMessage {
 // Module-scoped state that tests mutate via configureFakeStream()
 let _fakeStreamEvents: FakeStreamEvent[] = [];
 let _fakeFinalMessage: FakeFinalMessage = { content: [] };
+let _fakeStreamCallCount = 0;
 
 export function configureFakeStream(
   events: FakeStreamEvent[],
@@ -71,10 +72,12 @@ export function configureFakeStream(
 ): void {
   _fakeStreamEvents = events;
   _fakeFinalMessage = finalMessage;
+  _fakeStreamCallCount = 0;
 }
 
 vi.mock('@anthropic-ai/sdk', () => {
   function makeFakeStream() {
+    const callIndex = _fakeStreamCallCount++;
     // Capture the arrays at call time (not at mock definition time) so
     // test-local configureFakeStream() mutations take effect.
     return {
@@ -83,7 +86,7 @@ vi.mock('@anthropic-ai/sdk', () => {
         // Access _fakeStreamEvents via closure on the module scope.
         // Because vi.mock factories run in the same module scope as the test
         // file under Vitest, this closure captures the right variable.
-        const events = _fakeStreamEvents;
+        const events = callIndex === 0 ? _fakeStreamEvents : [];
         return {
           next: async (): Promise<{ value: FakeStreamEvent | undefined; done: boolean }> => {
             if (i < events.length) {
@@ -93,7 +96,7 @@ vi.mock('@anthropic-ai/sdk', () => {
           },
         };
       },
-      finalMessage: async () => _fakeFinalMessage,
+      finalMessage: async () => (callIndex === 0 ? _fakeFinalMessage : { content: [] }),
     };
   }
 

@@ -31,7 +31,12 @@ vi.mock('@anthropic-ai/sdk', () => {
   const MockAnthropic = vi.fn().mockImplementation(() => ({
     messages: {
       create: vi.fn().mockResolvedValue({
-        content: [{ type: 'text', text: '[]' }],
+        content: [
+          {
+            type: 'text',
+            text: '[{"name":"WorkVault Default Org","confidence":0.9}]',
+          },
+        ],
       }),
     },
   }));
@@ -55,14 +60,37 @@ vi.mock('../models/settings.model.js', () => ({
   warmDpapi: vi.fn().mockResolvedValue(undefined),
 }));
 
+vi.mock('./claude.service.js', () => ({
+  extractOrgMentions: vi.fn(async (_content: string, candidateNames: string[]) =>
+    candidateNames.length > 0
+      ? [{ name: candidateNames[0], confidence: 0.9 }]
+      : [],
+  ),
+  extractPrimaryOrgAndMentions: vi.fn(async (_content: string, candidateNames: string[]) =>
+    candidateNames.length > 0
+      ? {
+          primary_org_name: candidateNames[0],
+          primary_confidence: 0.9,
+          mentions: [],
+        }
+      : {
+          primary_org_name: null,
+          primary_confidence: null,
+          mentions: [],
+        },
+  ),
+}));
+
 // ---------------------------------------------------------------------------
 // Imports (after mocks)
 // ---------------------------------------------------------------------------
 import { scanWorkvault } from './ingest.service.js';
 import { ingestSourceModel } from '../models/ingestSource.model.js';
 import { noteModel } from '../models/note.model.js';
+import { noteMentionModel } from '../models/noteMention.model.js';
 import { db } from '../db/database.js';
 import { organizationModel } from '../models/organization.model.js';
+import { extractPrimaryOrgAndMentions } from './claude.service.js';
 
 // ---------------------------------------------------------------------------
 // Test helpers
@@ -191,6 +219,48 @@ describe('ingest.service — Case 2: UPDATE', () => {
 
     const afterUpdate = noteModel.getByFileId(fileId);
     expect(afterUpdate!.content).toBe('Updated content!');
+  });
+
+  it('recomputes primary org and clears stale ai mentions on update', async () => {
+    const tmpDir = makeTmpDir();
+    const sourceId = makeSource(tmpDir);
+    const orgA = organizationModel.create({ type: 'customer', name: 'Alpha Health' });
+    const orgB = organizationModel.create({ type: 'customer', name: 'Beta Health' });
+
+    vi.mocked(extractPrimaryOrgAndMentions)
+      .mockResolvedValueOnce({
+        primary_org_name: orgA.name,
+        primary_confidence: 0.95,
+        mentions: [{ name: orgB.name, confidence: 0.8 }],
+      })
+      .mockResolvedValueOnce({
+        primary_org_name: orgB.name,
+        primary_confidence: 0.95,
+        mentions: [],
+      });
+
+    const fileId = crypto.randomUUID();
+    const filePath = writeFile(
+      tmpDir,
+      'retarget.md',
+      `---\nfile_id: ${fileId}\n---\n\nAlpha Health note mentioning Beta Health.`,
+    );
+
+    await scanWorkvault({ sourceId, rootPath: tmpDir });
+    const inserted = noteModel.getByFileId(fileId);
+    expect(inserted!.organization_id).toBe(orgA.id);
+    expect(noteMentionModel.listByNote(inserted!.id).map((m) => m.mentioned_org_id)).toEqual([orgB.id]);
+
+    fs.writeFileSync(filePath, `---\nfile_id: ${fileId}\n---\n\nBeta Health only.`, 'utf8');
+    const futureMs = Date.now() + 4000;
+    fs.utimesSync(filePath, futureMs / 1000, futureMs / 1000);
+
+    const result = await scanWorkvault({ sourceId, rootPath: tmpDir });
+    expect(result.updated).toBe(1);
+
+    const updated = noteModel.getByFileId(fileId);
+    expect(updated!.organization_id).toBe(orgB.id);
+    expect(noteMentionModel.listByNote(updated!.id)).toEqual([]);
   });
 });
 

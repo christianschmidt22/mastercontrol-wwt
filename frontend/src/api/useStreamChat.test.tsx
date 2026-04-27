@@ -153,6 +153,46 @@ describe('useStreamChat — happy path', () => {
     // Cleanup: resolve the hanging stream
     act(() => { resolveStream(); });
   });
+
+  it('drops an internally-created thread when orgId changes without a thread param', async () => {
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(fakeOkResponse([
+        sseFrame({ type: 'thread', thread_id: 101 }),
+        'data: [DONE]\n\n',
+      ]))
+      .mockResolvedValueOnce(fakeOkResponse(['data: [DONE]\n\n']));
+
+    const { result, rerender } = renderHook(
+      ({ orgId }) => useStreamChat(orgId),
+      {
+        initialProps: { orgId: 1 },
+        wrapper: makeWrapper(),
+      },
+    );
+
+    act(() => {
+      result.current.send('first');
+    });
+
+    await waitFor(() => {
+      expect(result.current.stream.streaming).toBe(false);
+    });
+
+    rerender({ orgId: 2 });
+
+    act(() => {
+      result.current.send('second');
+    });
+
+    await waitFor(() => {
+      expect(fetch).toHaveBeenCalledTimes(2);
+    });
+
+    const rawSecondBody = (vi.mocked(fetch).mock.calls[1]?.[1] as RequestInit).body;
+    expect(typeof rawSecondBody).toBe('string');
+    const secondBody = JSON.parse(rawSecondBody as string) as { thread_id?: number };
+    expect(secondBody.thread_id).toBeUndefined();
+  });
 });
 
 // ---------------------------------------------------------------------------

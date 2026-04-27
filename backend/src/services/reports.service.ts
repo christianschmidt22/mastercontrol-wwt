@@ -22,6 +22,8 @@
 import { createHash } from 'node:crypto';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
+import { getReportsRoot } from '../lib/appPaths.js';
+import { getNextCronTime } from '../lib/cronUtils.js';
 
 import { reportModel, type Report } from '../models/report.model.js';
 import {
@@ -280,8 +282,8 @@ export async function runReport(
     // 5. Generate output via Anthropic.
     const output = await generateReport(prompt);
 
-    // 6. Write to disk: <cwd>/reports/<report.id>/<run.id>.md
-    const outDir = path.join(process.cwd(), 'reports', String(report.id));
+    // 6. Write to disk: <repo>/reports/<report.id>/<run.id>.md
+    const outDir = path.join(getReportsRoot(), String(report.id));
     mkdirSync(outDir, { recursive: true });
     const outPath = path.join(outDir, `${run.id}.md`);
     writeFileSync(outPath, output, 'utf8');
@@ -299,8 +301,12 @@ export async function runReport(
       summary,
     });
 
-    // 10. Update the schedule's last_run_at.
+    // 10. Update schedule run markers for the Reports page and catch-up.
     reportScheduleModel.updateLastRun(scheduleId, fireTime);
+    reportScheduleModel.updateNextRun(
+      scheduleId,
+      getNextCronTime(schedule.cron_expr, fireTime),
+    );
 
     return { runId: run.id, outputPath: outPath, executed: true };
   } catch (err) {
@@ -338,13 +344,26 @@ export function seedDailyTaskReview(): SeedDailyTaskReviewResult {
   if (existing) {
     const schedules = reportScheduleModel.listByReport(existing.id);
     if (schedules.length > 0) {
-      return { created: false, report: existing, schedule: schedules[0] };
+      const schedule = schedules[0];
+      if (schedule.next_run_at === null && schedule.enabled && existing.enabled) {
+        reportScheduleModel.updateNextRun(
+          schedule.id,
+          getNextCronTime(schedule.cron_expr, Math.floor(Date.now() / 1000)),
+        );
+        return {
+          created: false,
+          report: existing,
+          schedule: reportScheduleModel.get(schedule.id)!,
+        };
+      }
+      return { created: false, report: existing, schedule };
     }
     // The report exists but has no schedule — adopt the schedule via upsert
     // so subsequent calls remain idempotent.
     const schedule = reportScheduleModel.upsert(existing.id, {
       cron_expr: '0 7 * * *',
       enabled: true,
+      next_run_at: getNextCronTime('0 7 * * *', Math.floor(Date.now() / 1000)),
     });
     return { created: false, report: existing, schedule };
   }
@@ -359,6 +378,7 @@ export function seedDailyTaskReview(): SeedDailyTaskReviewResult {
   const schedule = reportScheduleModel.upsert(report.id, {
     cron_expr: '0 7 * * *',
     enabled: true,
+    next_run_at: getNextCronTime('0 7 * * *', Math.floor(Date.now() / 1000)),
   });
   return { created: true, report, schedule };
 }

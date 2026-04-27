@@ -47,6 +47,7 @@ describe('POST /api/projects', () => {
 
     expect(res.status).toBe(201);
     expect(res.body).toMatchObject({ status: 'active' });
+    expect((res.body as { doc_url: string }).doc_url).toContain('minimal_project');
   });
 
   it('accepts all valid status values', async () => {

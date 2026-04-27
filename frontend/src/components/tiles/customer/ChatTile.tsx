@@ -119,6 +119,30 @@ export function ChatTile({
     }
   }, [messages, stream.partial]);
 
+  useEffect(() => {
+    function handleReadDocument(event: Event) {
+      const custom = event as CustomEvent<{
+        orgId?: number;
+        path?: string;
+        name?: string;
+      }>;
+      if (custom.detail?.orgId !== orgId || !custom.detail.path) return;
+
+      const prompt = `Use read_document to read this document and summarize it: ${custom.detail.path}`;
+      if (stream.streaming) {
+        setDraft(prompt);
+        textareaRef.current?.focus();
+        return;
+      }
+      send(prompt);
+    }
+
+    window.addEventListener('mastercontrol:read-document', handleReadDocument);
+    return () => {
+      window.removeEventListener('mastercontrol:read-document', handleReadDocument);
+    };
+  }, [orgId, send, stream.streaming]);
+
   // ---------------------------------------------------------------------------
   // Toast helper
   // ---------------------------------------------------------------------------

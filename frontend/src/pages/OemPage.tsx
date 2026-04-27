@@ -1,5 +1,5 @@
 import { useState, type CSSProperties } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { LayoutGrid } from 'lucide-react';
 import { TileGrid, type TileGridItem } from '../components/tiles/TileGrid';
 import { useTileLayout, type TileLayout } from '../components/tiles/useTileLayout';
@@ -37,6 +37,13 @@ interface OemDashboardProps {
  * Shares layout state across all OEM dashboards (one layout.oem setting).
  */
 function OemDashboard({ org }: OemDashboardProps) {
+  const [searchParams] = useSearchParams();
+  const threadParam = searchParams.get('thread');
+  const parsedThreadId = threadParam !== null ? Number(threadParam) : undefined;
+  const threadId =
+    parsedThreadId !== undefined && Number.isInteger(parsedThreadId) && parsedThreadId > 0
+      ? parsedThreadId
+      : undefined;
   const { layout, save, reset, revert, isDirty } = useTileLayout(
     'layout.oem',
     DEFAULT_OEM_LAYOUT,
@@ -62,7 +69,7 @@ function OemDashboard({ org }: OemDashboardProps) {
     {
       id: 'chat',
       title: `${org.name} Agent`,
-      node: <ChatTile orgId={org.id} orgName={org.name} />,
+      node: <ChatTile orgId={org.id} orgName={org.name} threadId={threadId} />,
     },
     {
       id: 'team',
@@ -77,7 +84,7 @@ function OemDashboard({ org }: OemDashboardProps) {
     {
       id: 'documents',
       title: 'Documents',
-      node: <OemDocsTile />,
+      node: <OemDocsTile orgId={org.id} />,
     },
   ];
 

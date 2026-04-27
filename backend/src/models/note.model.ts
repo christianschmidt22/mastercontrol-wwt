@@ -155,6 +155,12 @@ const updateByIngestStmt = db.prepare<[string, string, string, string, number]>(
    WHERE id = ?`,
 );
 
+const updateByIngestWithOrgStmt = db.prepare<[number, string, string, string, string, number]>(
+  `UPDATE notes
+   SET organization_id = ?, content = ?, content_sha256 = ?, file_mtime = ?, last_seen_at = ?
+   WHERE id = ?`,
+);
+
 const touchLastSeenAtStmt = db.prepare<[string, number]>(
   `UPDATE notes SET last_seen_at = ? WHERE id = ?`,
 );
@@ -506,8 +512,13 @@ export const noteModel = {
     content: string,
     contentSha256: string,
     fileMtime: string,
+    organizationId?: number,
   ): void {
     const now = new Date().toISOString();
+    if (organizationId !== undefined) {
+      updateByIngestWithOrgStmt.run(organizationId, content, contentSha256, fileMtime, now, id);
+      return;
+    }
     updateByIngestStmt.run(content, contentSha256, fileMtime, now, id);
   },
 

@@ -243,7 +243,10 @@ function makeMockReqRes(): { req: Request; res: Response; sse: SseCapture } {
 }
 
 function wireStream(stream: ReturnType<typeof makeFakeStream>) {
-  const mockStream = vi.fn().mockReturnValue(stream);
+  const mockStream = vi
+    .fn()
+    .mockReturnValueOnce(stream)
+    .mockImplementation(() => makeFakeStream(null));
   const mockInstance = { messages: { stream: mockStream } };
   (Anthropic as unknown as Mock).mockReturnValueOnce(mockInstance);
   return mockInstance;

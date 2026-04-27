@@ -49,6 +49,7 @@ import { reportsRouter } from './reports.route.js';
 import { reportModel } from '../models/report.model.js';
 import { reportScheduleModel } from '../models/reportSchedule.model.js';
 import { reportRunModel } from '../models/reportRun.model.js';
+import { getReportsRoot } from '../lib/appPaths.js';
 
 let app: Express;
 
@@ -146,6 +147,59 @@ describe('Reports CRUD', () => {
         bogus_field: 'x',
       });
     expect(res.status).toBe(400);
+  });
+
+  it('POST /api/reports rejects invalid cron without creating a report', async () => {
+    const before = reportModel.list().length;
+    const res = await request(app)
+      .post('/api/reports')
+      .send({
+        name: 'Bad schedule',
+        prompt_template: 't',
+        cron_expr: '61 25 * * *',
+      });
+
+    expect(res.status).toBe(400);
+    expect(reportModel.list()).toHaveLength(before);
+  });
+
+  it('PUT /api/reports/:id replaces the canonical schedule', async () => {
+    const r = reportModel.create({
+      name: 'Schedule edit',
+      prompt_template: 't',
+    });
+    reportScheduleModel.upsert(r.id, { cron_expr: '0 7 * * *' });
+
+    const res = await request(app)
+      .put(`/api/reports/${r.id}`)
+      .send({ cron_expr: '0 8 * * MON' });
+
+    expect(res.status).toBe(200);
+    const schedules = reportScheduleModel.listByReport(r.id);
+    expect(schedules).toHaveLength(1);
+    expect(schedules[0]?.cron_expr).toBe('0 8 * * MON');
+    expect(schedules[0]?.next_run_at).toBeTypeOf('number');
+  });
+
+  it('PUT /api/reports/:id enabled=false disables the canonical schedule', async () => {
+    const r = reportModel.create({
+      name: 'Disable schedule',
+      prompt_template: 't',
+    });
+    const schedule = reportScheduleModel.upsert(r.id, {
+      cron_expr: '0 7 * * *',
+      enabled: true,
+      next_run_at: 1_700_000_000,
+    });
+
+    const res = await request(app)
+      .put(`/api/reports/${r.id}`)
+      .send({ enabled: false });
+
+    expect(res.status).toBe(200);
+    const updated = reportScheduleModel.get(schedule.id);
+    expect(updated?.enabled).toBe(false);
+    expect(updated?.next_run_at).toBeNull();
   });
 });
 
@@ -346,7 +400,7 @@ describe('GET /api/reports/:id/runs/:run_id/output', () => {
 
   beforeEach(() => {
     // We create a real file so resolveSafePath + readFileSync succeed.
-    tmpReportDir = path.join(process.cwd(), 'reports', '__test__');
+    tmpReportDir = path.join(getReportsRoot(), '__test__');
     mkdirSync(tmpReportDir, { recursive: true });
     tmpFilePath = path.join(tmpReportDir, 'test_output.md');
     writeFileSync(tmpFilePath, '# Hello\n\nTest output.', 'utf8');

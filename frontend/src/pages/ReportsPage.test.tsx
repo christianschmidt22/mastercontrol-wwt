@@ -174,6 +174,7 @@ describe('isCronShapeValid', () => {
     expect(isCronShapeValid('0 7 * * *')).toBe(true);
     expect(isCronShapeValid('*/15 * * * 1-5')).toBe(true);
     expect(isCronShapeValid('0,30 7 * * *')).toBe(true);
+    expect(isCronShapeValid('0 8 * * MON')).toBe(true);
   });
 
   it('rejects fewer or extra fields', () => {
@@ -182,7 +183,7 @@ describe('isCronShapeValid', () => {
   });
 
   it('rejects illegal characters', () => {
-    expect(isCronShapeValid('0 7 * * mon')).toBe(false);
+    expect(isCronShapeValid('0 7 * * $')).toBe(false);
   });
 
   it('rejects empty', () => {
