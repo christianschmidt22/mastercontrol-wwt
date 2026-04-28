@@ -4,13 +4,13 @@
  * Header behavior:
  *   1. Renders the org name in an h1
  *   2. Renders the 'oem' type status pill
- *   3. Shows "Click to add summary" when metadata.summary is absent
- *   4. Shows summary text when metadata.summary is present
- *   5. Empty summary CTA calls onEditOrg handler
+ *   3. Shows "Click to add note" when metadata.summary is absent
+ *   4. Shows editable note text when metadata.summary is present
+ *   5. Saves metadata.summary inline
  *   6. formatLastContact — relative time formatting
  */
 
-import { describe, it, expect, vi } from 'vitest';
+import { beforeEach, describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import React from 'react';
 import {
@@ -19,6 +19,12 @@ import {
   type OemPageHeaderProps,
 } from './OemPageHeader';
 import type { Organization } from '../../types';
+
+const mockUpdateOrg = vi.hoisted(() => vi.fn());
+
+vi.mock('../../api/useOrganizations', () => ({
+  useUpdateOrganization: () => ({ mutate: mockUpdateOrg }),
+}));
 
 const baseOrg: Organization = {
   id: 7,
@@ -38,9 +44,18 @@ function renderHeader(overrides: Partial<OemPageHeaderProps> = {}) {
 // ---------------------------------------------------------------------------
 
 describe('OemPageHeader — rendering', () => {
+  beforeEach(() => {
+    mockUpdateOrg.mockClear();
+  });
+
   it('renders the org name in an h1', () => {
     renderHeader();
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Cisco');
+  });
+
+  it('does not render the old OEM Partners eyebrow', () => {
+    renderHeader();
+    expect(screen.queryByText('OEM Partners')).toBeNull();
   });
 
   it('renders the oem type status pill', () => {
@@ -50,12 +65,12 @@ describe('OemPageHeader — rendering', () => {
     expect(pill).toBeInTheDocument();
   });
 
-  it('shows empty-state summary button when metadata.summary is absent', () => {
+  it('shows empty-state note button when metadata.summary is absent', () => {
     renderHeader({ org: { ...baseOrg, metadata: null } });
-    expect(screen.getByText('Click to add summary')).toBeInTheDocument();
+    expect(screen.getByText('Click to add note')).toBeInTheDocument();
   });
 
-  it('shows summary text when metadata.summary is present', () => {
+  it('shows note text when metadata.summary is present', () => {
     renderHeader({
       org: {
         ...baseOrg,
@@ -63,7 +78,7 @@ describe('OemPageHeader — rendering', () => {
       },
     });
     expect(screen.getByText('Networking hardware and solutions vendor.')).toBeInTheDocument();
-    expect(screen.queryByText('Click to add summary')).toBeNull();
+    expect(screen.queryByText('Click to add note')).toBeNull();
   });
 
   it('renders partner_status pill when present in metadata', () => {
@@ -73,11 +88,32 @@ describe('OemPageHeader — rendering', () => {
     expect(screen.getByText('strategic')).toBeInTheDocument();
   });
 
-  it('calls onEditOrg when the empty summary CTA is clicked', () => {
-    const onEditOrg = vi.fn();
-    renderHeader({ onEditOrg });
-    fireEvent.click(screen.getByRole('button', { name: /click to add summary/i }));
-    expect(onEditOrg).toHaveBeenCalledTimes(1);
+  it('opens inline note editor from the empty state', () => {
+    renderHeader({ org: { ...baseOrg, metadata: null } });
+    fireEvent.click(screen.getByRole('button', { name: /click to add note/i }));
+    expect(screen.getByRole('textbox', { name: /oem note/i })).toBeInTheDocument();
+  });
+
+  it('saves metadata.summary inline while preserving other metadata', () => {
+    renderHeader({
+      org: {
+        ...baseOrg,
+        metadata: { summary: 'Old note', partner_status: 'strategic' },
+      },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /edit oem note/i }));
+    const editor = screen.getByRole('textbox', { name: /oem note/i });
+    fireEvent.change(editor, { target: { value: 'Updated OEM note' } });
+    fireEvent.keyDown(editor, { key: 'Enter', ctrlKey: true });
+
+    expect(mockUpdateOrg).toHaveBeenCalledWith({
+      id: 7,
+      metadata: {
+        summary: 'Updated OEM note',
+        partner_status: 'strategic',
+      },
+    });
   });
 });
 

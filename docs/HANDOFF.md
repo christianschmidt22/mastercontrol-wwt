@@ -39,6 +39,9 @@ Do not stage those unless the user explicitly asks.
 - OEM tabs wrap instead of showing the small scroll control. Dell and Pure
   are shortened; all other OEM labels are spelled out.
 - OEM top header buttons were removed.
+- The OEM header no longer shows the "OEM Partners" eyebrow. The top OEM
+  note is editable inline and persists to the selected OEM's
+  `metadata.summary`.
 - Tile layout customization persists and supports resizing during customize
   mode.
 

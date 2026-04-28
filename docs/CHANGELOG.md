@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- OEM header note polish:
+  - Removed the "OEM Partners" eyebrow above the OEM name.
+  - Made the top OEM note editable inline, backed by each OEM's
+    `metadata.summary`, matching the customer-page summary behavior.
+  - Added focused `OemPageHeader` tests for the missing eyebrow and inline
+    note save path.
 - Customer/OEM workspace polish shipped on
   `codex/customer-oem-tabs-layout`:
   - Customer pages now use a Home tab plus per-project tabs. Project tabs

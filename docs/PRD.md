@@ -77,7 +77,8 @@ a project can be linked directly.
 Single sidebar entry. Page contains a tab strip across OEMs (Cisco, NetApp,
 Dell, …). Each tab is its own dashboard. OEM tabs sit under the selected OEM
 name, wrap instead of truncating into a scroll control, spell out vendor names
-except Dell and Pure, and do not duplicate the sidebar entry.
+except Dell and Pure, and do not duplicate the sidebar entry. The note below
+the tabs is editable inline and stored on the selected OEM's metadata.
 
 - **Account & channel team tile** — contacts split by `role` (`account` vs
   `channel`).

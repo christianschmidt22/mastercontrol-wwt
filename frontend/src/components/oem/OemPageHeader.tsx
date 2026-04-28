@@ -4,19 +4,28 @@
  * Rich header for the OEM partner detail page.
  * - Large Fraunces org name (h1)
  * - Status pill row: type ('oem'), partner-status chip, last-contact relative time
- * - Two-line "About" from metadata.summary; empty-state CTA when missing
+ * - Editable OEM note from metadata.summary; empty-state CTA when missing
  * - Hairline separator below
  *
- * ≤180 lines per CLAUDE.md component rule.
  */
 
 import { Pencil } from 'lucide-react';
-import type { ReactNode } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type ReactNode,
+} from 'react';
+import { useUpdateOrganization } from '../../api/useOrganizations';
 import type { Organization } from '../../types';
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+const SUMMARY_MAX = 500;
 
 /**
  * Format a relative "last contact" label from an ISO date string.
@@ -64,6 +73,99 @@ function StatusPill({ label }: { label: string }) {
   );
 }
 
+interface SummaryEditorProps {
+  initial: string;
+  onSave: (next: string) => void;
+  onCancel: () => void;
+}
+
+function SummaryEditor({ initial, onSave, onCancel }: SummaryEditorProps) {
+  const [value, setValue] = useState(initial);
+  const [error, setError] = useState('');
+  const ref = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    ref.current?.focus();
+    ref.current?.select();
+  }, []);
+
+  const commit = useCallback(() => {
+    if (value.length > SUMMARY_MAX) {
+      setError(`Max ${SUMMARY_MAX} chars.`);
+      ref.current?.focus();
+      return;
+    }
+    onSave(value);
+  }, [value, onSave]);
+
+  function handleKey(e: KeyboardEvent<HTMLTextAreaElement>) {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      onCancel();
+    }
+    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+      e.preventDefault();
+      commit();
+    }
+  }
+
+  return (
+    <div style={{ width: '100%', maxWidth: '72ch' }}>
+      <textarea
+        ref={ref}
+        value={value}
+        aria-label="OEM note"
+        aria-invalid={Boolean(error)}
+        placeholder="Add OEM note..."
+        rows={2}
+        onChange={(e) => {
+          setValue(e.target.value);
+          if (error) setError('');
+        }}
+        onKeyDown={handleKey}
+        onBlur={commit}
+        style={{
+          fontFamily: 'var(--body)',
+          fontSize: 14,
+          color: 'var(--ink-2)',
+          lineHeight: 1.6,
+          background: 'var(--bg)',
+          border: `1px solid ${error ? 'var(--accent)' : 'var(--rule)'}`,
+          borderRadius: 4,
+          padding: '6px 8px',
+          width: '100%',
+          resize: 'vertical',
+          outline: 'none',
+        }}
+      />
+      {error && (
+        <p
+          role="alert"
+          aria-live="polite"
+          style={{
+            color: 'var(--accent)',
+            fontFamily: 'var(--body)',
+            fontSize: 12,
+            margin: '6px 0 0',
+          }}
+        >
+          {error}
+        </p>
+      )}
+      <p
+        style={{
+          fontFamily: 'var(--body)',
+          fontSize: 11,
+          color: 'var(--ink-3)',
+          margin: '4px 0 0',
+        }}
+      >
+        Esc to cancel · Ctrl/⌘+Enter to save
+      </p>
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Props
 // ---------------------------------------------------------------------------
@@ -74,7 +176,6 @@ export interface OemPageHeaderProps {
   lastThreadAt?: string | null;
   /** ISO date of most recent note created_at, fallback if no thread */
   lastNoteAt?: string | null;
-  onEditOrg?: () => void;
   tabs?: ReactNode;
 }
 
@@ -86,10 +187,12 @@ export function OemPageHeader({
   org,
   lastThreadAt,
   lastNoteAt,
-  onEditOrg,
   tabs,
 }: OemPageHeaderProps) {
   const lastContact = formatLastContact(lastThreadAt ?? lastNoteAt);
+  const updateOrg = useUpdateOrganization();
+  const [editingSummary, setEditingSummary] = useState(false);
+  const [hoveredSummary, setHoveredSummary] = useState(false);
 
   const partnerStatus =
     typeof org.metadata?.partner_status === 'string' && org.metadata.partner_status.trim()
@@ -100,6 +203,22 @@ export function OemPageHeader({
     typeof org.metadata?.summary === 'string' && org.metadata.summary.trim()
       ? org.metadata.summary.trim()
       : null;
+
+  const saveSummary = useCallback(
+    (next: string) => {
+      const current = summary ?? '';
+      if (next === current) {
+        setEditingSummary(false);
+        return;
+      }
+      updateOrg.mutate({
+        id: org.id,
+        metadata: { ...(org.metadata ?? {}), summary: next },
+      });
+      setEditingSummary(false);
+    },
+    [summary, org.id, org.metadata, updateOrg],
+  );
 
   return (
     <div>
@@ -114,21 +233,6 @@ export function OemPageHeader({
       >
         {/* Left: org name + meta */}
         <div style={{ flex: 1, minWidth: 0 }}>
-          {/* Breadcrumb label */}
-          <p
-            style={{
-              fontFamily: 'var(--body)',
-              fontSize: 11,
-              fontWeight: 600,
-              letterSpacing: '0.08em',
-              textTransform: 'uppercase',
-              color: 'var(--ink-3)',
-              margin: '0 0 8px',
-            }}
-          >
-            OEM Partners
-          </p>
-
           {/* Org name — h1 per heading hierarchy */}
           <h1
             style={{
@@ -172,9 +276,20 @@ export function OemPageHeader({
             </div>
           )}
 
-          {/* About / summary */}
-          {summary ? (
-            <p
+          {/* OEM note / summary */}
+          {editingSummary ? (
+            <SummaryEditor
+              initial={summary ?? ''}
+              onSave={saveSummary}
+              onCancel={() => setEditingSummary(false)}
+            />
+          ) : summary ? (
+            <button
+              type="button"
+              aria-label="Edit OEM note"
+              onClick={() => setEditingSummary(true)}
+              onMouseEnter={() => setHoveredSummary(true)}
+              onMouseLeave={() => setHoveredSummary(false)}
               style={{
                 fontFamily: 'var(--body)',
                 fontSize: 14,
@@ -182,19 +297,42 @@ export function OemPageHeader({
                 lineHeight: 1.6,
                 maxWidth: '72ch',
                 margin: 0,
+                textAlign: 'left',
+                background: 'none',
+                border: 'none',
+                padding: 0,
+                cursor: 'pointer',
                 textWrap: 'pretty',
-                display: '-webkit-box',
-                WebkitLineClamp: 2,
-                WebkitBoxOrient: 'vertical',
-                overflow: 'hidden',
+                display: 'block',
               }}
             >
-              {summary}
-            </p>
+              <span
+                style={{
+                  display: '-webkit-box',
+                  WebkitLineClamp: 2,
+                  WebkitBoxOrient: 'vertical',
+                  overflow: 'hidden',
+                }}
+              >
+                {summary}
+              </span>
+              <Pencil
+                size={13}
+                strokeWidth={1.5}
+                aria-hidden="true"
+                style={{
+                  color: 'var(--ink-3)',
+                  marginLeft: 8,
+                  opacity: hoveredSummary ? 1 : 0,
+                  transition: 'opacity 120ms var(--ease)',
+                  verticalAlign: 'text-bottom',
+                }}
+              />
+            </button>
           ) : (
             <button
               type="button"
-              onClick={onEditOrg}
+              onClick={() => setEditingSummary(true)}
               style={{
                 fontFamily: 'var(--body)',
                 fontSize: 13,
@@ -209,7 +347,7 @@ export function OemPageHeader({
               }}
             >
               <Pencil size={13} strokeWidth={1.5} aria-hidden="true" />
-              Click to add summary
+              Click to add note
             </button>
           )}
         </div>
