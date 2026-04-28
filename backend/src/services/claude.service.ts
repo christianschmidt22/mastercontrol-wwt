@@ -303,7 +303,10 @@ async function runClaudeCodePrompt(options: {
     prompt: options.prompt,
     options: {
       model: options.model,
-      maxTurns: options.maxTurns ?? 1,
+      // Structured output uses an internal tool call (schema enforcement),
+      // which consumes a turn. Default to 3 when outputSchema is present so
+      // the model has room to call the tool and produce the final result.
+      maxTurns: options.maxTurns ?? (options.outputSchema ? 3 : 1),
       tools: [],
       allowedTools: [],
       permissionMode: 'dontAsk',
