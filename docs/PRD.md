@@ -1,7 +1,7 @@
 # MasterControl — Product Requirements Document
 
 **Status**: Draft v0.4
-**Last Updated**: 2026-04-25
+**Last Updated**: 2026-04-28
 
 ## Overview
 Personal CRM for an account executive at WWT. Centralizes customers, OEM
@@ -41,7 +41,9 @@ Order, top to bottom:
 3. **Reports** — scheduled and ad-hoc report runs (Phase 2)
 4. **Customers** — section header; each customer (Fairview, CHR, …) is its
    own top-level entry directly below the header (flat list, not nested
-   behind one "Customers" item)
+   behind one "Customers" item). C.H. Robinson and Fairview pin to the top
+   of the list; the remaining customers sort by name until full custom
+   sidebar ordering lands.
 5. **OEM** — single entry; the page itself tabs across each OEM
 6. **Agents** — management surface for the AI agents themselves: edit
    per-section system prompt templates, toggle tools, view conversation
@@ -67,13 +69,15 @@ Home tiles default to a collapsed/preview state with detail revealed by click
   bottom. The chat is the per-customer agent. Messages and AI responses
   persist as notes (so the conversation is part of the record).
 
-Project tabs show the selected project's status, description, linked folder,
-linked notes, and project timestamps. The tab URL is stable so a project can
-be linked directly.
+Project tabs show the selected project's editable note, name, status,
+description, linked folder, and project timestamps. The tab URL is stable so
+a project can be linked directly.
 
 ### OEM Page
 Single sidebar entry. Page contains a tab strip across OEMs (Cisco, NetApp,
-Dell, …). Each tab is its own dashboard:
+Dell, …). Each tab is its own dashboard. OEM tabs sit under the selected OEM
+name, wrap instead of truncating into a scroll control, spell out vendor names
+except Dell and Pure, and do not duplicate the sidebar entry.
 
 - **Account & channel team tile** — contacts split by `role` (`account` vs
   `channel`).

@@ -141,6 +141,8 @@ npm run lint                # both workspaces
   changing the aesthetic, palette, type, or motion language.
 - [`docs/VAULT.md`](docs/VAULT.md) — placement contract for markdown,
   reports, research outputs, legacy WorkVault material, and agent exports.
+- [`docs/HANDOFF.md`](docs/HANDOFF.md) — current branch handoff, validation
+  status, and next TODOs for another agent.
 - `docs/adr/<n>-<topic>.md` — significant tech choices.
 - This file — stack, layer rules, glossary, dev commands.
 

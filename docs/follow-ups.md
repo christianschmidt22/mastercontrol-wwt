@@ -1,5 +1,43 @@
 # Follow-up Items
 
+## Customer/OEM workspace handoff
+
+Shipped in `codex/customer-oem-tabs-layout` and merged from commit
+`8d7a237` plus the docs handoff commit:
+
+- Customers are pinned in the left rail as C.H. Robinson, Fairview, then
+  the rest alphabetically. Full drag-to-reorder/sidebar-order persistence is
+  still open.
+- Customer pages have Home plus project tabs. The header note field is
+  project-specific on project tabs and customer-summary-specific on Home.
+- Project pages now edit project name, status, description, and folder.
+  The header note currently persists through the existing `projects.notes_url`
+  field, used as a freeform note field. If "notes" becomes a real document
+  link later, split this into a dedicated `project_notes` or
+  `project_summary` column before adding richer note semantics.
+- OEM is one sidebar entry with tabs under the OEM name. The old top header
+  Edit / Chat / New note buttons are removed from OEM pages.
+- OEM tab labels wrap with full names except Dell and Pure, by product
+  request.
+
+Open items for the next agent:
+
+1. Add real drag-to-reorder for the customer sidebar, backed by a persisted
+   ordering setting or `organizations.metadata.sidebar_order`.
+2. Decide whether project header notes should stay on `projects.notes_url` or
+   get a dedicated schema field. Do this before notes/file-link behavior gets
+   more complex.
+3. Add regression tests around `CustomerPage` project editing and
+   `OemPage` tab label formatting; current validation is full-suite plus
+   browser smoke, but these route pages do not yet have focused tests.
+4. Wire visible "Add customer" and any future customer/order editor to actual
+   mutations; the button is still a placeholder affordance.
+5. Revisit mobile/narrow layouts for the project edit form and wrapped OEM
+   tabs. Desktop browser smoke is good; mobile was not separately verified.
+6. If the next agent lands the parallel `claude/pensive-taussig-e04a99`
+   contact seed work, reconcile seed data with the pinned customer order and
+   project tab assumptions before merging.
+
 ## ~~OEM seed data missing~~ — DONE in `0b4d486`
 
 Migration `012_seed_oem_partners.sql` seeds Cisco / NetApp / Nutanix with

@@ -90,6 +90,7 @@ mastercontrol/
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Layer rules, data flows, streaming, caching, DB conventions |
 | [`docs/DESIGN.md`](docs/DESIGN.md) | "Field Notes" aesthetic, palettes, typography, motion, a11y |
 | [`docs/REVIEW.md`](docs/REVIEW.md) | Phase 1 multi-agent review; 29 action items with acceptance criteria |
+| [`docs/HANDOFF.md`](docs/HANDOFF.md) | Current branch handoff, validation state, and remaining TODOs |
 | [`docs/CHANGELOG.md`](docs/CHANGELOG.md) | Dated record of what shipped in each commit batch |
 | [`CLAUDE.md`](CLAUDE.md) | Operational guide for AI agents: layer rules, glossary, commands |
 | [`mockups/`](mockups/) | Static HTML visual references for the UI |

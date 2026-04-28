@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+- Customer/OEM workspace polish shipped on
+  `codex/customer-oem-tabs-layout`:
+  - Customer pages now use a Home tab plus per-project tabs. Project tabs
+    have an editable, project-specific note field in the header area and
+    editable project name, description, status, and folder fields.
+  - Customer sidebar ordering now pins C.H. Robinson first and Fairview
+    second, with remaining customers sorted by name.
+  - OEM navigation is a single sidebar entry with in-page OEM tabs. The
+    header action trio was removed, tabs wrap instead of requiring the
+    small scroll control, and tab labels spell out OEM names except Dell
+    and Pure, which intentionally remain short.
+  - Tile layout customization persists and supports resize while in
+    customize mode; customer/OEM dashboard controls now match the current
+    product direction.
+  - Validation: `npm run typecheck`, `npm run lint`, and `npm run test`
+    passed before merge.
 - Documented the MasterControl vault contract in `docs/VAULT.md` and linked it
   from `CLAUDE.md`, `docs/PRD.md`, and `docs/ARCHITECTURE.md`. The contract
   locks the entity-first OneDrive layout, clarifies `_agent` vs. DB-backed
