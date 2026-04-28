@@ -63,10 +63,10 @@ export function useTileLayout(
 
   const { mutateAsync: saveToServer } = useMutation({
     mutationFn: async (tiles: TileLayout[]) => {
-      const res = await fetch(`/api/settings/${encodeURIComponent(settingKey)}`, {
+      const res = await fetch('/api/settings', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ value: JSON.stringify({ tiles }) }),
+        body: JSON.stringify({ key: settingKey, value: JSON.stringify({ tiles }) }),
       });
       if (!res.ok) throw new Error('Failed to save layout');
     },

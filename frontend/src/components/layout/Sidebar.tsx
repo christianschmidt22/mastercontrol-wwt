@@ -1,7 +1,7 @@
 import type { ReactNode, KeyboardEvent } from 'react';
 import { useCallback, useRef } from 'react';
 import { NavLink } from 'react-router-dom';
-import { Home, CheckSquare, BarChart2, Bot, Settings } from 'lucide-react';
+import { Home, CheckSquare, BarChart2, Bot, Settings, Package } from 'lucide-react';
 import { clsx } from 'clsx';
 import { ThemeToggle } from './ThemeToggle';
 import { useOrganizations, useOrgLastTouched } from '../../api/useOrganizations';
@@ -216,16 +216,6 @@ export function Sidebar() {
 
   const { data: customerLastTouched } = useOrgLastTouched('customer');
 
-  // OEM list + activity map
-  const {
-    data: oems,
-    isLoading: oemsLoading,
-    isError: oemsError,
-    refetch: refetchOems,
-  } = useOrganizations('oem');
-
-  const { data: oemLastTouched } = useOrgLastTouched('oem');
-
   /**
    * Global keydown handler mounted on <window> so pressing "/" from anywhere
    * in the app focuses the first sidebar link (mirrors Slack / GitHub
@@ -311,8 +301,6 @@ export function Sidebar() {
   }, []);
 
   const customerList = customers ?? [];
-  const oemList = oems ?? [];
-
   return (
     <nav
       ref={setNavRef}
@@ -420,36 +408,12 @@ export function Sidebar() {
       <Divider />
 
       {/* OEM */}
-      <Section heading="OEM">
-        {oemsLoading && <LoadingState />}
-        {oemsError && !oemsLoading && (
-          <LoadError onRetry={() => void refetchOems()} />
-        )}
-        {!oemsLoading && !oemsError && oemList.length === 0 && (
-          <EmptyState message="No OEMs yet — add one in the database" />
-        )}
-        {!oemsLoading &&
-          !oemsError &&
-          oemList.map((o) => (
-            <NavLink
-              key={o.id}
-              to={`/oem/${o.id}`}
-              title={o.name}
-              className={({ isActive }) =>
-                clsx(
-                  'flex items-center gap-[10px] px-[10px] py-[7px] rounded-[6px]',
-                  'text-sm font-normal no-underline',
-                  'border-l-2 transition-[background-color,color] duration-200',
-                  isActive
-                    ? 'border-l-accent bg-bg-2 rounded-l-none -ml-0.5 text-ink-1'
-                    : 'border-l-transparent hover:bg-bg-2 text-ink-2',
-                )
-              }
-            >
-              <span className="truncate flex-1 min-w-0">{o.name}</span>
-              {isWithin48h(oemLastTouched?.[String(o.id)]) && <ActivityDot />}
-            </NavLink>
-          ))}
+      <Section>
+        <NavItem
+          to="/oem"
+          icon={<Package size={16} strokeWidth={1.5} />}
+          label="OEM"
+        />
       </Section>
 
       <Divider />

@@ -13,6 +13,7 @@
  */
 
 import { Edit2, MessageSquarePlus, Pencil } from 'lucide-react';
+import type { ReactNode } from 'react';
 import type { Organization } from '../../types';
 
 // ---------------------------------------------------------------------------
@@ -78,6 +79,7 @@ export interface OemPageHeaderProps {
   onEditOrg?: () => void;
   onNewNote?: () => void;
   onOpenChat?: () => void;
+  tabs?: ReactNode;
 }
 
 // ---------------------------------------------------------------------------
@@ -91,6 +93,7 @@ export function OemPageHeader({
   onEditOrg,
   onNewNote,
   onOpenChat,
+  tabs,
 }: OemPageHeaderProps) {
   const lastContact = formatLastContact(lastThreadAt ?? lastNoteAt);
 
@@ -148,29 +151,32 @@ export function OemPageHeader({
             {org.name}
           </h1>
 
-          {/* Status pill row */}
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-              flexWrap: 'wrap',
-              marginBottom: 14,
-            }}
-          >
-            <StatusPill label="oem" />
-            {partnerStatus && <StatusPill label={partnerStatus} />}
-            <span
+          {tabs ? (
+            <div style={{ marginBottom: 14 }}>{tabs}</div>
+          ) : (
+            <div
               style={{
-                fontFamily: 'var(--body)',
-                fontSize: 13,
-                color: 'var(--ink-3)',
-                fontVariantNumeric: 'tabular-nums',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                flexWrap: 'wrap',
+                marginBottom: 14,
               }}
             >
-              Last contact {lastContact}
-            </span>
-          </div>
+              <StatusPill label="oem" />
+              {partnerStatus && <StatusPill label={partnerStatus} />}
+              <span
+                style={{
+                  fontFamily: 'var(--body)',
+                  fontSize: 13,
+                  color: 'var(--ink-3)',
+                  fontVariantNumeric: 'tabular-nums',
+                }}
+              >
+                Last contact {lastContact}
+              </span>
+            </div>
+          )}
 
           {/* About / summary */}
           {summary ? (

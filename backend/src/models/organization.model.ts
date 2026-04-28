@@ -26,6 +26,11 @@ export interface OrganizationInput {
   metadata?: Record<string, unknown>;
 }
 
+export interface OrganizationUpdateInput {
+  name?: string;
+  metadata?: Record<string, unknown> | null;
+}
+
 // ---------------------------------------------------------------------------
 // GET /api/organizations/recent — orgs with last-touched timestamp
 // ---------------------------------------------------------------------------
@@ -131,8 +136,24 @@ export const organizationModel = {
     const result = insertStmt.run(input.type, input.name, JSON.stringify(input.metadata ?? {}));
     return hydrate(getStmt.get(Number(result.lastInsertRowid))!);
   },
-  update: (id: number, name: string, metadata: Record<string, unknown>): Organization | undefined => {
-    updateStmt.run(name, JSON.stringify(metadata), id);
+  update: (
+    id: number,
+    patchOrName: OrganizationUpdateInput | string,
+    legacyMetadata?: Record<string, unknown>,
+  ): Organization | undefined => {
+    const existing = getStmt.get(id);
+    if (!existing) return undefined;
+
+    const existingOrg = hydrate(existing);
+    const patch: OrganizationUpdateInput =
+      typeof patchOrName === 'string'
+        ? { name: patchOrName, metadata: legacyMetadata }
+        : patchOrName;
+
+    const nextName = patch.name ?? existingOrg.name;
+    const nextMetadata =
+      patch.metadata === undefined ? existingOrg.metadata : patch.metadata ?? {};
+    updateStmt.run(nextName, JSON.stringify(nextMetadata), id);
     const row = getStmt.get(id);
     return row ? hydrate(row) : undefined;
   },

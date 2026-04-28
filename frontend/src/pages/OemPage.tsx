@@ -1,4 +1,4 @@
-import { useState, type CSSProperties } from 'react';
+import { useState, type CSSProperties, type ReactNode } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { LayoutGrid } from 'lucide-react';
 import { TileGrid, type TileGridItem } from '../components/tiles/TileGrid';
@@ -30,13 +30,14 @@ const DEFAULT_OEM_LAYOUT: TileLayout[] = [
 
 interface OemDashboardProps {
   org: Organization;
+  tabs?: ReactNode;
 }
 
 /**
  * OemDashboard — tile grid for a single OEM partner.
  * Shares layout state across all OEM dashboards (one layout.oem setting).
  */
-function OemDashboard({ org }: OemDashboardProps) {
+function OemDashboard({ org, tabs }: OemDashboardProps) {
   const [searchParams] = useSearchParams();
   const threadParam = searchParams.get('thread');
   const parsedThreadId = threadParam !== null ? Number(threadParam) : undefined;
@@ -91,7 +92,7 @@ function OemDashboard({ org }: OemDashboardProps) {
   return (
     <div>
       {/* OEM page header + cross-references — mirrors customer page treatment. */}
-      <OemPageHeader org={org} />
+      <OemPageHeader org={org} tabs={tabs} />
       <OemCrossRefsPanel orgId={org.id} />
 
       {/* Section header + edit controls */}
@@ -171,6 +172,70 @@ const secondaryBtnStyle: CSSProperties = {
   transition: 'background-color 150ms var(--ease), color 150ms var(--ease), border-color 150ms var(--ease)',
 };
 
+const oemTabStyleBase: CSSProperties = {
+  fontFamily: 'var(--body)',
+  fontSize: 13,
+  padding: '7px 12px',
+  border: 'none',
+  borderBottom: '2px solid transparent',
+  marginBottom: -1,
+  background: 'transparent',
+  cursor: 'pointer',
+  whiteSpace: 'nowrap',
+  transition: 'color 150ms var(--ease), border-color 150ms var(--ease)',
+};
+
+function OemTabs({
+  oems,
+  selectedId,
+  onSelect,
+}: {
+  oems: Organization[];
+  selectedId: number | null;
+  onSelect: (oemId: number) => void;
+}) {
+  if (oems.length <= 1) return null;
+
+  return (
+    <div
+      role="tablist"
+      aria-label="OEM partners"
+      style={{
+        display: 'flex',
+        gap: 0,
+        borderBottom: '1px solid var(--rule)',
+        marginBottom: 0,
+        overflowX: 'auto',
+      }}
+    >
+      {oems.map((oem) => {
+        const isActive = oem.id === selectedId;
+        return (
+          <button
+            key={oem.id}
+            role="tab"
+            type="button"
+            aria-selected={isActive}
+            onClick={() => onSelect(oem.id)}
+            title={oem.name}
+            style={{
+              ...oemTabStyleBase,
+              maxWidth: 220,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              fontWeight: isActive ? 600 : 400,
+              borderBottomColor: isActive ? 'var(--ink-1)' : 'transparent',
+              color: isActive ? 'var(--ink-1)' : 'var(--ink-2)',
+            }}
+          >
+            {oem.name}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 /**
  * OemPage — tab strip across all OEM organizations + per-org tile dashboard.
  *
@@ -194,79 +259,6 @@ export function OemPage() {
 
   return (
     <div>
-      {/* Page breadcrumb + title */}
-      <p
-        style={{
-          fontSize: 11,
-          letterSpacing: '0.08em',
-          textTransform: 'uppercase',
-          color: 'var(--ink-3)',
-          fontWeight: 500,
-          marginBottom: 8,
-          fontFamily: 'var(--body)',
-        }}
-      >
-        OEM
-      </p>
-      <h1
-        style={{
-          fontFamily: 'var(--display)',
-          fontWeight: 500,
-          fontSize: 56,
-          lineHeight: 1.02,
-          letterSpacing: '-0.02em',
-          marginLeft: -6,
-          marginBottom: 24,
-          textWrap: 'balance',
-        }}
-      >
-        {selectedOrg?.name ?? 'OEM Partners'}
-      </h1>
-
-      {/* OEM tab strip */}
-      {oemList.length > 1 && (
-        <div
-          role="tablist"
-          aria-label="OEM partners"
-          style={{
-            display: 'flex',
-            gap: 0,
-            borderBottom: '1px solid var(--rule)',
-            marginBottom: 24,
-            overflowX: 'auto',
-          }}
-        >
-          {oemList.map((oem) => {
-            const isActive = oem.id === selectedId;
-            return (
-              <button
-                key={oem.id}
-                role="tab"
-                type="button"
-                aria-selected={isActive}
-                onClick={() => handleTabClick(oem.id)}
-                style={{
-                  fontFamily: 'var(--body)',
-                  fontSize: 13,
-                  fontWeight: isActive ? 600 : 400,
-                  padding: '8px 16px',
-                  border: 'none',
-                  borderBottom: isActive ? '2px solid var(--ink-1)' : '2px solid transparent',
-                  marginBottom: -1,
-                  background: 'transparent',
-                  color: isActive ? 'var(--ink-1)' : 'var(--ink-2)',
-                  cursor: 'pointer',
-                  whiteSpace: 'nowrap',
-                  transition: 'color 150ms var(--ease), border-color 150ms var(--ease)',
-                }}
-              >
-                {oem.name}
-              </button>
-            );
-          })}
-        </div>
-      )}
-
       {isLoading && (
         <div
           style={{
@@ -328,7 +320,19 @@ export function OemPage() {
         </div>
       )}
 
-      {selectedOrg && <OemDashboard key={selectedOrg.id} org={selectedOrg} />}
+      {selectedOrg && (
+        <OemDashboard
+          key={selectedOrg.id}
+          org={selectedOrg}
+          tabs={
+            <OemTabs
+              oems={oemList}
+              selectedId={selectedId}
+              onSelect={handleTabClick}
+            />
+          }
+        />
+      )}
     </div>
   );
 }

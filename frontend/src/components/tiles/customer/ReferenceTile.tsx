@@ -3,14 +3,11 @@ import { Building2, MapPin, Link as LinkIcon } from 'lucide-react';
 import { Tile } from '../Tile';
 import { TileEmptyState } from '../TileEmptyState';
 import type { Organization } from '../../../types';
+import { useOrganization as useOrganizationReal } from '../../../api/useOrganizations';
 
 interface UseOrganizationResult {
   data: Organization | undefined;
   isLoading?: boolean;
-}
-
-function useOrganizationStub(_orgId: number): UseOrganizationResult {
-  return { data: undefined, isLoading: false };
 }
 
 interface ReferenceTileProps {
@@ -173,7 +170,7 @@ const ENTRIES: RefEntry[] = [
  * Click each entry to open a popover with the relevant data.
  */
 export function ReferenceTile({ orgId, _useOrganization }: ReferenceTileProps) {
-  const useOrganization = _useOrganization ?? useOrganizationStub;
+  const useOrganization = _useOrganization ?? useOrganizationReal;
   const { data: org, isLoading } = useOrganization(orgId);
 
   const [openEntry, setOpenEntry] = useState<string | null>(null);

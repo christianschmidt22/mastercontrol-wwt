@@ -16,17 +16,6 @@ interface UseTaskMutations {
   create: (title: string, orgId: number, dueDate?: string | null) => void;
 }
 
-function useTasksStub(_params: { orgId: number; status: string }): UseTasksResult {
-  return { data: undefined, isLoading: false };
-}
-
-function useTaskMutationsStub(): UseTaskMutations {
-  return {
-    complete: (_id: number) => {},
-    create: (_title: string, _orgId: number) => {},
-  };
-}
-
 function useTasksForTile(params: { orgId: number; status: string }): UseTasksResult {
   return useTasksReal({ orgId: params.orgId, status: params.status as TaskStatus });
 }

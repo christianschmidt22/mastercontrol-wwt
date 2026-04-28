@@ -63,8 +63,8 @@ organizationsRouter.get('/:id', (req, res, next) => {
 organizationsRouter.put('/:id', validateBody(OrganizationUpdateSchema), (req, res, next) => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id) || id <= 0) return next(new HttpError(400, 'Invalid id'));
-  const { name, metadata } = req.validated as { name: string; metadata?: Record<string, unknown> };
-  const org = organizationModel.update(id, name, metadata ?? {});
+  const { name, metadata } = req.validated as { name?: string; metadata?: Record<string, unknown> | null };
+  const org = organizationModel.update(id, { name, metadata });
   if (!org) return next(new HttpError(404, 'Organization not found'));
   bumpOrgVersion(id);
   res.json(org);

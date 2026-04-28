@@ -28,12 +28,15 @@ export const OrganizationCreateSchema = z.object({
 
 export const OrganizationUpdateSchema = z
   .object({
-    name: z.string().min(1),
+    name: z.string().min(1).optional(),
     metadata: MetadataSchema.optional().nullable(),
   })
   // .strict() rejects unknown fields (e.g. `type`) which would otherwise
   // be silently ignored and let invalid payloads reach the model.
-  .strict();
+  .strict()
+  .refine((data) => data.name !== undefined || data.metadata !== undefined, {
+    message: 'At least one organization field is required.',
+  });
 
 /** GET /organizations/recent?limit= query */
 export const RecentOrgsQuerySchema = z.object({

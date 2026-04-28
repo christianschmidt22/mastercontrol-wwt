@@ -20,14 +20,6 @@ interface UseCreateContactResult {
   isPending: boolean;
 }
 
-function useContactsStub(_orgId: number): UseContactsResult {
-  return { data: undefined, isLoading: false };
-}
-
-function useCreateContactStub(): UseCreateContactResult {
-  return { mutate: () => {}, isPending: false };
-}
-
 // ── Props ─────────────────────────────────────────────────────────────────────
 
 interface ContactsTileProps {

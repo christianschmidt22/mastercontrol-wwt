@@ -1,4 +1,4 @@
-import { useRef, useState, useCallback, type ReactNode, type HTMLAttributes, type AriaAttributes, type KeyboardEvent } from 'react';
+import { useRef, useState, useCallback, type ReactNode, type HTMLAttributes, type AriaAttributes, type KeyboardEvent, type PointerEvent } from 'react';
 import { GripHorizontal } from 'lucide-react';
 import type { TileLayout } from './useTileLayout';
 
@@ -11,6 +11,8 @@ export interface TileEditChromeProps {
   layout: TileLayout;
   /** Called when keyboard move commits a new position */
   onMove: (next: Pick<TileLayout, 'x' | 'y'>) => void;
+  /** Called when pointer or keyboard resize commits a new size */
+  onResize: (next: Pick<TileLayout, 'w' | 'h'>) => void;
   /** Drag handle attributes injected by @dnd-kit useSortable */
   dragHandleProps?: DragHandleProps;
 }
@@ -29,6 +31,7 @@ export function TileEditChrome({
   tileTitle,
   layout,
   onMove,
+  onResize,
   dragHandleProps,
 }: TileEditChromeProps) {
   const [moveActive, setMoveActive] = useState(false);
@@ -38,6 +41,7 @@ export function TileEditChrome({
   });
   const announceRef = useRef<HTMLDivElement>(null);
   const moveBtnRef = useRef<HTMLButtonElement>(null);
+  const resizeBtnRef = useRef<HTMLButtonElement>(null);
 
   const announce = useCallback((msg: string) => {
     if (announceRef.current) {
@@ -123,6 +127,78 @@ export function TileEditChrome({
     [moveActive, activateMove, commitMove, cancelMove, announce],
   );
 
+  const handleResizePointerDown = useCallback(
+    (e: PointerEvent<HTMLButtonElement>) => {
+      e.preventDefault();
+      e.stopPropagation();
+
+      const grid = e.currentTarget.closest('.tile-grid');
+      const computed = grid ? window.getComputedStyle(grid) : null;
+      const columnCount = computed?.gridTemplateColumns
+        ? computed.gridTemplateColumns.split(' ').filter(Boolean).length
+        : 12;
+      const gap = computed?.columnGap ? Number.parseFloat(computed.columnGap) || 14 : 14;
+      const gridWidth = grid?.clientWidth ?? 0;
+      const colWidth =
+        columnCount > 0 && gridWidth > 0
+          ? (gridWidth - gap * Math.max(0, columnCount - 1)) / columnCount
+          : 80;
+      const rowHeight = 80;
+      const rowGap = computed?.rowGap ? Number.parseFloat(computed.rowGap) || 14 : 14;
+      const startX = e.clientX;
+      const startY = e.clientY;
+      const startW = layout.w;
+      const startH = layout.h;
+      const maxW = Math.max(1, columnCount - layout.x + 1);
+
+      const handlePointerMove = (moveEvent: globalThis.PointerEvent) => {
+        const deltaCols = Math.round((moveEvent.clientX - startX) / (colWidth + gap));
+        const deltaRows = Math.round((moveEvent.clientY - startY) / (rowHeight + rowGap));
+        const nextW = Math.min(maxW, Math.max(1, startW + deltaCols));
+        const nextH = Math.max(1, startH + deltaRows);
+        onResize({ w: nextW, h: nextH });
+        announce(`${tileTitle} resized to ${nextW} columns by ${nextH} rows.`);
+      };
+
+      const handlePointerUp = () => {
+        window.removeEventListener('pointermove', handlePointerMove);
+        window.removeEventListener('pointerup', handlePointerUp);
+        resizeBtnRef.current?.focus();
+      };
+
+      window.addEventListener('pointermove', handlePointerMove);
+      window.addEventListener('pointerup', handlePointerUp, { once: true });
+    },
+    [layout.h, layout.w, layout.x, onResize, tileTitle, announce],
+  );
+
+  const handleResizeKeyDown = useCallback(
+    (e: KeyboardEvent<HTMLButtonElement>) => {
+      const maxW = Math.max(1, 12 - layout.x + 1);
+      switch (e.key) {
+        case 'ArrowRight':
+          e.preventDefault();
+          onResize({ w: Math.min(maxW, layout.w + 1), h: layout.h });
+          break;
+        case 'ArrowLeft':
+          e.preventDefault();
+          onResize({ w: Math.max(1, layout.w - 1), h: layout.h });
+          break;
+        case 'ArrowDown':
+          e.preventDefault();
+          onResize({ w: layout.w, h: layout.h + 1 });
+          break;
+        case 'ArrowUp':
+          e.preventDefault();
+          onResize({ w: layout.w, h: Math.max(1, layout.h - 1) });
+          break;
+        default:
+          break;
+      }
+    },
+    [layout.h, layout.w, layout.x, onResize],
+  );
+
   const { x, y } = pendingPos;
 
   return (
@@ -188,19 +264,26 @@ export function TileEditChrome({
       </button>
 
       {/* Resize handle — bottom-right */}
-      <div
-        aria-hidden="true"
+      <button
+        ref={resizeBtnRef}
+        type="button"
+        aria-label={`Resize ${tileTitle}, currently ${layout.w} columns by ${layout.h} rows`}
+        onPointerDown={handleResizePointerDown}
+        onKeyDown={handleResizeKeyDown}
         style={{
           position: 'absolute',
           right: 4,
           bottom: 4,
           width: 14,
           height: 14,
+          border: 'none',
           borderRight: '2px solid var(--accent)',
           borderBottom: '2px solid var(--accent)',
           cursor: 'nwse-resize',
           zIndex: 10,
           borderRadius: '0 0 2px 0',
+          background: 'transparent',
+          padding: 0,
         }}
       />
 

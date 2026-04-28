@@ -34,19 +34,6 @@ interface UseDeleteProjectResult {
 }
 
 // Stubs used only in tests when no hook prop is injected
-function useProjectsStub(_orgId: number): UseProjectsResult {
-  return { data: undefined, isLoading: false };
-}
-function useCreateProjectStub(): UseCreateProjectResult {
-  return { mutate: () => {}, isPending: false };
-}
-function useUpdateProjectStub(): UseUpdateProjectResult {
-  return { mutate: () => {}, isPending: false };
-}
-function useDeleteProjectStub(): UseDeleteProjectResult {
-  return { mutate: () => {}, isPending: false };
-}
-
 // ── Props ─────────────────────────────────────────────────────────────────────
 
 interface PriorityProjectsTileProps {

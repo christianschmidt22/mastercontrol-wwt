@@ -5,7 +5,6 @@
  * - Large Fraunces org name (h1) — click to edit in place
  * - Status pill row: type, last-touched relative time
  * - Two-line "About" (metadata.summary) — click to edit in place
- * - Action row: Edit org, New note (vermilion — primary), Open chat
  * - Hairline separator below
  *
  * Edit-in-place: clicking the org name turns it into a styled <input>;
@@ -13,7 +12,6 @@
  * Esc reverts. Same pattern for the summary (textarea). A hover-visible
  * pencil icon makes the affordance discoverable.
  *
- * Vermilion budget: only the "New note" CTA at rest per Q-1.
  */
 
 import {
@@ -23,8 +21,9 @@ import {
   useState,
   type CSSProperties,
   type KeyboardEvent,
+  type ReactNode,
 } from 'react';
-import { Edit2, MessageSquarePlus, Pencil } from 'lucide-react';
+import { Pencil } from 'lucide-react';
 import { useUpdateOrganization } from '../../api/useOrganizations';
 import type { Organization } from '../../types';
 
@@ -285,9 +284,7 @@ export interface CustomerPageHeaderProps {
   lastThreadAt?: string | null;
   /** ISO date of most recent note created_at, fallback if no thread */
   lastNoteAt?: string | null;
-  onEditOrg?: () => void;
-  onNewNote?: () => void;
-  onOpenChat?: () => void;
+  tabs?: ReactNode;
 }
 
 // ---------------------------------------------------------------------------
@@ -318,9 +315,7 @@ export function CustomerPageHeader({
   org,
   lastThreadAt,
   lastNoteAt,
-  onEditOrg,
-  onNewNote,
-  onOpenChat,
+  tabs,
 }: CustomerPageHeaderProps) {
   const lastTouched = formatLastTouched(lastThreadAt ?? lastNoteAt);
   const summary =
@@ -366,28 +361,12 @@ export function CustomerPageHeader({
         style={{
           display: 'flex',
           alignItems: 'flex-start',
-          justifyContent: 'space-between',
+          justifyContent: 'flex-start',
           gap: 24,
           flexWrap: 'wrap',
         }}
       >
         <div style={{ flex: '1 1 0', minWidth: 0 }}>
-          {/* Eyebrow */}
-          <p
-            style={{
-              fontFamily: 'var(--body)',
-              fontSize: 11,
-              fontWeight: 600,
-              letterSpacing: '0.08em',
-              textTransform: 'uppercase',
-              color: 'var(--ink-3)',
-              marginBottom: 8,
-              margin: '0 0 8px',
-            }}
-          >
-            Customers
-          </p>
-
           {/* Org name — click to edit */}
           {editingName ? (
             <NameEditor
@@ -421,28 +400,31 @@ export function CustomerPageHeader({
             </h1>
           )}
 
-          {/* Status pill row */}
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-              flexWrap: 'wrap',
-              marginBottom: 14,
-            }}
-          >
-            <StatusPill label={org.type} />
-            <span
+          {tabs ? (
+            <div style={{ marginBottom: 14 }}>{tabs}</div>
+          ) : (
+            <div
               style={{
-                fontFamily: 'var(--body)',
-                fontSize: 13,
-                color: 'var(--ink-3)',
-                fontVariantNumeric: 'tabular-nums',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                flexWrap: 'wrap',
+                marginBottom: 14,
               }}
             >
-              Last touched {lastTouched}
-            </span>
-          </div>
+              <StatusPill label={org.type} />
+              <span
+                style={{
+                  fontFamily: 'var(--body)',
+                  fontSize: 13,
+                  color: 'var(--ink-3)',
+                  fontVariantNumeric: 'tabular-nums',
+                }}
+              >
+                Last touched {lastTouched}
+              </span>
+            </div>
+          )}
 
           {/* About / summary — click to edit */}
           {editingSummary ? (
@@ -519,91 +501,6 @@ export function CustomerPageHeader({
               Click to add summary
             </button>
           )}
-        </div>
-
-        {/* Right: action buttons */}
-        <div
-          style={{
-            display: 'flex',
-            gap: 8,
-            alignItems: 'center',
-            flexShrink: 0,
-            paddingTop: 36,
-          }}
-        >
-          {/* Edit org */}
-          <button
-            type="button"
-            onClick={onEditOrg}
-            aria-label="Edit organization"
-            style={{
-              fontFamily: 'var(--body)',
-              fontSize: 12,
-              fontWeight: 500,
-              padding: '7px 14px',
-              borderRadius: 6,
-              cursor: 'pointer',
-              border: '1px solid var(--rule)',
-              background: 'var(--bg)',
-              color: 'var(--ink-2)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
-              transition: 'background-color 150ms var(--ease), color 150ms var(--ease)',
-            }}
-          >
-            <Edit2 size={13} strokeWidth={1.5} aria-hidden="true" />
-            Edit
-          </button>
-
-          {/* Open chat */}
-          <button
-            type="button"
-            onClick={onOpenChat}
-            aria-label="Open chat thread"
-            style={{
-              fontFamily: 'var(--body)',
-              fontSize: 12,
-              fontWeight: 500,
-              padding: '7px 14px',
-              borderRadius: 6,
-              cursor: 'pointer',
-              border: '1px solid var(--rule)',
-              background: 'var(--bg)',
-              color: 'var(--ink-2)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
-              transition: 'background-color 150ms var(--ease), color 150ms var(--ease)',
-            }}
-          >
-            <MessageSquarePlus size={13} strokeWidth={1.5} aria-hidden="true" />
-            Chat
-          </button>
-
-          {/* New note — vermilion CTA (one rest-state accent per screen) */}
-          <button
-            type="button"
-            onClick={onNewNote}
-            aria-label="Add new note"
-            style={{
-              fontFamily: 'var(--body)',
-              fontSize: 12,
-              fontWeight: 600,
-              padding: '7px 16px',
-              borderRadius: 6,
-              cursor: 'pointer',
-              border: '1px solid var(--accent)',
-              background: 'var(--bg)',
-              color: 'var(--accent)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
-              transition: 'background-color 150ms var(--ease)',
-            }}
-          >
-            New note
-          </button>
         </div>
       </div>
 

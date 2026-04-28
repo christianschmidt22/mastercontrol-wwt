@@ -39,10 +39,12 @@ function SortableTileSlot({
   item,
   layoutEntry,
   onMove,
+  onResize,
 }: {
   item: TileGridItem;
   layoutEntry: TileLayout;
   onMove: (id: string, pos: Pick<TileLayout, 'x' | 'y'>) => void;
+  onResize: (id: string, size: Pick<TileLayout, 'w' | 'h'>) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: item.id });
@@ -66,6 +68,7 @@ function SortableTileSlot({
         tileTitle={item.title}
         layout={layoutEntry}
         onMove={(pos) => onMove(item.id, pos)}
+        onResize={(size) => onResize(item.id, size)}
         dragHandleProps={
           { ...attributes, ...listeners }
         }
@@ -134,6 +137,14 @@ export function TileGrid({ items, layout, editMode, onLayoutChange }: TileGridPr
     [layout, onLayoutChange],
   );
 
+  const handleResize = useCallback(
+    (id: string, size: Pick<TileLayout, 'w' | 'h'>) => {
+      const next = layout.map((l) => (l.id === id ? { ...l, ...size } : l));
+      onLayoutChange(next);
+    },
+    [layout, onLayoutChange],
+  );
+
   const visibleItems = items.filter((item) => {
     const entry = getLayoutEntry(item.id);
     return !entry.hidden;
@@ -183,6 +194,7 @@ export function TileGrid({ items, layout, editMode, onLayoutChange }: TileGridPr
                       item={item}
                       layoutEntry={entry}
                       onMove={handleKeyboardMove}
+                      onResize={handleResize}
                     />
                   </div>
                 );

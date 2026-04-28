@@ -143,6 +143,17 @@ p {
   margin: 0;
 }
 
+input,
+textarea,
+select {
+  color-scheme: inherit;
+}
+
+select option {
+  background: var(--bg);
+  color: var(--ink-1);
+}
+
 /* Utility: tabular numbers for timestamps, counts, currency */
 .tnum {
   font-variant-numeric: tabular-nums;

@@ -49,8 +49,12 @@ Order, top to bottom:
 7. **Settings**
 
 ### Customer Page (per-customer)
-Tiled dashboard. Tiles default to a collapsed/preview state with detail
-revealed by click — reference is occasional, density should be low at rest.
+Tabbed customer workspace. The first tab is **Home**, which is the tiled
+dashboard. Each project tied to the customer appears as its own tab next to
+Home and opens a project page scoped to that customer.
+
+Home tiles default to a collapsed/preview state with detail revealed by click
+— reference is occasional, density should be low at rest.
 
 - **Profile tile** — name, address, company size, industry, website. Long-form
   metadata hidden behind expand toggles.
@@ -62,6 +66,10 @@ revealed by click — reference is occasional, density should be low at rest.
 - **Notes / Chat tile** — chronological notes feed + a chat composer at the
   bottom. The chat is the per-customer agent. Messages and AI responses
   persist as notes (so the conversation is part of the record).
+
+Project tabs show the selected project's status, description, linked folder,
+linked notes, and project timestamps. The tab URL is stable so a project can
+be linked directly.
 
 ### OEM Page
 Single sidebar entry. Page contains a tab strip across OEMs (Cisco, NetApp,

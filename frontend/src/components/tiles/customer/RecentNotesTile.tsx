@@ -24,14 +24,6 @@ interface UseCreateNoteResult {
   isPending: boolean;
 }
 
-function useNotesStub(_orgId: number, _options?: { includeUnconfirmed?: boolean }): UseNotesResult {
-  return { data: undefined, isLoading: false };
-}
-
-function useCreateNoteStub(): UseCreateNoteResult {
-  return { mutate: () => {}, isPending: false };
-}
-
 interface RecentNotesTileProps {
   orgId: number;
   _useNotes?: (orgId: number, options?: { includeUnconfirmed?: boolean }) => UseNotesResult;

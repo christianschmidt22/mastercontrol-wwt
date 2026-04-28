@@ -1,17 +1,16 @@
 /**
  * CustomerPageHeader.test.tsx
  *
- * 6 cases:
+ * Header rendering and last-touched formatting.
  *   1. renders the org name in an h1
  *   2. renders the org type status pill
  *   3. formatLastTouched — "just now" for very recent
  *   4. formatLastTouched — relative days (2 days ago)
  *   5. shows "Click to add summary" empty state when no metadata.summary
- *   6. Edit button calls onEditOrg handler
  */
 
-import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { describe, it, expect } from 'vitest';
+import { render, screen } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import React from 'react';
 import {
@@ -68,18 +67,11 @@ describe('CustomerPageHeader — rendering', () => {
     expect(screen.queryByText('Click to add summary')).toBeNull();
   });
 
-  it('calls onEditOrg when Edit button is clicked', () => {
-    const onEditOrg = vi.fn();
-    renderHeader({ onEditOrg });
-    fireEvent.click(screen.getByRole('button', { name: /edit organization/i }));
-    expect(onEditOrg).toHaveBeenCalledTimes(1);
-  });
-
-  it('calls onNewNote when New note button is clicked', () => {
-    const onNewNote = vi.fn();
-    renderHeader({ onNewNote });
-    fireEvent.click(screen.getByRole('button', { name: /add new note/i }));
-    expect(onNewNote).toHaveBeenCalledTimes(1);
+  it('does not render the removed top-level action buttons', () => {
+    renderHeader();
+    expect(screen.queryByRole('button', { name: /edit organization/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /add new note/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /open chat thread/i })).toBeNull();
   });
 });
 
