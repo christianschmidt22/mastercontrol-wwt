@@ -3,6 +3,12 @@ import { Check, X, Plus } from 'lucide-react';
 import { Tile } from '../Tile';
 import { TileEmptyState } from '../TileEmptyState';
 import type { Note, NoteCreate } from '../../../types';
+import {
+  useNotes as useNotesReal,
+  useCreateNote as useCreateNoteReal,
+  useConfirmInsight as useConfirmInsightReal,
+  useRejectInsight as useRejectInsightReal,
+} from '../../../api/useNotes';
 
 // ---------------------------------------------------------------------------
 // Hook interfaces — narrower than UseMutationResult for inject-ability
@@ -29,8 +35,8 @@ function useCreateNoteStub(): UseCreateNoteResult {
 interface RecentNotesTileProps {
   orgId: number;
   _useNotes?: (orgId: number, options?: { includeUnconfirmed?: boolean }) => UseNotesResult;
-  _useConfirmInsight?: () => { mutate: (noteId: number) => void };
-  _useRejectInsight?: () => { mutate: (noteId: number) => void };
+  _useConfirmInsight?: () => { mutate: (args: { id: number; orgId: number }) => void };
+  _useRejectInsight?: () => { mutate: (args: { id: number; orgId: number }) => void };
   _useCreateNote?: () => UseCreateNoteResult;
 }
 
@@ -223,19 +229,23 @@ export function RecentNotesTile({
   _useRejectInsight,
   _useCreateNote,
 }: RecentNotesTileProps) {
-  const useNotes = _useNotes ?? useNotesStub;
-  const useCreateNote = _useCreateNote ?? useCreateNoteStub;
+  const useNotes = _useNotes ?? useNotesReal;
+  const useCreateNote = _useCreateNote ?? useCreateNoteReal;
   const { data: notes, isLoading } = useNotes(orgId, { includeUnconfirmed: true });
 
-  const useConfirmInsight = _useConfirmInsight ?? (() => ({ mutate: (_id: number) => {} }));
-  const useRejectInsight = _useRejectInsight ?? (() => ({ mutate: (_id: number) => {} }));
-
-  const { mutate: confirmInsight } = useConfirmInsight();
-  const { mutate: rejectInsight } = useRejectInsight();
+  // Confirm/reject — real hooks take { id, orgId }; injected test hooks take just (id)
+  const { mutate: confirmInsightRaw } = (_useConfirmInsight ?? useConfirmInsightReal)();
+  const { mutate: rejectInsightRaw } = (_useRejectInsight ?? useRejectInsightReal)();
   const { mutate: createNote, isPending } = useCreateNote();
 
-  const handleConfirm = useCallback((id: number) => confirmInsight(id), [confirmInsight]);
-  const handleReject = useCallback((id: number) => rejectInsight(id), [rejectInsight]);
+  const handleConfirm = useCallback(
+    (id: number) => confirmInsightRaw({ id, orgId }),
+    [confirmInsightRaw, orgId],
+  );
+  const handleReject = useCallback(
+    (id: number) => rejectInsightRaw({ id, orgId }),
+    [rejectInsightRaw, orgId],
+  );
 
   const [adding, setAdding] = useState(false);
   const [noteContent, setNoteContent] = useState('');

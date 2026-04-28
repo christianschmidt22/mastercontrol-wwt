@@ -3,6 +3,8 @@ import { Plus } from 'lucide-react';
 import { Tile } from '../Tile';
 import { TileEmptyState } from '../TileEmptyState';
 import type { Task } from '../../../types';
+import { useTasks as useTasksReal, useCompleteTask, useCreateTask } from '../../../api/useTasks';
+import type { TaskStatus } from '../../../types';
 
 interface UseTasksResult {
   data: Task[] | undefined;
@@ -22,6 +24,20 @@ function useTaskMutationsStub(): UseTaskMutations {
   return {
     complete: (_id: number) => {},
     create: (_title: string, _orgId: number) => {},
+  };
+}
+
+function useTasksForTile(params: { orgId: number; status: string }): UseTasksResult {
+  return useTasksReal({ orgId: params.orgId, status: params.status as TaskStatus });
+}
+
+function useTaskMutationsReal(): UseTaskMutations {
+  const { mutate: completeTask } = useCompleteTask();
+  const { mutate: createTask } = useCreateTask();
+  return {
+    complete: (taskId) => completeTask(taskId),
+    create: (title, orgId, dueDate) =>
+      createTask({ title, organization_id: orgId, due_date: dueDate ?? null, status: 'open' }),
   };
 }
 
@@ -58,8 +74,8 @@ function formatDue(dueDate: string | null): string {
  * Inline "+ Add task" form at the bottom.
  */
 export function TasksTile({ orgId, _useTasks, _useTaskMutations }: TasksTileProps) {
-  const useTasks = _useTasks ?? useTasksStub;
-  const useTaskMutations = _useTaskMutations ?? useTaskMutationsStub;
+  const useTasks = _useTasks ?? useTasksForTile;
+  const useTaskMutations = _useTaskMutations ?? useTaskMutationsReal;
 
   const { data: tasks, isLoading } = useTasks({ orgId, status: 'open' });
   const { complete, create } = useTaskMutations();

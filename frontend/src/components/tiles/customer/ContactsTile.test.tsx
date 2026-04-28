@@ -10,8 +10,14 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ContactsTile } from './ContactsTile';
 import type { Contact, ContactCreate } from '../../../types';
+
+function renderWithClient(ui: React.ReactElement) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+  return render(<QueryClientProvider client={client}>{ui}</QueryClientProvider>);
+}
 
 const baseContact: Contact = {
   id: 1,
@@ -37,24 +43,24 @@ function makeMutationHook(mutate = vi.fn()) {
 
 describe('ContactsTile — empty state', () => {
   it('shows empty-state copy when contacts array is empty', () => {
-    render(<ContactsTile orgId={10} _useContacts={makeHook([])} />);
+    renderWithClient(<ContactsTile orgId={10} _useContacts={makeHook([])} />);
     expect(
       screen.getByText('No contacts yet. Add the account team.'),
     ).toBeInTheDocument();
   });
 
   it('empty state has role="status"', () => {
-    render(<ContactsTile orgId={10} _useContacts={makeHook([])} />);
+    renderWithClient(<ContactsTile orgId={10} _useContacts={makeHook([])} />);
     expect(screen.getByRole('status')).toBeInTheDocument();
   });
 
   it('shows Add contact button in empty state', () => {
-    render(<ContactsTile orgId={10} _useContacts={makeHook([])} />);
+    renderWithClient(<ContactsTile orgId={10} _useContacts={makeHook([])} />);
     expect(screen.getByRole('button', { name: 'Add contact' })).toBeInTheDocument();
   });
 
   it('does not show empty state while loading', () => {
-    render(<ContactsTile orgId={10} _useContacts={makeHook(undefined, true)} />);
+    renderWithClient(<ContactsTile orgId={10} _useContacts={makeHook(undefined, true)} />);
     expect(
       screen.queryByText('No contacts yet. Add the account team.'),
     ).toBeNull();
@@ -65,12 +71,12 @@ describe('ContactsTile — empty state', () => {
 
 describe('ContactsTile — data view', () => {
   it('renders contact names when data is present', () => {
-    render(<ContactsTile orgId={10} _useContacts={makeHook([baseContact])} />);
+    renderWithClient(<ContactsTile orgId={10} _useContacts={makeHook([baseContact])} />);
     expect(screen.getByText('Alice Smith')).toBeInTheDocument();
   });
 
   it('does not render empty state when contacts exist', () => {
-    render(<ContactsTile orgId={10} _useContacts={makeHook([baseContact])} />);
+    renderWithClient(<ContactsTile orgId={10} _useContacts={makeHook([baseContact])} />);
     expect(
       screen.queryByText('No contacts yet. Add the account team.'),
     ).toBeNull();
@@ -82,7 +88,7 @@ describe('ContactsTile — data view', () => {
 describe('ContactsTile — inline add form', () => {
   it('clicking Add contact opens the form; Cancel collapses it and clears fields', async () => {
     const user = userEvent.setup();
-    render(<ContactsTile orgId={10} _useContacts={makeHook([])} />);
+    renderWithClient(<ContactsTile orgId={10} _useContacts={makeHook([])} />);
 
     await user.click(screen.getByRole('button', { name: 'Add contact' }));
 
@@ -100,7 +106,7 @@ describe('ContactsTile — inline add form', () => {
 
   it('shows validation error in aria-live region when name is empty on submit', async () => {
     const user = userEvent.setup();
-    render(<ContactsTile orgId={10} _useContacts={makeHook([])} />);
+    renderWithClient(<ContactsTile orgId={10} _useContacts={makeHook([])} />);
 
     await user.click(screen.getByRole('button', { name: 'Add contact' }));
     await user.type(screen.getByLabelText('Email'), 'bob@example.com');
@@ -112,7 +118,7 @@ describe('ContactsTile — inline add form', () => {
   it('save calls mutate with the expected payload', async () => {
     const user = userEvent.setup();
     const { hook, mutate } = makeMutationHook();
-    render(
+    renderWithClient(
       <ContactsTile
         orgId={10}
         _useContacts={makeHook([])}
@@ -143,7 +149,7 @@ describe('ContactsTile — inline add form', () => {
   it('cancel does not call mutate', async () => {
     const user = userEvent.setup();
     const { hook, mutate } = makeMutationHook();
-    render(
+    renderWithClient(
       <ContactsTile
         orgId={10}
         _useContacts={makeHook([])}
@@ -161,7 +167,7 @@ describe('ContactsTile — inline add form', () => {
   it('optimistically inserts new contact into the list before server responds', async () => {
     const user = userEvent.setup();
     // Start with one existing contact
-    render(
+    renderWithClient(
       <ContactsTile
         orgId={10}
         _useContacts={makeHook([baseContact])}

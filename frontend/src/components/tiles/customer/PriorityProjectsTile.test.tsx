@@ -10,8 +10,14 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { PriorityProjectsTile } from './PriorityProjectsTile';
 import type { Project, ProjectCreate } from '../../../types';
+
+function renderWithClient(ui: React.ReactElement) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+  return render(<QueryClientProvider client={client}>{ui}</QueryClientProvider>);
+}
 
 const activeProject: Project = {
   id: 1,
@@ -44,19 +50,19 @@ function makeMutationHook(mutate = vi.fn()) {
 
 describe('PriorityProjectsTile — empty state', () => {
   it('shows empty-state copy when no active/qualifying projects', () => {
-    render(<PriorityProjectsTile orgId={10} _useProjects={makeHook([])} />);
+    renderWithClient(<PriorityProjectsTile orgId={10} _useProjects={makeHook([])} />);
     expect(
       screen.getByText('No projects on record. Add one when an engagement starts.'),
     ).toBeInTheDocument();
   });
 
   it('empty state has role="status"', () => {
-    render(<PriorityProjectsTile orgId={10} _useProjects={makeHook([])} />);
+    renderWithClient(<PriorityProjectsTile orgId={10} _useProjects={makeHook([])} />);
     expect(screen.getByRole('status')).toBeInTheDocument();
   });
 
   it('shows empty state when all projects are non-active statuses', () => {
-    render(
+    renderWithClient(
       <PriorityProjectsTile orgId={10} _useProjects={makeHook([wonProject])} />,
     );
     expect(
@@ -65,7 +71,7 @@ describe('PriorityProjectsTile — empty state', () => {
   });
 
   it('does not show empty state while loading', () => {
-    render(
+    renderWithClient(
       <PriorityProjectsTile orgId={10} _useProjects={makeHook(undefined, true)} />,
     );
     expect(
@@ -78,14 +84,14 @@ describe('PriorityProjectsTile — empty state', () => {
 
 describe('PriorityProjectsTile — data view', () => {
   it('renders active project name when data is present', () => {
-    render(
+    renderWithClient(
       <PriorityProjectsTile orgId={10} _useProjects={makeHook([activeProject])} />,
     );
     expect(screen.getByText('Storage Refresh')).toBeInTheDocument();
   });
 
   it('does not render empty state when active projects exist', () => {
-    render(
+    renderWithClient(
       <PriorityProjectsTile orgId={10} _useProjects={makeHook([activeProject])} />,
     );
     expect(
@@ -94,7 +100,7 @@ describe('PriorityProjectsTile — data view', () => {
   });
 
   it('filters non-active projects out of the list', () => {
-    render(
+    renderWithClient(
       <PriorityProjectsTile
         orgId={10}
         _useProjects={makeHook([activeProject, wonProject])}
@@ -110,7 +116,7 @@ describe('PriorityProjectsTile — data view', () => {
 describe('PriorityProjectsTile — inline add form', () => {
   it('clicking Add project opens the form; Cancel collapses it', async () => {
     const user = userEvent.setup();
-    render(<PriorityProjectsTile orgId={10} _useProjects={makeHook([])} />);
+    renderWithClient(<PriorityProjectsTile orgId={10} _useProjects={makeHook([])} />);
 
     await user.click(screen.getByRole('button', { name: 'Add project' }));
 
@@ -124,7 +130,7 @@ describe('PriorityProjectsTile — inline add form', () => {
 
   it('shows validation error in aria-live region when name is empty on submit', async () => {
     const user = userEvent.setup();
-    render(<PriorityProjectsTile orgId={10} _useProjects={makeHook([])} />);
+    renderWithClient(<PriorityProjectsTile orgId={10} _useProjects={makeHook([])} />);
 
     await user.click(screen.getByRole('button', { name: 'Add project' }));
     await user.click(screen.getByRole('button', { name: 'Save' }));
@@ -135,7 +141,7 @@ describe('PriorityProjectsTile — inline add form', () => {
   it('save calls mutate with the expected payload', async () => {
     const user = userEvent.setup();
     const { hook, mutate } = makeMutationHook();
-    render(
+    renderWithClient(
       <PriorityProjectsTile
         orgId={10}
         _useProjects={makeHook([])}
@@ -164,7 +170,7 @@ describe('PriorityProjectsTile — inline add form', () => {
   it('cancel does not call mutate', async () => {
     const user = userEvent.setup();
     const { hook, mutate } = makeMutationHook();
-    render(
+    renderWithClient(
       <PriorityProjectsTile
         orgId={10}
         _useProjects={makeHook([])}
@@ -181,7 +187,7 @@ describe('PriorityProjectsTile — inline add form', () => {
 
   it('optimistically inserts active project into the priority list before server responds', async () => {
     const user = userEvent.setup();
-    render(
+    renderWithClient(
       <PriorityProjectsTile
         orgId={10}
         _useProjects={makeHook([activeProject])}
@@ -203,7 +209,7 @@ describe('PriorityProjectsTile — inline add form', () => {
 
   it('optimistic project with non-priority status does not appear in the list', async () => {
     const user = userEvent.setup();
-    render(<PriorityProjectsTile orgId={10} _useProjects={makeHook([])} />);
+    renderWithClient(<PriorityProjectsTile orgId={10} _useProjects={makeHook([])} />);
 
     await user.click(screen.getByRole('button', { name: 'Add project' }));
     await user.type(screen.getByLabelText('Name'), 'Closed Deal');

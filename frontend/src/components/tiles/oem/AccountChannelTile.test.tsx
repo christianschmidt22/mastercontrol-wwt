@@ -10,8 +10,14 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AccountChannelTile } from './AccountChannelTile';
 import type { Contact } from '../../../types';
+
+function renderWithClient(ui: React.ReactElement) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+  return render(<QueryClientProvider client={client}>{ui}</QueryClientProvider>);
+}
 
 const accountContact: Contact = {
   id: 1,
@@ -43,26 +49,26 @@ function makeHook(data: Contact[] | undefined, isLoading = false) {
 
 describe('AccountChannelTile — empty state', () => {
   it('shows empty-state copy when contacts array is empty', () => {
-    render(<AccountChannelTile orgId={20} _useContacts={makeHook([])} />);
+    renderWithClient(<AccountChannelTile orgId={20} _useContacts={makeHook([])} />);
     expect(
       screen.getByText('No contacts yet. Add the account team.'),
     ).toBeInTheDocument();
   });
 
   it('empty state has role="status"', () => {
-    render(<AccountChannelTile orgId={20} _useContacts={makeHook([])} />);
+    renderWithClient(<AccountChannelTile orgId={20} _useContacts={makeHook([])} />);
     expect(screen.getByRole('status')).toBeInTheDocument();
   });
 
   it('shows Add contact button in empty state', () => {
-    render(<AccountChannelTile orgId={20} _useContacts={makeHook([])} />);
+    renderWithClient(<AccountChannelTile orgId={20} _useContacts={makeHook([])} />);
     expect(
       screen.getByRole('button', { name: 'Add contact' }),
     ).toBeInTheDocument();
   });
 
   it('does not show empty state while loading', () => {
-    render(
+    renderWithClient(
       <AccountChannelTile orgId={20} _useContacts={makeHook(undefined, true)} />,
     );
     expect(
@@ -73,7 +79,7 @@ describe('AccountChannelTile — empty state', () => {
 
 describe('AccountChannelTile — data view', () => {
   it('renders account team contact', () => {
-    render(
+    renderWithClient(
       <AccountChannelTile
         orgId={20}
         _useContacts={makeHook([accountContact])}
@@ -83,7 +89,7 @@ describe('AccountChannelTile — data view', () => {
   });
 
   it('renders channel team contact in its own section', () => {
-    render(
+    renderWithClient(
       <AccountChannelTile
         orgId={20}
         _useContacts={makeHook([channelContact])}
@@ -94,7 +100,7 @@ describe('AccountChannelTile — data view', () => {
   });
 
   it('does not render empty state when contacts exist', () => {
-    render(
+    renderWithClient(
       <AccountChannelTile
         orgId={20}
         _useContacts={makeHook([accountContact])}
@@ -111,7 +117,7 @@ describe('AccountChannelTile — data view', () => {
 describe('AccountChannelTile — inline add form', () => {
   it('clicking Add contact opens the form; Cancel collapses it and clears fields', async () => {
     const user = userEvent.setup();
-    render(<AccountChannelTile orgId={20} _useContacts={makeHook([])} />);
+    renderWithClient(<AccountChannelTile orgId={20} _useContacts={makeHook([])} />);
 
     await user.click(screen.getByRole('button', { name: 'Add contact' }));
 
@@ -126,7 +132,7 @@ describe('AccountChannelTile — inline add form', () => {
 
   it('shows validation error in aria-live region when name is empty on submit', async () => {
     const user = userEvent.setup();
-    render(<AccountChannelTile orgId={20} _useContacts={makeHook([])} />);
+    renderWithClient(<AccountChannelTile orgId={20} _useContacts={makeHook([])} />);
 
     await user.click(screen.getByRole('button', { name: 'Add contact' }));
     await user.click(screen.getByRole('button', { name: 'Save' }));
@@ -136,7 +142,7 @@ describe('AccountChannelTile — inline add form', () => {
 
   it('shows validation error when email is invalid on submit', async () => {
     const user = userEvent.setup();
-    render(<AccountChannelTile orgId={20} _useContacts={makeHook([])} />);
+    renderWithClient(<AccountChannelTile orgId={20} _useContacts={makeHook([])} />);
 
     await user.click(screen.getByRole('button', { name: 'Add contact' }));
     await user.type(screen.getByLabelText('Name'), 'Dave Park');
@@ -151,7 +157,7 @@ describe('AccountChannelTile — inline add form', () => {
     const user = userEvent.setup();
     const mutate = vi.fn();
     const hook = () => ({ mutate, isPending: false });
-    render(
+    renderWithClient(
       <AccountChannelTile
         orgId={20}
         _useContacts={makeHook([])}
@@ -181,7 +187,7 @@ describe('AccountChannelTile — inline add form', () => {
 
   it('optimistically inserts new contact into the correct team section before server responds', async () => {
     const user = userEvent.setup();
-    render(
+    renderWithClient(
       <AccountChannelTile
         orgId={20}
         _useContacts={makeHook([accountContact])}

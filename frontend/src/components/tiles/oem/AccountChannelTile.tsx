@@ -10,6 +10,10 @@ import { Mail, Phone, Plus } from 'lucide-react';
 import { Tile } from '../Tile';
 import { TileEmptyState } from '../TileEmptyState';
 import type { Contact, ContactCreate } from '../../../types';
+import {
+  useContacts as useContactsReal,
+  useCreateContact as useCreateContactReal,
+} from '../../../api/useContacts';
 
 // ── Hook interfaces — narrower than UseMutationResult for inject-ability ──────
 
@@ -178,8 +182,8 @@ export function AccountChannelTile({
   _useContacts,
   _useCreateContact,
 }: AccountChannelTileProps) {
-  const useContacts = _useContacts ?? useContactsStub;
-  const useCreateContact = _useCreateContact ?? useCreateContactStub;
+  const useContacts = _useContacts ?? useContactsReal;
+  const useCreateContact = _useCreateContact ?? useCreateContactReal;
 
   const { data: contacts, isLoading } = useContacts(orgId);
   const { mutate: createContact, isPending } = useCreateContact();
