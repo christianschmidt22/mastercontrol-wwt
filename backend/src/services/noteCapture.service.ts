@@ -11,7 +11,8 @@ import {
   isMastercontrolRootConfigured,
   slugifyFolderName,
 } from './fileSpace.service.js';
-import { createInitialNoteProposal, runLlmExtraction } from './noteProposal.service.js';
+import { runLlmExtraction } from './noteProposal.service.js';
+import { logAlert } from '../models/systemAlert.model.js';
 
 export interface CaptureNoteInput {
   organization_id: number;
@@ -133,15 +134,12 @@ export function captureMarkdownNote(input: CaptureNoteInput): CaptureNoteResult 
     content_sha256: sha256(content),
   });
 
-  createInitialNoteProposal(note, org, project);
-
-  // Fire LLM extraction async — on success, replaces the triage placeholder
-  // with real typed proposals. Errors are non-fatal; the triage remains.
+  // Fire LLM extraction async — extracts tasks, people, insights from the note.
+  // Non-fatal: if extraction fails the note is still saved and visible.
   void runLlmExtraction(note, org, project).catch((err: unknown) => {
-    console.warn('[noteCapture] runLlmExtraction failed (non-fatal)', {
-      note_id: note.id,
-      message: err instanceof Error ? err.message : String(err),
-    });
+    const message = err instanceof Error ? err.message : String(err);
+    console.warn('[noteCapture] runLlmExtraction failed (non-fatal)', { note_id: note.id, message });
+    logAlert('warn', 'noteExtraction', `Note extraction failed: ${message}`, { note_id: note.id });
   });
 
   return { note, markdown_path: filePath ?? '' };

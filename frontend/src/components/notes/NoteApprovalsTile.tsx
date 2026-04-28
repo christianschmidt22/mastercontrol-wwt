@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import type { CSSProperties } from 'react';
 import { Check, MessageSquare, X } from 'lucide-react';
 import { Tile } from '../tiles/Tile';
@@ -29,6 +29,61 @@ function formatType(type: NoteProposal['type']): string {
     .join(' ');
 }
 
+function describeOutcome(proposal: NoteProposal): React.ReactNode {
+  const p = proposal.proposed_payload;
+  const isTriage = p['extraction_stage'] === 'initial_capture_triage';
+
+  if (isTriage) {
+    const target = typeof p['target'] === 'string' ? p['target'] : 'this account';
+    return (
+      <>
+        <span style={{ color: 'var(--ink-3)', fontSize: 12 }}>
+          ⚠ Preliminary — the AI hasn't extracted specifics yet.
+        </span>
+        <br />
+        Approving logs the note content as a project update on <strong>{target}</strong>.
+      </>
+    );
+  }
+
+  switch (proposal.type) {
+    case 'task_follow_up': {
+      const due = typeof p['due_date'] === 'string' && p['due_date'] ? ` — due ${p['due_date']}` : '';
+      return <>Creates a <strong>task</strong>: "{proposal.title}"{due}</>;
+    }
+    case 'customer_ask': {
+      const urgency = typeof p['urgency'] === 'string' ? ` (${p['urgency']} urgency)` : '';
+      const by = typeof p['requested_by'] === 'string' ? ` — requested by ${p['requested_by']}` : '';
+      return <>Logs a <strong>customer ask</strong>: "{proposal.title}"{urgency}{by}</>;
+    }
+    case 'project_update': {
+      const status = typeof p['new_status'] === 'string' ? ` with status → ${p['new_status']}` : '';
+      return <>Logs a <strong>project update</strong>{status} in the notes for this account/project.</>;
+    }
+    case 'risk_blocker': {
+      const severity = typeof p['severity'] === 'string' ? ` (${p['severity']} severity)` : '';
+      return <>Logs a <strong>risk/blocker</strong>{severity} and creates a follow-up task.</>;
+    }
+    case 'oem_mention': {
+      const oem = typeof p['oem_name'] === 'string' ? p['oem_name'] : 'an OEM partner';
+      const sentiment = typeof p['sentiment'] === 'string' ? ` — ${p['sentiment']}` : '';
+      return <>Logs a mention on <strong>{oem}</strong>{sentiment}.</>;
+    }
+    case 'customer_insight': {
+      return <>Records a <strong>customer insight</strong> — saved to this account and visible to the agent in future conversations.</>;
+    }
+    case 'internal_resource': {
+      const name = typeof p['name'] === 'string' ? p['name'] : 'Unknown';
+      const role = typeof p['role'] === 'string' ? p['role'] : null;
+      const team = typeof p['team'] === 'string' ? p['team'] : null;
+      const detail = [role, team].filter(Boolean).join(', ');
+      return <>Adds <strong>{name}{detail ? ` (${detail})` : ''}</strong> to <strong>WWT Resources</strong> on this project.</>;
+    }
+    default:
+      return null;
+  }
+}
+
 function NoteApprovalModal({
   proposal,
   onClose,
@@ -38,7 +93,6 @@ function NoteApprovalModal({
 }) {
   const updateStatus = useUpdateNoteProposalStatus();
   const [discussion, setDiscussion] = useState('');
-  const details = JSON.stringify(proposal.proposed_payload, null, 2);
 
   const finish = (status: 'approved' | 'denied' | 'discussing') => {
     updateStatus.mutate(
@@ -50,6 +104,8 @@ function NoteApprovalModal({
       { onSuccess: onClose },
     );
   };
+
+  const outcome = describeOutcome(proposal);
 
   return (
     <div
@@ -68,7 +124,7 @@ function NoteApprovalModal({
     >
       <section
         style={{
-          width: 'min(760px, 100%)',
+          width: 'min(680px, 100%)',
           maxHeight: '86vh',
           overflow: 'auto',
           border: '1px solid var(--rule)',
@@ -76,9 +132,13 @@ function NoteApprovalModal({
           background: 'var(--bg)',
           padding: 22,
           boxShadow: '0 24px 80px rgba(0, 0, 0, 0.32)',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 14,
         }}
       >
-        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 18 }}>
+        {/* Header */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 18, alignItems: 'flex-start' }}>
           <div>
             <p
               style={{
@@ -98,25 +158,54 @@ function NoteApprovalModal({
                 margin: 0,
                 color: 'var(--ink-1)',
                 fontFamily: 'var(--display)',
-                fontSize: 30,
-                lineHeight: 1.15,
+                fontSize: 26,
+                lineHeight: 1.2,
                 fontWeight: 500,
               }}
             >
               {proposal.title}
             </h2>
           </div>
-          <button type="button" onClick={onClose} aria-label="Close" style={buttonStyle}>
+          <button type="button" onClick={onClose} aria-label="Close" style={{ ...buttonStyle, flexShrink: 0 }}>
             <X size={12} aria-hidden="true" />
           </button>
         </div>
 
-        <p style={{ color: 'var(--ink-1)', fontSize: 14, lineHeight: 1.55 }}>
-          {proposal.summary}
-        </p>
+        {/* What approve will do — plain language */}
+        {outcome && (
+          <div
+            style={{
+              border: '1px solid var(--rule)',
+              borderRadius: 6,
+              padding: '10px 14px',
+              background: 'var(--bg-2)',
+              fontSize: 13,
+              color: 'var(--ink-1)',
+              lineHeight: 1.55,
+              fontFamily: 'var(--body)',
+            }}
+          >
+            <span
+              style={{
+                display: 'block',
+                fontSize: 10,
+                letterSpacing: '0.08em',
+                textTransform: 'uppercase',
+                color: 'var(--ink-3)',
+                marginBottom: 4,
+                fontWeight: 600,
+              }}
+            >
+              Approving will
+            </span>
+            {outcome}
+          </div>
+        )}
+
+        {/* Evidence from the note */}
         <blockquote
           style={{
-            margin: '14px 0',
+            margin: 0,
             borderLeft: '2px solid var(--accent)',
             paddingLeft: 12,
             color: 'var(--ink-2)',
@@ -124,62 +213,62 @@ function NoteApprovalModal({
             lineHeight: 1.6,
           }}
         >
+          <span
+            style={{
+              display: 'block',
+              fontSize: 10,
+              letterSpacing: '0.08em',
+              textTransform: 'uppercase',
+              color: 'var(--ink-3)',
+              marginBottom: 4,
+              fontWeight: 600,
+            }}
+          >
+            From the note
+          </span>
           {proposal.evidence_quote}
         </blockquote>
 
-        <pre
-          style={{
-            whiteSpace: 'pre-wrap',
-            border: '1px solid var(--rule)',
-            borderRadius: 6,
-            padding: 12,
-            color: 'var(--ink-2)',
-            background: 'var(--bg-2)',
-            fontSize: 12,
-            maxHeight: 180,
-            overflow: 'auto',
-          }}
-        >
-          {details}
-        </pre>
+        {/* Discussion textarea */}
+        <div>
+          <label
+            htmlFor="approval-discussion"
+            style={{
+              display: 'block',
+              marginBottom: 6,
+              color: 'var(--ink-3)',
+              fontFamily: 'var(--body)',
+              fontSize: 11,
+              fontWeight: 600,
+              letterSpacing: '0.06em',
+              textTransform: 'uppercase',
+            }}
+          >
+            Notes (optional)
+          </label>
+          <textarea
+            id="approval-discussion"
+            rows={2}
+            value={discussion}
+            onChange={(event) => setDiscussion(event.target.value)}
+            placeholder="Any context or corrections before approving or denying…"
+            style={{
+              width: '100%',
+              boxSizing: 'border-box',
+              border: '1px solid var(--rule)',
+              borderRadius: 6,
+              background: 'transparent',
+              color: 'var(--ink-1)',
+              padding: 10,
+              fontFamily: 'var(--body)',
+              fontSize: 13,
+              resize: 'vertical',
+            }}
+          />
+        </div>
 
-        <label
-          htmlFor="approval-discussion"
-          style={{
-            display: 'block',
-            marginTop: 14,
-            color: 'var(--ink-3)',
-            fontFamily: 'var(--body)',
-            fontSize: 11,
-            fontWeight: 600,
-            letterSpacing: '0.06em',
-            textTransform: 'uppercase',
-          }}
-        >
-          Discussion notes
-        </label>
-        <textarea
-          id="approval-discussion"
-          rows={3}
-          value={discussion}
-          onChange={(event) => setDiscussion(event.target.value)}
-          placeholder="What should the extractor do differently?"
-          style={{
-            width: '100%',
-            boxSizing: 'border-box',
-            marginTop: 6,
-            border: '1px solid var(--rule)',
-            borderRadius: 6,
-            background: 'transparent',
-            color: 'var(--ink-1)',
-            padding: 10,
-            fontFamily: 'var(--body)',
-            fontSize: 13,
-            resize: 'vertical',
-          }}
-        />
-
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
+        {/* Actions */}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
           <button type="button" onClick={() => finish('denied')} style={buttonStyle}>
             <X size={12} aria-hidden="true" />
             Deny

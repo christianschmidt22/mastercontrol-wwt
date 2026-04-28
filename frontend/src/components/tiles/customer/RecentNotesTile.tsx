@@ -34,24 +34,24 @@ interface RecentNotesTileProps {
   _useCreateNote?: () => UseCreateNoteResult;
 }
 
-function formatTimestamp(iso: string): string {
+function formatTimestamp(iso: string): { label: string; time: string } {
   const d = new Date(iso);
   const now = new Date();
   const diffMs = now.getTime() - d.getTime();
   const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
 
-  if (diffDays === 0) {
-    return new Intl.DateTimeFormat('en-US', {
-      hour: 'numeric',
-      minute: '2-digit',
-      hour12: true,
-    }).format(d);
-  }
-  if (diffDays === 1) return 'Yesterday';
+  const time = new Intl.DateTimeFormat('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  }).format(d);
+
+  if (diffDays === 0) return { label: 'Today', time };
+  if (diffDays === 1) return { label: 'Yesterday', time };
   if (diffDays < 7) {
-    return new Intl.DateTimeFormat('en-US', { weekday: 'short' }).format(d);
+    return { label: new Intl.DateTimeFormat('en-US', { weekday: 'short' }).format(d), time };
   }
-  return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(d);
+  return { label: new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(d), time };
 }
 
 /**
@@ -71,7 +71,9 @@ function NoteRow({
   const [expanded, setExpanded] = useState(false);
   const isInsight = note.role === 'agent_insight';
   const isUnconfirmed = isInsight && !note.confirmed;
-  const shouldClamp = !expanded && note.content.length > 300;
+  const isLong = note.content.length > 300;
+  const shouldClamp = !expanded && isLong;
+  const { label, time } = formatTimestamp(note.created_at);
 
   return (
     <li
@@ -103,14 +105,22 @@ function NoteRow({
 
       <time
         dateTime={note.created_at}
+        onClick={isLong ? () => setExpanded((v) => !v) : undefined}
+        title={isLong ? (expanded ? 'Collapse' : 'Expand') : undefined}
         style={{
           fontSize: 11,
           color: 'var(--ink-3)',
           fontVariantNumeric: 'tabular-nums',
           paddingTop: 2,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 2,
+          cursor: isLong ? 'pointer' : 'default',
+          userSelect: 'none',
         }}
       >
-        {formatTimestamp(note.created_at)}
+        <span>{label}</span>
+        <span style={{ opacity: 0.7 }}>{time}</span>
       </time>
 
       <div>
@@ -130,7 +140,7 @@ function NoteRow({
         >
           {note.content}
         </p>
-        {note.content.length > 300 && (
+        {isLong && (
           <button
             type="button"
             onClick={() => setExpanded((v) => !v)}

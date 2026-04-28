@@ -99,7 +99,7 @@ export async function runLlmExtraction(
     oemNames,
   });
 
-  if (raw.length === 0) return; // keep initial triage
+  if (raw.length === 0) return;
 
   // Resolve oem_mention oem_name → org id so applyApproval can create the
   // note on the correct org without a second lookup.
@@ -113,8 +113,7 @@ export async function runLlmExtraction(
     };
   });
 
-  // Replace pending triage with real proposals atomically-enough:
-  // delete triage (only if still pending — safe if user already acted), then create.
+  // Remove any legacy triage placeholder for this note before inserting real proposals.
   noteProposalModel.deleteBySourceNoteIfPending(note.id);
 
   for (const p of resolvedProposals) {

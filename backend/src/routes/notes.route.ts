@@ -12,11 +12,14 @@ import {
 } from '../schemas/note.schema.js';
 import { noteProposalModel } from '../models/noteProposal.model.js';
 import { captureMarkdownNote } from '../services/noteCapture.service.js';
-import { applyApproval } from '../services/noteProposal.service.js';
+import { applyApproval, runLlmExtraction } from '../services/noteProposal.service.js';
 import { validateBody, validateParams, validateQuery } from '../lib/validate.js';
 import { bumpOrgVersion } from '../services/claude.service.js';
 import { extractMentions } from '../services/mention.service.js';
 import { HttpError } from '../middleware/errorHandler.js';
+import { organizationModel } from '../models/organization.model.js';
+import { projectModel } from '../models/project.model.js';
+import { logAlert } from '../models/systemAlert.model.js';
 
 export const notesRouter = Router();
 
@@ -108,6 +111,7 @@ notesRouter.post(
 notesRouter.post('/', validateBody(NoteCreateSchema), (req, res) => {
   const input = req.validated as {
     organization_id: number;
+    project_id?: number | null;
     content: string;
     role?: 'user' | 'assistant' | 'agent_insight' | 'imported';
     thread_id?: number | null;
@@ -115,23 +119,32 @@ notesRouter.post('/', validateBody(NoteCreateSchema), (req, res) => {
   const role = input.role ?? 'user';
   const note = noteModel.create({
     organization_id: input.organization_id,
+    project_id: input.project_id ?? null,
     content: input.content,
     role,
     thread_id: input.thread_id ?? null,
   });
   bumpOrgVersion(input.organization_id);
 
-  // Best-effort cross-org mention extraction. Fire-and-forget — note save
-  // returns immediately; the Anthropic call happens out-of-band. Only for
-  // user-authored or imported content; assistant + agent_insight rows are
-  // already produced by the agent runtime which has its own context.
   if (role === 'user' || role === 'imported') {
+    // Cross-org mention extraction
     void extractMentions(note.id, input.content).catch((err: unknown) => {
       console.warn('[notes] extractMentions failed (non-fatal)', {
         note_id: note.id,
         message: err instanceof Error ? err.message : String(err),
       });
     });
+
+    // LLM proposal extraction — same pipeline as /capture
+    const org = organizationModel.get(input.organization_id);
+    const project = input.project_id ? projectModel.get(input.project_id) ?? null : null;
+    if (org) {
+      void runLlmExtraction(note, org, project).catch((err: unknown) => {
+        const message = err instanceof Error ? err.message : String(err);
+        console.warn('[notes] runLlmExtraction failed (non-fatal)', { note_id: note.id, message });
+        logAlert('warn', 'noteExtraction', `Note extraction failed: ${message}`, { note_id: note.id });
+      });
+    }
   }
 
   res.status(201).json(note);

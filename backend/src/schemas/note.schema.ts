@@ -33,6 +33,7 @@ export const NoteSchema = z.object({
 
 export const NoteCreateSchema = z.object({
   organization_id: z.number().int(),
+  project_id: z.number().int().min(1).optional().nullable(),
   content: z.string().min(1),
   role: NoteRoleSchema.optional(),
   thread_id: z.number().int().optional().nullable(),

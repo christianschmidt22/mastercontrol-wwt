@@ -51,7 +51,8 @@ export type NoteProposalType =
   | 'project_update'
   | 'risk_blocker'
   | 'oem_mention'
-  | 'customer_insight';
+  | 'customer_insight'
+  | 'internal_resource';
 
 export type NoteProposalStatus = 'pending' | 'approved' | 'denied' | 'discussing';
 

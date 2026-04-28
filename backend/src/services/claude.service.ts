@@ -1871,7 +1871,6 @@ export async function extractPrimaryOrgAndMentions(
 const VALID_NOTE_PROPOSAL_TYPES = new Set([
   'customer_ask',
   'task_follow_up',
-  'project_update',
   'risk_blocker',
   'oem_mention',
   'customer_insight',
@@ -1897,7 +1896,6 @@ const EXTRACT_NOTE_PROPOSALS_TOOL: Anthropic.Tool = {
               enum: [
                 'customer_ask',
                 'task_follow_up',
-                'project_update',
                 'risk_blocker',
                 'oem_mention',
                 'customer_insight',
@@ -1926,7 +1924,6 @@ const EXTRACT_NOTE_PROPOSALS_TOOL: Anthropic.Tool = {
                 'Type-specific details. ' +
                 'task_follow_up: {description, due_date?}. ' +
                 'customer_ask: {description, urgency?, requested_by?}. ' +
-                'project_update: {content, new_status?}. ' +
                 'risk_blocker: {description, severity?}. ' +
                 'oem_mention: {oem_name, context, sentiment?}. ' +
                 'customer_insight: {insight}. ' +
@@ -1974,7 +1971,7 @@ export async function extractNoteProposals(options: {
   const oemContext =
     oemNames.length > 0 ? ` Known OEM partners to detect: ${oemNames.join(', ')}.` : '';
 
-  const extractModel = 'claude-haiku-4-5';
+  const extractModel = 'claude-sonnet-4-6';
   const response = await client.messages.create({
     model: extractModel,
     max_tokens: 1024,
@@ -1982,18 +1979,23 @@ export async function extractNoteProposals(options: {
     tools: [EXTRACT_NOTE_PROPOSALS_TOOL],
     tool_choice: { type: 'tool', name: 'report_note_proposals' },
     system:
-      `You extract actionable items from account executive field notes for a CRM. ` +
+      `You extract actionable items from an account executive's field note for a CRM. ` +
       `The note is from a ${orgType} account: "${orgName}".${projectContext}${oemContext}\n\n` +
-      `Extract only items with clear evidence in the note — do not infer. ` +
-      `Proposal types:\n` +
-      `- customer_ask: Something the customer explicitly needs or is requesting\n` +
-      `- task_follow_up: An action item the AE needs to do\n` +
-      `- project_update: Status or progress update for a project\n` +
+      `The note itself is already saved — do NOT propose a "project update" that just restates it.\n\n` +
+      `Focus on items that create new records:\n` +
+      `- task_follow_up: A concrete next step or action item the AE must do. ` +
+        `Include a due_date (YYYY-MM-DD) when a specific date is mentioned. ` +
+        `Meetings to attend, calls to schedule, and follow-ups to send all qualify.\n` +
+      `- internal_resource: A WWT employee who is actively engaged on this account or project. ` +
+        `For email threads, only extract people who appear in a From: line (i.e. they actually sent a message). ` +
+        `Do NOT extract people who are only in To: or CC: — being copied does not mean they are engaged. ` +
+        `Include their apparent role or team if mentioned (SE, BDM, overlay, architect, etc.). ` +
+        `Skip the AE themselves — only extract colleagues.\n` +
+      `- customer_ask: Something the customer is explicitly requesting or needs from WWT\n` +
       `- risk_blocker: A risk, concern, or blocker that could affect the deal\n` +
-      `- oem_mention: A reference to an OEM vendor partner\n` +
-      `- customer_insight: An insight about customer behavior, priorities, or strategy\n` +
-      `- internal_resource: A WWT internal staff member (SE, overlay, BDM, architect, etc.) engaged on this project\n\n` +
-      `Use the report_note_proposals tool to report your findings.`,
+      `- oem_mention: A reference to an OEM vendor partner (${oemNames.length > 0 ? oemNames.join(', ') : 'Cisco, NetApp, Dell, etc.'})\n` +
+      `- customer_insight: A durable insight about customer priorities, strategy, or decision-making\n\n` +
+      `Extract only what has clear evidence in the note. Use the report_note_proposals tool.`,
     messages: [
       {
         role: 'user',
