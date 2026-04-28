@@ -115,26 +115,25 @@ function NoteRow({
 
       <div>
         <p
-          style={
-            {
-              fontSize: 14,
-              lineHeight: 1.55,
-              color: isInsight ? 'var(--ink-2)' : 'var(--ink-1)',
-              margin: 0,
-              maxWidth: '70ch',
-              overflow: shouldClamp ? 'hidden' : 'visible',
-              display: shouldClamp ? '-webkit-box' : 'block',
-              WebkitLineClamp: shouldClamp ? 3 : undefined,
-              WebkitBoxOrient: shouldClamp ? 'vertical' : undefined,
-            }
-          }
+          style={{
+            fontSize: 13,
+            lineHeight: 1.6,
+            color: isInsight ? 'var(--ink-2)' : 'var(--ink-1)',
+            margin: 0,
+            whiteSpace: 'pre-wrap',
+            wordBreak: 'break-word',
+            overflow: shouldClamp ? 'hidden' : 'visible',
+            display: shouldClamp ? '-webkit-box' : 'block',
+            WebkitLineClamp: shouldClamp ? 4 : undefined,
+            WebkitBoxOrient: shouldClamp ? 'vertical' : undefined,
+          }}
         >
           {note.content}
         </p>
-        {note.content.length > 300 && !expanded && (
+        {note.content.length > 300 && (
           <button
             type="button"
-            onClick={() => setExpanded(true)}
+            onClick={() => setExpanded((v) => !v)}
             style={{
               background: 'none',
               border: 'none',
@@ -146,7 +145,7 @@ function NoteRow({
               marginTop: 4,
             }}
           >
-            Read more
+            {expanded ? 'Read less' : 'Read more'}
           </button>
         )}
 
