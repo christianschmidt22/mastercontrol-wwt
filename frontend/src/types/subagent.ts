@@ -145,6 +145,8 @@ export type AgenticResult = AgenticResultOk | AgenticResultErr;
 export interface AuthStatus {
   subscription_authenticated: boolean;
   api_key_configured: boolean;
+  core_api_key_configured?: boolean;
+  core_auth_mode?: string;
 }
 
 // ---------------------------------------------------------------------------

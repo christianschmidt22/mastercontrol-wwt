@@ -17,6 +17,7 @@
 import { type ChangeEvent, type CSSProperties, useEffect, useRef, useState } from 'react';
 import { Loader2, Pencil } from 'lucide-react';
 import { useSetting, useSetSetting } from '../api/useSettings';
+import { useAuthStatus } from '../api/useSubagent';
 import { useUiStore, type Theme } from '../store/useUiStore';
 import { AuthModeSection } from '../components/agents/AuthModeSection';
 
@@ -368,6 +369,109 @@ function MaskedKeySection({
 }
 
 // ─── DefaultModelSection ──────────────────────────────────────────────────────
+
+type CoreAuthMode = 'auto' | 'subscription' | 'api_key';
+
+function CoreClaudeAuthSection() {
+  const { data: existing } = useSetting('claude_auth_mode');
+  const { data: status } = useAuthStatus();
+  const setSetting = useSetSetting();
+  const [selected, setSelected] = useState<CoreAuthMode>('auto');
+  const [savedAt, setSavedAt] = useState<number | null>(null);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (
+      existing?.value === 'auto' ||
+      existing?.value === 'subscription' ||
+      existing?.value === 'api_key'
+    ) {
+      setSelected(existing.value);
+    }
+  }, [existing?.value]);
+
+  async function handleChange(next: CoreAuthMode) {
+    setSelected(next);
+    setError('');
+    try {
+      await setSetting.mutateAsync({ key: 'claude_auth_mode', value: next });
+      setSavedAt(Date.now());
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Save failed.');
+    }
+  }
+
+  const options: Array<{ value: CoreAuthMode; label: string; helper: string }> = [
+    {
+      value: 'subscription',
+      label: 'Claude Code login',
+      helper: status?.subscription_authenticated ? 'Claude Code login detected' : 'Run claude /login',
+    },
+    {
+      value: 'auto',
+      label: 'Auto',
+      helper: 'Use an API key if present, otherwise use Claude Code login.',
+    },
+    {
+      value: 'api_key',
+      label: 'API key',
+      helper: status?.core_api_key_configured ? 'API key configured' : 'No API key saved',
+    },
+  ];
+
+  return (
+    <section aria-labelledby="section-core-claude-auth">
+      <h2 id="section-core-claude-auth" style={SECTION_H2}>
+        Core Claude Authentication
+      </h2>
+      <div style={CARD_STYLE}>
+        <fieldset style={{ border: 'none', margin: 0, padding: 0 }}>
+          <legend style={LABEL_STYLE}>Authentication mode for CRM chat, extraction, and reports</legend>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 8 }}>
+            {options.map((opt) => (
+              <label
+                key={opt.value}
+                htmlFor={`core-auth-${opt.value}`}
+                style={{
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: 10,
+                  fontFamily: 'var(--body)',
+                  fontSize: 14,
+                  color: 'var(--ink-1)',
+                  cursor: 'pointer',
+                }}
+              >
+                <input
+                  type="radio"
+                  id={`core-auth-${opt.value}`}
+                  name="claude_auth_mode"
+                  value={opt.value}
+                  checked={selected === opt.value}
+                  onChange={() => void handleChange(opt.value)}
+                  disabled={setSetting.isPending}
+                  style={{ accentColor: 'var(--accent)', cursor: 'pointer', marginTop: 3 }}
+                />
+                <span style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  <span>{opt.label}</span>
+                  <span style={{ fontSize: 12, color: 'var(--ink-2)' }}>{opt.helper}</span>
+                </span>
+              </label>
+            ))}
+          </div>
+        </fieldset>
+        {error && (
+          <p role="alert" style={{ ...ERROR_STYLE, marginTop: 12 }}>
+            {error}
+          </p>
+        )}
+        <div style={{ marginTop: 8 }}>
+          <SavedBadge savedAt={savedAt} />
+        </div>
+      </div>
+    </section>
+  );
+}
 
 const MODEL_OPTIONS = [
   { value: 'claude-sonnet-4-6', label: 'claude-sonnet-4-6 (recommended)' },
@@ -734,6 +838,8 @@ export function SettingsPage() {
 
       {/* Sections — 40px gap */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 40 }}>
+        <CoreClaudeAuthSection />
+
         <MaskedKeySection
           settingKey="anthropic_api_key"
           sectionId="section-anthropic-api-key"

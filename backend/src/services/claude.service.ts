@@ -27,8 +27,18 @@
  */
 
 import Anthropic from '@anthropic-ai/sdk';
+import {
+  SYSTEM_PROMPT_DYNAMIC_BOUNDARY,
+  createSdkMcpServer,
+  query as queryClaudeCode,
+  tool as sdkTool,
+  type SDKMessage,
+  type SDKResultMessage,
+  type SdkMcpToolDefinition,
+} from '@anthropic-ai/claude-agent-sdk';
 import type { Request, Response } from 'express';
 import * as fs from 'node:fs';
+import { z } from 'zod/v4';
 import { settingsModel } from '../models/settings.model.js';
 import { agentToolAuditModel } from '../models/agentToolAudit.model.js';
 import { openSse } from '../lib/sse.js';
@@ -36,6 +46,12 @@ import { HttpError } from '../middleware/errorHandler.js';
 import { resolveSafePath, enforceSizeLimit } from '../lib/safePath.js';
 import { anthropicUsageModel, type UsageSource } from '../models/anthropicUsage.model.js';
 import { computeCostMicros } from '../lib/anthropicPricing.js';
+import {
+  AUTH_ACTION_MESSAGE,
+  ensureBashEnvForClaudeCode,
+  hasClaudeCodeCredentials,
+  resolveClaudeExecutable,
+} from './subagentSdk.service.js';
 
 // ---------------------------------------------------------------------------
 // Model imports (Agent 1 parallel build — these types are assumed; adjust if
@@ -200,6 +216,127 @@ function getClient(): Anthropic {
     throw new HttpError(503, 'API key not configured');
   }
   return new Anthropic({ apiKey });
+}
+
+type ClaudeAuthMode = 'api_key' | 'subscription';
+
+function resolveClaudeAuthMode(): ClaudeAuthMode {
+  const configured = settingsModel.get('claude_auth_mode');
+  if (configured === 'api_key') return 'api_key';
+  if (configured === 'subscription') {
+    if (!hasClaudeCodeCredentials()) {
+      throw new HttpError(503, AUTH_ACTION_MESSAGE);
+    }
+    return 'subscription';
+  }
+
+  // Auto mode keeps existing API-key installations stable, but lets a fresh
+  // install with no key use Claude Code OAuth immediately after `claude /login`.
+  const apiKey = settingsModel.get('anthropic_api_key');
+  if (apiKey) return 'api_key';
+  if (hasClaudeCodeCredentials()) return 'subscription';
+  throw new HttpError(503, 'Claude auth not configured. Run `claude /login` or add an Anthropic API key.');
+}
+
+interface SdkUsageBlock {
+  input_tokens?: number;
+  output_tokens?: number;
+  cache_read_input_tokens?: number | null;
+  cache_creation_input_tokens?: number | null;
+}
+
+function recordUsageFromSdkResult(
+  source: UsageSource,
+  model: string,
+  result: SDKResultMessage,
+  taskSummary?: string | null,
+): void {
+  try {
+    const usage = result.usage as SdkUsageBlock;
+    anthropicUsageModel.record({
+      source,
+      model,
+      input_tokens: usage.input_tokens ?? 0,
+      output_tokens: usage.output_tokens ?? 0,
+      cache_read_input_tokens: usage.cache_read_input_tokens ?? 0,
+      cache_creation_input_tokens: usage.cache_creation_input_tokens ?? 0,
+      cost_usd_micros: 0,
+      would_have_cost_micros: Math.round(result.total_cost_usd * 1_000_000),
+      request_id: result.session_id ?? null,
+      task_summary: taskSummary ?? null,
+      error: result.subtype === 'success' ? undefined : result.errors.join('; '),
+    });
+  } catch (err) {
+    console.warn(
+      '[claude.service] recordUsageFromSdkResult failed:',
+      err instanceof Error ? err.message : String(err),
+    );
+  }
+}
+
+function textFromSdkAssistantMessage(event: Extract<SDKMessage, { type: 'assistant' }>): string {
+  let text = '';
+  for (const block of event.message.content) {
+    if (block.type === 'text') text += block.text;
+  }
+  return text;
+}
+
+async function runClaudeCodePrompt(options: {
+  prompt: string;
+  systemPrompt: string | string[];
+  model: string;
+  maxTurns?: number;
+  taskSummary?: string;
+  source: UsageSource;
+  outputSchema?: Record<string, unknown>;
+}): Promise<{ text: string; structured: unknown }> {
+  if (!hasClaudeCodeCredentials()) {
+    throw new HttpError(503, AUTH_ACTION_MESSAGE);
+  }
+
+  ensureBashEnvForClaudeCode();
+  const claudeExe = resolveClaudeExecutable();
+  let finalText = '';
+
+  const stream = queryClaudeCode({
+    prompt: options.prompt,
+    options: {
+      model: options.model,
+      maxTurns: options.maxTurns ?? 1,
+      tools: [],
+      allowedTools: [],
+      permissionMode: 'dontAsk',
+      persistSession: false,
+      settingSources: ['user'],
+      systemPrompt: options.systemPrompt,
+      ...(options.outputSchema
+        ? { outputFormat: { type: 'json_schema' as const, schema: options.outputSchema } }
+        : {}),
+      ...(claudeExe ? { pathToClaudeCodeExecutable: claudeExe } : {}),
+    },
+  });
+
+  for await (const event of stream) {
+    if (event.type === 'assistant') {
+      finalText += textFromSdkAssistantMessage(event);
+      if (event.error === 'authentication_failed') {
+        throw new HttpError(503, AUTH_ACTION_MESSAGE);
+      }
+    }
+    if (event.type === 'result') {
+      recordUsageFromSdkResult(options.source, options.model, event, options.taskSummary);
+      if (event.subtype !== 'success') {
+        throw new Error(event.errors.join('; ') || 'Claude Code run failed');
+      }
+      return {
+        text: event.result || finalText,
+        structured: event.structured_output,
+      };
+    }
+  }
+
+  return { text: finalText, structured: null };
 }
 
 // ---------------------------------------------------------------------------
@@ -818,8 +955,6 @@ export async function streamChat({
   // ------------------------------------------------------------------
   // 6. Open Anthropic stream
   // ------------------------------------------------------------------
-  const client = getClient();
-
   const enabledToolNames = parseEnabledTools(agentConfig.tools_enabled);
   const webSearchTool = buildWebSearchTool(agentConfig.tools_enabled);
 
@@ -874,6 +1009,33 @@ export async function streamChat({
   ];
 
   sse.send({ type: 'thread', thread_id: threadId });
+
+  const authMode = resolveClaudeAuthMode();
+  if (authMode === 'subscription') {
+    await streamChatViaClaudeCode({
+      orgId,
+      threadId,
+      content,
+      sse,
+      m,
+      stable,
+      volatile,
+      historyMessages,
+      agentConfig,
+      allowlist,
+      enabledToolNames,
+      fullTextRef: {
+        get: () => fullText,
+        append: (delta: string) => {
+          fullText += delta;
+        },
+      },
+      toolCallsAccumulated,
+    });
+    return;
+  }
+
+  const client = getClient();
 
   try {
     let conversation: Array<Anthropic.MessageParam> = messagesPayload;
@@ -1012,6 +1174,259 @@ export async function streamChat({
   // ------------------------------------------------------------------
   // 8. Done
   // ------------------------------------------------------------------
+  sse.send({ type: 'done' });
+  sse.end();
+}
+
+interface StreamChatViaClaudeCodeArgs {
+  orgId: number;
+  threadId: number;
+  content: string;
+  sse: ReturnType<typeof openSse>;
+  m: Awaited<ReturnType<typeof models>>;
+  stable: string;
+  volatile: string;
+  historyMessages: Array<Anthropic.MessageParam>;
+  agentConfig: AgentConfig;
+  allowlist: Map<string, number>;
+  enabledToolNames: Set<string>;
+  fullTextRef: {
+    get: () => string;
+    append: (delta: string) => void;
+  };
+  toolCallsAccumulated: unknown[];
+}
+
+function sdkToolResult(result: ToolResultPayload) {
+  return {
+    isError: result.is_error === true,
+    content: [{ type: 'text' as const, text: result.content }],
+  };
+}
+
+function stringifyHistoryMessage(msg: Anthropic.MessageParam): string {
+  if (typeof msg.content === 'string') return msg.content;
+  return JSON.stringify(msg.content);
+}
+
+async function streamChatViaClaudeCode({
+  orgId,
+  threadId,
+  content,
+  sse,
+  m,
+  stable,
+  volatile,
+  historyMessages,
+  agentConfig,
+  allowlist,
+  enabledToolNames,
+  fullTextRef,
+  toolCallsAccumulated,
+}: StreamChatViaClaudeCodeArgs): Promise<void> {
+  if (!hasClaudeCodeCredentials()) {
+    sse.send({ type: 'error', message: AUTH_ACTION_MESSAGE });
+    sse.end();
+    throw new HttpError(503, AUTH_ACTION_MESSAGE);
+  }
+
+  ensureBashEnvForClaudeCode();
+  const claudeExe = resolveClaudeExecutable();
+  const abortController = new AbortController();
+  void sse.disconnected.then(() => abortController.abort());
+
+  let syntheticToolId = 0;
+  const nextToolId = () => `sdk-${threadId}-${++syntheticToolId}`;
+
+  const toolDefs: SdkMcpToolDefinition[] = [];
+  const addTool = (definition: unknown): void => {
+    toolDefs.push(definition as SdkMcpToolDefinition);
+  };
+  if (enabledToolNames.has('record_insight')) {
+    addTool(sdkTool(
+      'record_insight',
+      RECORD_INSIGHT_TOOL.description ?? 'Persist a CRM insight for future conversations.',
+      {
+        target_org_name: z.string(),
+        topic: z.string().optional(),
+        content: z.string(),
+      },
+      async (input) =>
+        sdkToolResult(await handleRecordInsight({
+          toolUseId: nextToolId(),
+          input,
+          orgId,
+          threadId,
+          allowlist,
+          m,
+          sse,
+        })),
+    ));
+  }
+  if (enabledToolNames.has('search_notes')) {
+    addTool(sdkTool(
+      'search_notes',
+      SEARCH_NOTES_TOOL.description ?? 'Search CRM notes.',
+      {
+        query: z.string(),
+        org_id: z.number().optional(),
+      },
+      async (input) =>
+        sdkToolResult(handleSearchNotes({
+          toolUseId: nextToolId(),
+          input,
+          threadId,
+          m,
+          sse,
+        })),
+    ));
+  }
+  if (enabledToolNames.has('list_documents')) {
+    addTool(sdkTool(
+      'list_documents',
+      LIST_DOCUMENTS_TOOL.description ?? 'List documents for an organization.',
+      {
+        org_id: z.number(),
+        kind: z.enum(['link', 'file', 'all']).optional(),
+      },
+      async (input) =>
+        sdkToolResult(handleListDocuments({
+          toolUseId: nextToolId(),
+          input,
+          threadId,
+          m,
+          sse,
+        })),
+    ));
+  }
+  if (enabledToolNames.has('read_document')) {
+    addTool(sdkTool(
+      'read_document',
+      READ_DOCUMENT_TOOL.description ?? 'Read a configured CRM document.',
+      {
+        path: z.string(),
+      },
+      async (input) =>
+        sdkToolResult(handleReadDocument({
+          toolUseId: nextToolId(),
+          input,
+          threadId,
+          sse,
+        })),
+    ));
+  }
+  if (enabledToolNames.has('create_task')) {
+    addTool(sdkTool(
+      'create_task',
+      CREATE_TASK_TOOL.description ?? 'Create a CRM follow-up task.',
+      {
+        title: z.string(),
+        due_date: z.string().optional(),
+        org_id: z.number().optional(),
+        contact_id: z.number().optional(),
+      },
+      async (input) =>
+        sdkToolResult(handleCreateTask({
+          toolUseId: nextToolId(),
+          input,
+          threadId,
+          m,
+          sse,
+        })),
+    ));
+  }
+
+  const mcpServers = toolDefs.length > 0
+    ? { mastercontrol: createSdkMcpServer({ name: 'mastercontrol', version: '0.1.0', tools: toolDefs }) }
+    : undefined;
+  const mcpAllowed = toolDefs.map((def) => `mcp__mastercontrol__${def.name}`);
+  const builtinTools = enabledToolNames.has('web_search') ? ['WebSearch'] : [];
+
+  const historyText = historyMessages.length
+    ? historyMessages
+        .map((msg) => `${msg.role === 'user' ? 'User' : 'Assistant'}: ${stringifyHistoryMessage(msg)}`)
+        .join('\n\n')
+    : '(none)';
+
+  const prompt = `<conversation_history>\n${historyText}\n</conversation_history>\n\n` +
+    `<current_user_message>\n${content}\n</current_user_message>`;
+
+  let sawPartialText = false;
+  let sawAssistantText = false;
+
+  try {
+    const stream = queryClaudeCode({
+      prompt,
+      options: {
+        model: agentConfig.model,
+        maxTurns: 4,
+        tools: builtinTools,
+        allowedTools: [...builtinTools, ...mcpAllowed],
+        permissionMode: 'dontAsk',
+        persistSession: false,
+        settingSources: ['user'],
+        includePartialMessages: true,
+        abortController,
+        systemPrompt: [stable, SYSTEM_PROMPT_DYNAMIC_BOUNDARY, volatile],
+        ...(mcpServers ? { mcpServers } : {}),
+        ...(claudeExe ? { pathToClaudeCodeExecutable: claudeExe } : {}),
+      },
+    });
+
+    for await (const event of stream) {
+      if (event.type === 'stream_event') {
+        const raw = event.event;
+        if (raw.type === 'content_block_delta' && raw.delta.type === 'text_delta') {
+          sawPartialText = true;
+          fullTextRef.append(raw.delta.text);
+          sse.send({ type: 'text', delta: raw.delta.text });
+        }
+      } else if (event.type === 'assistant') {
+        if (event.error === 'authentication_failed') {
+          throw new HttpError(503, AUTH_ACTION_MESSAGE);
+        }
+        for (const block of event.message.content) {
+          if (block.type === 'tool_use') toolCallsAccumulated.push(block);
+        }
+        if (!sawPartialText) {
+          const text = textFromSdkAssistantMessage(event);
+          if (text) {
+            sawAssistantText = true;
+            fullTextRef.append(text);
+            sse.send({ type: 'text', delta: text });
+          }
+        }
+      } else if (event.type === 'result') {
+        recordUsageFromSdkResult('chat', agentConfig.model, event);
+        if (event.subtype !== 'success') {
+          const message = event.errors.join('; ') || 'Claude Code chat failed';
+          sse.send({ type: 'error', message });
+          sse.end();
+          throw new Error(message);
+        }
+        if (!sawPartialText && !sawAssistantText && event.result) {
+          fullTextRef.append(event.result);
+          sse.send({ type: 'text', delta: event.result });
+        }
+      }
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Claude Code stream error';
+    sse.send({ type: 'error', message });
+    sse.end();
+    throw err;
+  }
+
+  if (fullTextRef.get() || toolCallsAccumulated.length > 0) {
+    m.agentMessageModel.append(
+      threadId,
+      'assistant',
+      fullTextRef.get(),
+      toolCallsAccumulated.length > 0 ? toolCallsAccumulated : undefined,
+    );
+    m.agentThreadModel.touchLastMessage(threadId);
+  }
+
   sse.send({ type: 'done' });
   sse.end();
 }
@@ -1679,9 +2094,21 @@ function resolveDefaultModel(): string {
  * Throws HttpError(503) when no API key is configured (mirrors getClient()).
  */
 export async function generateReport(prompt: string): Promise<string> {
-  const client = getClient();
   const model = resolveDefaultModel();
 
+  if (resolveClaudeAuthMode() === 'subscription') {
+    const result = await runClaudeCodePrompt({
+      prompt,
+      systemPrompt: 'You generate concise markdown reports for MasterControl CRM. Return only the report body.',
+      model,
+      maxTurns: 1,
+      source: 'report',
+      taskSummary: 'generateReport',
+    });
+    return result.text;
+  }
+
+  const client = getClient();
   const response = await client.messages.create({
     model,
     max_tokens: 4096,
@@ -1739,10 +2166,57 @@ export async function extractOrgMentions(
 ): Promise<OrgMention[]> {
   if (candidateNames.length === 0) return [];
 
-  const client = getClient();
   const nameList = candidateNames.join(', ');
 
   const ingestModel = 'claude-haiku-4-5';
+  if (resolveClaudeAuthMode() === 'subscription') {
+    const result = await runClaudeCodePrompt({
+      prompt: `<untrusted_document src="note">\n${noteContent}\n</untrusted_document>`,
+      systemPrompt:
+        `You are an entity extractor. Given a note, identify which of these ` +
+        `organization names are mentioned: ${nameList}. Return only matching ` +
+        `names from the list with confidence from 0.0 to 1.0.`,
+      model: ingestModel,
+      maxTurns: 1,
+      source: 'ingest',
+      taskSummary: 'extractOrgMentions',
+      outputSchema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          mentions: {
+            type: 'array',
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              properties: {
+                name: { type: 'string' },
+                confidence: { type: 'number' },
+              },
+              required: ['name', 'confidence'],
+            },
+          },
+        },
+        required: ['mentions'],
+      },
+    });
+    const parsed = result.structured;
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      const mentions = (parsed as { mentions?: unknown }).mentions;
+      if (Array.isArray(mentions)) {
+        return mentions.filter(
+          (item): item is OrgMention =>
+            typeof item === 'object' &&
+            item !== null &&
+            typeof (item as Record<string, unknown>)['name'] === 'string' &&
+            typeof (item as Record<string, unknown>)['confidence'] === 'number',
+        );
+      }
+    }
+    return [];
+  }
+
+  const client = getClient();
   const response = await client.messages.create({
     model: ingestModel,
     max_tokens: 256,
@@ -1795,10 +2269,65 @@ export async function extractPrimaryOrgAndMentions(
     return { primary_org_name: null, primary_confidence: null, mentions: [] };
   }
 
-  const client = getClient();
   const nameList = candidateNames.join(', ');
 
   const ingestModel = 'claude-haiku-4-5';
+  if (resolveClaudeAuthMode() === 'subscription') {
+    const result = await runClaudeCodePrompt({
+      prompt: `<untrusted_document src="note">\n${noteContent}\n</untrusted_document>`,
+      systemPrompt:
+        `You classify WorkVault notes against a fixed organization list: ${nameList}. ` +
+        `Choose the single primary organization the note is mainly about, then list ` +
+        `other organizations that are mentioned. Only use exact names from the list.`,
+      model: ingestModel,
+      maxTurns: 1,
+      source: 'ingest',
+      taskSummary: 'extractPrimaryOrgAndMentions',
+      outputSchema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          primary_org_name: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+          primary_confidence: { anyOf: [{ type: 'number' }, { type: 'null' }] },
+          mentions: {
+            type: 'array',
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              properties: {
+                name: { type: 'string' },
+                confidence: { type: 'number' },
+              },
+              required: ['name', 'confidence'],
+            },
+          },
+        },
+        required: ['primary_org_name', 'primary_confidence', 'mentions'],
+      },
+    });
+    const parsed = result.structured;
+    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return { primary_org_name: null, primary_confidence: null, mentions: [] };
+    }
+    const obj = parsed as Record<string, unknown>;
+    const mentionsRaw = Array.isArray(obj['mentions']) ? obj['mentions'] : [];
+    const mentions = mentionsRaw.filter(
+      (item): item is OrgMention =>
+        typeof item === 'object' &&
+        item !== null &&
+        typeof (item as Record<string, unknown>)['name'] === 'string' &&
+        typeof (item as Record<string, unknown>)['confidence'] === 'number',
+    );
+    return {
+      primary_org_name:
+        typeof obj['primary_org_name'] === 'string' ? obj['primary_org_name'] : null,
+      primary_confidence:
+        typeof obj['primary_confidence'] === 'number' ? obj['primary_confidence'] : null,
+      mentions,
+    };
+  }
+
+  const client = getClient();
   const response = await client.messages.create({
     model: ingestModel,
     max_tokens: 384,
@@ -1966,12 +2495,103 @@ export async function extractNoteProposals(options: {
 }): Promise<RawNoteProposal[]> {
   const { noteContent, orgName, orgType, projectName, oemNames = [] } = options;
 
-  const client = getClient();
   const projectContext = projectName ? ` The note is for project "${projectName}".` : '';
   const oemContext =
     oemNames.length > 0 ? ` Known OEM partners to detect: ${oemNames.join(', ')}.` : '';
 
   const extractModel = 'claude-sonnet-4-6';
+  const extractionInstructions =
+    `You extract actionable items from an account executive's field note for a CRM. ` +
+    `The note is from a ${orgType} account: "${orgName}".${projectContext}${oemContext}\n\n` +
+    `The note itself is already saved - do NOT propose a "project update" that just restates it.\n\n` +
+    `Focus on items that create new records:\n` +
+    `- task_follow_up: A concrete next step or action item the AE must do. ` +
+      `Include a due_date (YYYY-MM-DD) when a specific date is mentioned. ` +
+      `Meetings to attend, calls to schedule, and follow-ups to send all qualify.\n` +
+    `- internal_resource: A WWT employee who is actively engaged on this account or project. ` +
+      `For email threads, only extract people who appear in a From: line (i.e. they actually sent a message). ` +
+      `Do NOT extract people who are only in To: or CC: - being copied does not mean they are engaged. ` +
+      `Include their apparent role or team if mentioned (SE, BDM, overlay, architect, etc.). ` +
+      `Skip the AE themselves - only extract colleagues.\n` +
+    `- customer_ask: Something the customer is explicitly requesting or needs from WWT\n` +
+    `- risk_blocker: A risk, concern, or blocker that could affect the deal\n` +
+    `- oem_mention: A reference to an OEM vendor partner (${oemNames.length > 0 ? oemNames.join(', ') : 'Cisco, NetApp, Dell, etc.'})\n` +
+    `- customer_insight: A durable insight about customer priorities, strategy, or decision-making\n\n` +
+    `Extract only what has clear evidence in the note.`;
+
+  if (resolveClaudeAuthMode() === 'subscription') {
+    const result = await runClaudeCodePrompt({
+      prompt: `<untrusted_document src="note">\n${noteContent}\n</untrusted_document>`,
+      systemPrompt: extractionInstructions,
+      model: extractModel,
+      maxTurns: 1,
+      source: 'ingest',
+      taskSummary: 'extractNoteProposals',
+      outputSchema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          proposals: {
+            type: 'array',
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              properties: {
+                type: {
+                  type: 'string',
+                  enum: [
+                    'customer_ask',
+                    'task_follow_up',
+                    'risk_blocker',
+                    'oem_mention',
+                    'customer_insight',
+                    'internal_resource',
+                  ],
+                },
+                title: { type: 'string' },
+                summary: { type: 'string' },
+                evidence_quote: { type: 'string' },
+                confidence: { type: 'number' },
+                payload: { type: 'object', additionalProperties: true },
+              },
+              required: ['type', 'title', 'summary', 'evidence_quote', 'confidence', 'payload'],
+            },
+          },
+        },
+        required: ['proposals'],
+      },
+    });
+    const parsed = result.structured;
+    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return [];
+    const proposals = (parsed as { proposals?: unknown }).proposals;
+    if (!Array.isArray(proposals)) return [];
+    return proposals
+      .filter((item): item is Record<string, unknown> => {
+        if (typeof item !== 'object' || item === null) return false;
+        const p = item as Record<string, unknown>;
+        return (
+          typeof p['type'] === 'string' &&
+          VALID_NOTE_PROPOSAL_TYPES.has(p['type']) &&
+          typeof p['title'] === 'string' &&
+          p['title'].trim().length > 0 &&
+          typeof p['summary'] === 'string' &&
+          typeof p['evidence_quote'] === 'string' &&
+          typeof p['confidence'] === 'number' &&
+          typeof p['payload'] === 'object' &&
+          p['payload'] !== null
+        );
+      })
+      .map((p) => ({
+        type: p['type'] as string,
+        title: (p['title'] as string).trim().slice(0, 200),
+        summary: (p['summary'] as string).trim().slice(0, 500),
+        evidence_quote: (p['evidence_quote'] as string).trim().slice(0, 1000),
+        confidence: Math.max(0, Math.min(1, p['confidence'] as number)),
+        payload: p['payload'] as Record<string, unknown>,
+      }));
+  }
+
+  const client = getClient();
   const response = await client.messages.create({
     model: extractModel,
     max_tokens: 1024,

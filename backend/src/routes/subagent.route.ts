@@ -10,9 +10,6 @@
  *   GET  /api/subagent/usage/recent      — last N usage events
  */
 import { Router } from 'express';
-import * as fs from 'node:fs';
-import * as os from 'node:os';
-import * as path from 'node:path';
 import { validateBody, validateQuery } from '../lib/validate.js';
 import { HttpError } from '../middleware/errorHandler.js';
 import {
@@ -25,7 +22,7 @@ import {
   type UsagePeriodValue,
 } from '../schemas/subagent.schema.js';
 import { delegate, delegateAgentic, getSessionStart } from '../services/subagent.service.js';
-import { delegateViaSubscription } from '../services/subagentSdk.service.js';
+import { delegateViaSubscription, hasClaudeCodeCredentials } from '../services/subagentSdk.service.js';
 import { anthropicUsageModel } from '../models/anthropicUsage.model.js';
 import { settingsModel } from '../models/settings.model.js';
 import { openSse } from '../lib/sse.js';
@@ -240,11 +237,18 @@ subagentRouter.get(
 // the user runs a delegation.
 subagentRouter.get('/auth-status', (_req, res, next) => {
   try {
-    const credsPath = path.join(os.homedir(), '.claude', '.credentials.json');
-    const subscription_authenticated = fs.existsSync(credsPath);
+    const subscription_authenticated = hasClaudeCodeCredentials();
     const apiKey = settingsModel.get('personal_anthropic_api_key');
     const api_key_configured = typeof apiKey === 'string' && apiKey.length > 0;
-    res.json({ subscription_authenticated, api_key_configured });
+    const coreApiKey = settingsModel.get('anthropic_api_key');
+    const core_api_key_configured = typeof coreApiKey === 'string' && coreApiKey.length > 0;
+    const core_auth_mode = settingsModel.get('claude_auth_mode') ?? 'auto';
+    res.json({
+      subscription_authenticated,
+      api_key_configured,
+      core_api_key_configured,
+      core_auth_mode,
+    });
   } catch (err) {
     next(err);
   }

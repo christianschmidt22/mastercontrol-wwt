@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+- Claude Code login for core AI:
+  - Core CRM AI calls now support `claude_auth_mode=subscription`, using the
+    local Claude Code OAuth session from `claude /login` instead of requiring
+    `settings.anthropic_api_key`.
+  - The subscription path covers org chat streaming, scheduled reports, org
+    mention extraction, primary-org classification, and live note proposal
+    extraction. API-key mode remains as a fallback for existing installs and
+    tests.
+  - Org chat maps MasterControl tools (`record_insight`, `search_notes`,
+    `list_documents`, `read_document`, `create_task`) into an in-process SDK MCP
+    server so the Claude Code login path keeps the same CRM write boundaries.
+  - Settings now has a **Core Claude Authentication** section with Auto,
+    Claude Code login, and API key modes. `/api/subagent/auth-status` also
+    reports core API-key status and the selected core auth mode.
+
 - Project resources + next steps:
   - `018_project_tasks_and_resources.sql` migration: adds nullable `project_id`
     FK to `tasks`; new `project_resources` table (id, project_id, organization_id,

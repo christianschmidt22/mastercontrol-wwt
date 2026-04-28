@@ -8,6 +8,16 @@
 
 Two modes are supported. The **Delegate** tab in `/agents` lets you pick per-session; your choice is stored in `localStorage` and persists across reloads.
 
+The core CRM agent path also supports the same Claude Code login session.
+Settings -> **Core Claude Authentication** controls chat, report generation,
+note extraction, and org mention extraction:
+
+- **Claude Code login** forces OAuth from `claude /login` and does not require
+  `anthropic_api_key`.
+- **Auto** keeps existing API-key installs stable, but uses Claude Code login
+  when no API key is configured.
+- **API key** forces the original metered `anthropic_api_key` path.
+
 ### Mode 1 — Subscription login (recommended)
 
 Uses your **Claude.ai Pro/Max/Team subscription** via the Agent SDK and OAuth credentials stored by `claude /login`. Usage counts against your subscription allotment, not metered tokens. No API key required.

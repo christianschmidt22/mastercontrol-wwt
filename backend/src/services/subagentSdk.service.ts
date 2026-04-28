@@ -79,8 +79,17 @@ function isAuthError(message: string): boolean {
   return AUTH_ERROR_SUBSTRINGS.some((s) => lower.includes(s));
 }
 
-const AUTH_ACTION_MESSAGE =
+export const AUTH_ACTION_MESSAGE =
   'Claude.ai subscription not authenticated. Run `claude /login` first to authorize MasterControl to use your subscription.';
+
+export function getClaudeCredentialsPath(): string {
+  const configDir = process.env.CLAUDE_CONFIG_DIR ?? path.join(os.homedir(), '.claude');
+  return path.join(configDir, '.credentials.json');
+}
+
+export function hasClaudeCodeCredentials(): boolean {
+  return fs.existsSync(getClaudeCredentialsPath());
+}
 
 // ---------------------------------------------------------------------------
 // Working-dir resolution (mirrors subagent.service.ts)
@@ -201,7 +210,7 @@ function compareSemver(a: string, b: string): number {
 
 let _bashPathResolved = false;
 
-function ensureBashEnvForClaudeCode(): void {
+export function ensureBashEnvForClaudeCode(): void {
   if (_bashPathResolved) return;
   _bashPathResolved = true;
 
@@ -290,8 +299,7 @@ export async function delegateViaSubscription(
   // which exits with a generic non-zero code if no OAuth credentials exist —
   // checking here lets us return a clean, actionable message instead of
   // surfacing "Claude Code process exited with code 1".
-  const credsPath = path.join(os.homedir(), '.claude', '.credentials.json');
-  if (!fs.existsSync(credsPath)) {
+  if (!hasClaudeCodeCredentials()) {
     anthropicUsageModel.record({
       source: 'delegate',
       model: 'claude-sonnet-4-6',
