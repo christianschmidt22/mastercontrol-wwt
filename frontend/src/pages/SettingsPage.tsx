@@ -600,9 +600,13 @@ function PathsSection() {
     opacity: setSetting.isPending ? 0.6 : 1,
   });
 
+  // Never-saved state: mastercontrolData?.value is undefined, so the draft
+  // always matches the displayed default. Treat any non-empty draft as dirty
+  // when the setting has never been explicitly saved.
   const mastercontrolDirty =
-    mastercontrolDraft.trim() !==
-    (mastercontrolData?.value ?? defaultMastercontrolRoot);
+    mastercontrolData?.value === undefined
+      ? mastercontrolDraft.trim().length > 0
+      : mastercontrolDraft.trim() !== mastercontrolData.value;
   const workvaultDirty = workvaultDraft.trim() !== (workvaultData?.value ?? '');
   const onedriveDirty = onedriveDraft.trim() !== (onedriveData?.value ?? '');
 

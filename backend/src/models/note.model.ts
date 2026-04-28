@@ -148,8 +148,8 @@ const searchStmt = db.prepare<[string, number | null, number | null], NoteRow>(
 export interface NoteIngestInput {
   organization_id: number;
   content: string;
-  source_path: string;
-  file_mtime: string;
+  source_path: string | null;
+  file_mtime: string | null;
   file_id: string;
   content_sha256: string;
   project_id?: number | null;
@@ -162,7 +162,7 @@ const getByFileIdStmt = db.prepare<[string], NoteRow>(
 
 // Parameters: org_id, content, source_path, file_mtime, file_id, content_sha256, last_seen_at
 const insertImportedStmt = db.prepare<
-  [number, string, string, string, number | null, string | null, string, string, string]
+  [number, string, string | null, string | null, number | null, string | null, string, string, string]
 >(
   `INSERT INTO notes
      (organization_id, content, source_path, file_mtime, project_id, capture_source, role, file_id, content_sha256, last_seen_at, confirmed)
@@ -170,7 +170,7 @@ const insertImportedStmt = db.prepare<
 );
 
 const insertCapturedStmt = db.prepare<
-  [number, string, string, string, number | null, string, string, string, string]
+  [number, string, string | null, string | null, number | null, string, string, string, string]
 >(
   `INSERT INTO notes
      (organization_id, content, source_path, file_mtime, project_id, capture_source, role, file_id, content_sha256, last_seen_at, confirmed)

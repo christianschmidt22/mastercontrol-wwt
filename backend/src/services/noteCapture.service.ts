@@ -73,13 +73,6 @@ function buildMarkdown(input: {
 }
 
 export function captureMarkdownNote(input: CaptureNoteInput): CaptureNoteResult {
-  if (!isMastercontrolRootConfigured()) {
-    throw new HttpError(
-      400,
-      'mastercontrol_root is not configured. Set it in Settings before capturing markdown notes.',
-    );
-  }
-
   const org = organizationModel.get(input.organization_id);
   if (!org) throw new HttpError(404, 'Organization not found');
 
@@ -96,38 +89,46 @@ export function captureMarkdownNote(input: CaptureNoteInput): CaptureNoteResult 
   const createdAt = now.toISOString();
   const noteFileId = `note_${crypto.randomUUID()}`;
   const captureSource = input.capture_source?.trim() || 'mastercontrol';
-  const folder = project
-    ? ensureProjectNotesFolder(org, project.name).path
-    : ensureOrgNotesFolder(org).path;
 
-  fs.mkdirSync(folder, { recursive: true });
+  // If the vault root isn't configured, save to the DB only (no markdown file).
+  // The note is still fully functional; the file is just a backup/export artifact.
+  let filePath: string | null = null;
+  let fileMtime: string | null = null;
 
-  const filenameStem = [
-    localTimestamp(now),
-    project ? slugifyFolderName(project.name) : slugifyFolderName(org.name),
-    noteFileId.slice(-8),
-  ].join('-');
-  const filePath = path.join(folder, `${filenameStem}.md`);
+  if (isMastercontrolRootConfigured()) {
+    const folder = project
+      ? ensureProjectNotesFolder(org, project.name).path
+      : ensureOrgNotesFolder(org).path;
 
-  const markdown = buildMarkdown({
-    noteId: noteFileId,
-    orgName: org.name,
-    orgType: org.type,
-    projectName: project?.name ?? null,
-    captureSource,
-    createdAt,
-    content,
-  });
-  fs.writeFileSync(filePath, markdown, 'utf8');
-  const stat = fs.statSync(filePath);
+    fs.mkdirSync(folder, { recursive: true });
+
+    const filenameStem = [
+      localTimestamp(now),
+      project ? slugifyFolderName(project.name) : slugifyFolderName(org.name),
+      noteFileId.slice(-8),
+    ].join('-');
+    filePath = path.join(folder, `${filenameStem}.md`);
+
+    const markdown = buildMarkdown({
+      noteId: noteFileId,
+      orgName: org.name,
+      orgType: org.type,
+      projectName: project?.name ?? null,
+      captureSource,
+      createdAt,
+      content,
+    });
+    fs.writeFileSync(filePath, markdown, 'utf8');
+    fileMtime = fs.statSync(filePath).mtime.toISOString();
+  }
 
   const note = noteModel.createCaptured({
     organization_id: org.id,
     project_id: project?.id ?? null,
     capture_source: captureSource,
     content,
-    source_path: filePath,
-    file_mtime: stat.mtime.toISOString(),
+    source_path: filePath ?? null,
+    file_mtime: fileMtime ?? null,
     file_id: noteFileId,
     content_sha256: sha256(content),
   });
@@ -143,5 +144,5 @@ export function captureMarkdownNote(input: CaptureNoteInput): CaptureNoteResult 
     });
   });
 
-  return { note, markdown_path: filePath };
+  return { note, markdown_path: filePath ?? '' };
 }
