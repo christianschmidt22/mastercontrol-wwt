@@ -428,6 +428,16 @@ The same `extractMentions()` function is called inline from the note-save
 route (`POST /api/notes`) so manually authored notes are also scanned on
 write.
 
+### Live markdown capture
+
+New UI note capture uses `POST /api/notes/capture`: `noteCapture.service`
+writes scoped markdown under `_notes/<year>`, `noteModel.createCaptured`
+indexes the file-backed note, `noteProposal.service` queues an initial
+approval item, and `extractMentions` runs best-effort for cross-org links.
+The Home page Note Approvals tile lists pending `note_proposals` with
+Approve, Deny, and Discuss actions. Legacy/manual `POST /api/notes` remains
+for API compatibility, but new UI surfaces should prefer the capture route.
+
 ## Things explicitly not done (and why)
 
 - **No CSRF or auth middleware.** Single-user localhost. Adding it would

@@ -1,12 +1,18 @@
 import { Router } from 'express';
 import { noteModel } from '../models/note.model.js';
 import {
+  CaptureNoteSchema,
   NoteCreateSchema,
+  NoteProposalParamsSchema,
+  NoteProposalQuerySchema,
+  NoteProposalStatusUpdateSchema,
   RecentNotesQuerySchema,
   UnconfirmedInsightsQuerySchema,
   CrossOrgInsightsQuerySchema,
 } from '../schemas/note.schema.js';
-import { validateBody, validateQuery } from '../lib/validate.js';
+import { noteProposalModel } from '../models/noteProposal.model.js';
+import { captureMarkdownNote } from '../services/noteCapture.service.js';
+import { validateBody, validateParams, validateQuery } from '../lib/validate.js';
 import { bumpOrgVersion } from '../services/claude.service.js';
 import { extractMentions } from '../services/mention.service.js';
 import { HttpError } from '../middleware/errorHandler.js';
@@ -31,7 +37,55 @@ notesRouter.get('/cross-org-insights', validateQuery(CrossOrgInsightsQuerySchema
   res.json(noteModel.listInsightsMentioningOrg(org_id, limit ?? 20));
 });
 
-// POST / — manual note save
+// GET /proposals?status=pending&limit=20 - note ingest approval queue
+notesRouter.get('/proposals', validateQuery(NoteProposalQuerySchema), (req, res) => {
+  const { status, limit } = req.validated as {
+    status?: 'pending' | 'approved' | 'denied' | 'discussing';
+    limit?: number;
+  };
+  res.json(noteProposalModel.listByStatus(status ?? 'pending', limit ?? 20));
+});
+
+// POST /capture - durable markdown note capture + initial approval proposal
+notesRouter.post('/capture', validateBody(CaptureNoteSchema), (req, res) => {
+  const input = req.validated as {
+    organization_id: number;
+    project_id?: number | null;
+    content: string;
+    capture_source?: string | null;
+  };
+  const result = captureMarkdownNote(input);
+  bumpOrgVersion(input.organization_id);
+
+  void extractMentions(result.note.id, input.content).catch((err: unknown) => {
+    console.warn('[notes] extractMentions failed (non-fatal)', {
+      note_id: result.note.id,
+      message: err instanceof Error ? err.message : String(err),
+    });
+  });
+
+  res.status(201).json(result);
+});
+
+// POST /proposals/:id/status - approve, deny, or discuss a proposed extraction
+notesRouter.post(
+  '/proposals/:id/status',
+  validateParams(NoteProposalParamsSchema),
+  validateBody(NoteProposalStatusUpdateSchema),
+  (req, res, next) => {
+    const { id } = req.validatedParams as { id: number };
+    const { status, discussion } = req.validatedBody as {
+      status: 'approved' | 'denied' | 'discussing';
+      discussion?: string | null;
+    };
+    const proposal = noteProposalModel.setStatus(id, status, discussion);
+    if (!proposal) return next(new HttpError(404, 'Note proposal not found'));
+    bumpOrgVersion(proposal.organization_id);
+    res.json(proposal);
+  },
+);
+
+// POST / - manual note save
 notesRouter.post('/', validateBody(NoteCreateSchema), (req, res) => {
   const input = req.validated as {
     organization_id: number;

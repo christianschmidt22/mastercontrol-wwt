@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- Notes manager foundation:
+  - Added durable markdown note capture through `/api/notes/capture`.
+    Captured notes write to scoped customer/OEM `_notes/<year>` folders, or
+    project `_notes/<year>` folders when project context is present, and are
+    indexed back into `notes`.
+  - Added `note_proposals` as the approval queue for extracted records. The
+    first pass queues an initial triage proposal for every captured note.
+  - Added a Home-page Note Approvals tile with detail modal and
+    Approve / Deny / Discuss actions.
+  - Project pages now include a note tile that captures notes with customer
+    and project context.
 - OEM header note polish:
   - Removed the "OEM Partners" eyebrow above the OEM name.
   - Made the top OEM note editable inline, backed by each OEM's

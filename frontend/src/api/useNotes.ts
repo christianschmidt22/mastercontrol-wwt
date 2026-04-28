@@ -6,7 +6,15 @@ import {
   type UseMutationResult,
 } from '@tanstack/react-query';
 import { request } from './http';
-import type { Note, NoteCreate, NoteWithOrg } from '../types';
+import type {
+  Note,
+  NoteCapture,
+  NoteCaptureResponse,
+  NoteCreate,
+  NoteProposal,
+  NoteProposalStatus,
+  NoteWithOrg,
+} from '../types';
 
 // ---------------------------------------------------------------------------
 // Cache key factory
@@ -23,6 +31,8 @@ export const noteKeys = {
   unconfirmedAll: (limit: number) => ['notes_unconfirmed_all', { limit }] as const,
   crossOrgInsights: (orgId: number, limit: number) =>
     ['notes_cross_org', orgId, { limit }] as const,
+  proposals: (status: NoteProposalStatus, limit: number) =>
+    ['note_proposals', { status, limit }] as const,
 };
 
 // ---------------------------------------------------------------------------
@@ -83,6 +93,20 @@ export function useUnconfirmedInsightsAcrossOrgs(
   });
 }
 
+export function useNoteProposals(
+  status: NoteProposalStatus = 'pending',
+  limit = 20,
+): UseQueryResult<NoteProposal[]> {
+  return useQuery({
+    queryKey: noteKeys.proposals(status, limit),
+    queryFn: () =>
+      request<NoteProposal[]>(
+        'GET',
+        `/api/notes/proposals?status=${status}&limit=${limit}`,
+      ),
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Mutations
 // ---------------------------------------------------------------------------
@@ -91,6 +115,8 @@ type CreateNoteContext = {
   previousIncl: Note[] | undefined;
   previousConf: Note[] | undefined;
 };
+
+type CaptureNoteContext = CreateNoteContext;
 
 export function useCreateNote(): UseMutationResult<Note, Error, NoteCreate, CreateNoteContext> {
   const qc = useQueryClient();
@@ -134,6 +160,77 @@ export function useCreateNote(): UseMutationResult<Note, Error, NoteCreate, Crea
     onSuccess: (note) => {
       // Invalidate both confirmed-only and include-unconfirmed variants
       void qc.invalidateQueries({ queryKey: noteKeys.all(note.organization_id) });
+    },
+  });
+}
+
+export function useCaptureNote(): UseMutationResult<
+  NoteCaptureResponse,
+  Error,
+  NoteCapture,
+  CaptureNoteContext
+> {
+  const qc = useQueryClient();
+  return useMutation<NoteCaptureResponse, Error, NoteCapture, CaptureNoteContext>({
+    mutationFn: (body) =>
+      request<NoteCaptureResponse>('POST', '/api/notes/capture', body),
+    onMutate: async (newNote) => {
+      const { organization_id } = newNote;
+      await qc.cancelQueries({ queryKey: noteKeys.all(organization_id) });
+      const inclKey = noteKeys.list(organization_id, true);
+      const confKey = noteKeys.list(organization_id, false);
+      const previousIncl = qc.getQueryData<Note[]>(inclKey);
+      const previousConf = qc.getQueryData<Note[]>(confKey);
+      const optimistic: Note = {
+        id: -Date.now(),
+        organization_id,
+        content: newNote.content,
+        ai_response: null,
+        source_path: null,
+        file_mtime: null,
+        project_id: newNote.project_id ?? null,
+        capture_source: newNote.capture_source ?? 'mastercontrol',
+        role: 'user',
+        thread_id: null,
+        provenance: null,
+        confirmed: true,
+        created_at: new Date().toISOString(),
+      };
+      qc.setQueryData<Note[]>(inclKey, (old) => [optimistic, ...(old ?? [])]);
+      qc.setQueryData<Note[]>(confKey, (old) => [optimistic, ...(old ?? [])]);
+      return { previousIncl, previousConf };
+    },
+    onError: (_err, newNote, context) => {
+      const { organization_id } = newNote;
+      if (context?.previousIncl !== undefined) {
+        qc.setQueryData(noteKeys.list(organization_id, true), context.previousIncl);
+      }
+      if (context?.previousConf !== undefined) {
+        qc.setQueryData(noteKeys.list(organization_id, false), context.previousConf);
+      }
+    },
+    onSuccess: (result) => {
+      void qc.invalidateQueries({ queryKey: noteKeys.all(result.note.organization_id) });
+      void qc.invalidateQueries({ queryKey: ['note_proposals'] });
+    },
+  });
+}
+
+export function useUpdateNoteProposalStatus(): UseMutationResult<
+  NoteProposal,
+  Error,
+  { id: number; status: Exclude<NoteProposalStatus, 'pending'>; discussion?: string | null }
+> {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, status, discussion }) =>
+      request<NoteProposal>('POST', `/api/notes/proposals/${id}/status`, {
+        status,
+        discussion,
+      }),
+    onSuccess: (proposal) => {
+      void qc.invalidateQueries({ queryKey: ['note_proposals'] });
+      void qc.invalidateQueries({ queryKey: noteKeys.all(proposal.organization_id) });
     },
   });
 }

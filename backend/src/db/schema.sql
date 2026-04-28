@@ -73,6 +73,8 @@ CREATE TABLE IF NOT EXISTS notes (
   ai_response TEXT,
   source_path TEXT,
   file_mtime DATETIME,
+  project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL,
+  capture_source TEXT,
   role TEXT NOT NULL DEFAULT 'user' CHECK(role IN ('user', 'assistant', 'agent_insight', 'imported')),
   thread_id INTEGER,
   -- R-002: provenance + confirmation gate for agent-authored content.
@@ -88,6 +90,39 @@ CREATE TABLE IF NOT EXISTS notes (
 CREATE INDEX IF NOT EXISTS idx_notes_org_created ON notes(organization_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_notes_unconfirmed ON notes(organization_id, created_at DESC)
   WHERE confirmed = 0;
+CREATE INDEX IF NOT EXISTS idx_notes_project_created ON notes(project_id, created_at DESC)
+  WHERE project_id IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS note_proposals (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  source_note_id INTEGER NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
+  organization_id INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL,
+  type TEXT NOT NULL CHECK(type IN (
+    'customer_ask',
+    'task_follow_up',
+    'project_update',
+    'risk_blocker',
+    'oem_mention',
+    'customer_insight'
+  )),
+  title TEXT NOT NULL,
+  summary TEXT NOT NULL,
+  evidence_quote TEXT NOT NULL,
+  proposed_payload TEXT NOT NULL DEFAULT '{}',
+  confidence REAL NOT NULL DEFAULT 0.5,
+  status TEXT NOT NULL DEFAULT 'pending'
+    CHECK(status IN ('pending', 'approved', 'denied', 'discussing')),
+  discussion TEXT,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_note_proposals_status_created
+  ON note_proposals(status, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_note_proposals_org_status
+  ON note_proposals(organization_id, status);
+CREATE INDEX IF NOT EXISTS idx_note_proposals_note
+  ON note_proposals(source_note_id);
 
 CREATE TABLE IF NOT EXISTS note_mentions (
   note_id INTEGER NOT NULL REFERENCES notes(id) ON DELETE CASCADE,

@@ -107,7 +107,9 @@ the tabs is editable inline and stored on the selected OEM's metadata.
 
 ### Home Page
 Today's open tasks, last 5 notes across all orgs, scheduled reports for
-today (Phase 2), recent agent insights.
+today (Phase 2), recent agent insights, and note-ingest approvals. The
+approval tile lists proposed records extracted from captured notes and opens
+a detail modal with evidence plus Approve, Deny, and Discuss actions.
 
 ### Settings Page
 - Anthropic API key (write-only; mask after save).
@@ -209,6 +211,23 @@ today (Phase 2), recent agent insights.
   can show up in the app and be read by agent tools.
 - Full vault contract: `docs/VAULT.md`.
 
+### Notes manager engine (Phase 2)
+- Live note capture writes one markdown file per note rather than a daily
+  rollup. Busy days may create multiple files; quiet days create none.
+- Notes captured on customer/OEM home pages use the org context. Notes
+  captured on project pages also carry `project_id` and write under that
+  project's scoped `_notes/<year>` folder.
+- The markdown file is human-readable for Obsidian and carries light YAML
+  frontmatter: stable id, timestamp, org, org type, optional project, source,
+  and tags.
+- Every captured note creates an initial `note_proposals` row. The approval
+  queue is the human gate before MasterControl creates or updates durable
+  extracted records such as customer asks, tasks/follow-ups, project updates,
+  risks/blockers, OEM mentions, and customer insights.
+- Full LLM extraction, historical WorkVault snapshot ingestion, and weighted
+  recall across data sources are next-step work. The first shipped slice
+  establishes storage, project context, and the approval workflow.
+
 ## Reports (Phase 2)
 
 ### Scheduling
@@ -267,10 +286,16 @@ projects(id PK, organization_id FK CASCADE, name, status, description,
 documents(id PK, organization_id FK CASCADE, kind ∈ {link, file}, label,
           url_or_path, source ∈ {manual, onedrive_scan}, created_at)
 
-notes(id PK, organization_id FK CASCADE, content, ai_response NULL,
-      source_path NULL, file_mtime NULL,
+notes(id PK, organization_id FK CASCADE, project_id FK NULL,
+      content, ai_response NULL, source_path NULL, file_mtime NULL,
+      capture_source NULL,
       role ∈ {user, assistant, agent_insight, imported},
       thread_id NULL, created_at)
+
+note_proposals(id PK, source_note_id FK CASCADE, organization_id FK CASCADE,
+               project_id FK NULL, type, title, summary, evidence_quote,
+               proposed_payload JSON, confidence, status, discussion,
+               created_at, updated_at)
 
 note_mentions(note_id FK CASCADE, mentioned_org_id FK CASCADE,
               PRIMARY KEY(note_id, mentioned_org_id))

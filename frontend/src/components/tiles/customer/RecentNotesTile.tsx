@@ -2,10 +2,10 @@ import { useState, useCallback, useId, type FormEvent } from 'react';
 import { Check, X, Plus } from 'lucide-react';
 import { Tile } from '../Tile';
 import { TileEmptyState } from '../TileEmptyState';
-import type { Note, NoteCreate } from '../../../types';
+import type { Note, NoteCapture } from '../../../types';
 import {
   useNotes as useNotesReal,
-  useCreateNote as useCreateNoteReal,
+  useCaptureNote as useCaptureNoteReal,
   useConfirmInsight as useConfirmInsightReal,
   useRejectInsight as useRejectInsightReal,
 } from '../../../api/useNotes';
@@ -20,12 +20,14 @@ interface UseNotesResult {
 }
 
 interface UseCreateNoteResult {
-  mutate: (data: NoteCreate) => void;
+  mutate: (data: NoteCapture) => void;
   isPending: boolean;
 }
 
 interface RecentNotesTileProps {
   orgId: number;
+  projectId?: number | null;
+  captureSource?: string;
   _useNotes?: (orgId: number, options?: { includeUnconfirmed?: boolean }) => UseNotesResult;
   _useConfirmInsight?: () => { mutate: (args: { id: number; orgId: number }) => void };
   _useRejectInsight?: () => { mutate: (args: { id: number; orgId: number }) => void };
@@ -216,13 +218,15 @@ function NoteRow({
  */
 export function RecentNotesTile({
   orgId,
+  projectId = null,
+  captureSource = 'mastercontrol',
   _useNotes,
   _useConfirmInsight,
   _useRejectInsight,
   _useCreateNote,
 }: RecentNotesTileProps) {
   const useNotes = _useNotes ?? useNotesReal;
-  const useCreateNote = _useCreateNote ?? useCreateNoteReal;
+  const useCreateNote = _useCreateNote ?? useCaptureNoteReal;
   const { data: notes, isLoading } = useNotes(orgId, { includeUnconfirmed: true });
 
   // Confirm/reject — real hooks take { id, orgId }; injected test hooks take just (id)
@@ -257,13 +261,14 @@ export function RecentNotesTile({
       if (!trimmed) return;
       createNote({
         organization_id: orgId,
+        project_id: projectId,
         content: trimmed,
-        role: 'user',
+        capture_source: captureSource,
       });
       setNoteContent('');
       setAdding(false);
     },
-    [noteContent, orgId, createNote],
+    [captureSource, noteContent, orgId, projectId, createNote],
   );
 
   const noteList = notes ?? [];

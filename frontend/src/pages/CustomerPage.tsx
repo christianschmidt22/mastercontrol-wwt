@@ -296,12 +296,7 @@ function ProjectPage({ project }: { project: Project }) {
   };
 
   return (
-    <form
-      aria-label={`${project.name} project details`}
-      onSubmit={(event) => {
-        event.preventDefault();
-        handleSave();
-      }}
+    <div
       style={{
         display: 'grid',
         gridTemplateColumns: 'minmax(0, 2fr) minmax(260px, 1fr)',
@@ -309,6 +304,14 @@ function ProjectPage({ project }: { project: Project }) {
         alignItems: 'start',
       }}
     >
+      <form
+        aria-label={`${project.name} project details`}
+        onSubmit={(event) => {
+          event.preventDefault();
+          handleSave();
+        }}
+        style={{ display: 'contents' }}
+      >
       <div
         style={{
           border: '1px solid var(--rule)',
@@ -446,7 +449,16 @@ function ProjectPage({ project }: { project: Project }) {
           </div>
         </dl>
       </aside>
-    </form>
+      </form>
+
+      <div style={{ gridColumn: '1 / -1', minHeight: 280 }}>
+        <RecentNotesTile
+          orgId={project.organization_id}
+          projectId={project.id}
+          captureSource="mastercontrol_project"
+        />
+      </div>
+    </div>
   );
 }
 

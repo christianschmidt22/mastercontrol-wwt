@@ -80,6 +80,7 @@ VCF9 Adoption -> vcf9_adoption
 | Loose capture, unsorted research, dropped files | `00-inbox/` | File until triaged |
 | Customer notes | `customers/<customer_slug>/_notes/` | Markdown file, DB indexes it |
 | OEM notes | `oems/<oem_slug>/_notes/` | Markdown file, DB indexes it |
+| Project-scoped notes | `customers/<slug>/projects/<project_slug>/_notes/` or `oems/<slug>/projects/<project_slug>/_notes/` | Markdown file, DB indexes it |
 | Customer project files | `customers/<customer_slug>/projects/<project_slug>/` | File, DB `documents` rows index important files |
 | OEM project files | `oems/<oem_slug>/projects/<project_slug>/` | File, DB `documents` rows index important files |
 | Customer/OEM reference docs | `customers/<slug>/reference/` or `oems/<slug>/reference/` | File/link, DB `documents` rows index important files |
@@ -104,11 +105,19 @@ primary org and let `note_mentions` carry cross-org visibility.
 Recommended file name:
 
 ```text
-YYYY-MM-DD-short-topic.md
+YYYYMMDD-HHMMSS-<scope_slug>-<id_suffix>.md
 ```
 
-Each note file should eventually have frontmatter with a stable `file_id` so
-the ingest pipeline can reconcile moves/edits without duplicating DB rows.
+Live captures are written one file per note into a year subfolder:
+
+```text
+customers/fairview/_notes/2026/
+customers/fairview/projects/vcf9_adoption/_notes/2026/
+```
+
+Each note file has YAML frontmatter with a stable id, created timestamp, org,
+org type, optional project, capture source, and tags so Obsidian can read the
+vault while MasterControl can reconcile files without duplicating DB rows.
 
 ## Agent Memory
 
@@ -214,5 +223,8 @@ The new vault is entity-first. During migration:
 - `settings.mastercontrol_root` is editable on the Settings page.
 - Creating a project through `/api/projects` fills `doc_url` with the
   computed project folder when no explicit link is supplied.
+- Capturing a note through `/api/notes/capture` writes markdown under the
+  scoped `_notes/<year>` folder, indexes the row in `notes`, and queues a
+  `note_proposals` approval item for extracted-record review.
 - `documents` rows index important files and links.
 - `read_document` must keep using safe-path checks before reading local files.

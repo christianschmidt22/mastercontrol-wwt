@@ -12,7 +12,7 @@ import userEvent from '@testing-library/user-event';
 import React from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { RecentNotesTile } from './RecentNotesTile';
-import type { Note, NoteCreate } from '../../../types';
+import type { Note, NoteCapture } from '../../../types';
 
 function renderWithClient(ui: React.ReactElement) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
@@ -109,7 +109,7 @@ describe('RecentNotesTile — inline add form', () => {
     expect(screen.queryByRole('textbox')).toBeNull();
   });
 
-  it('save calls mutate with role "user" and correct content', async () => {
+  it('save calls mutate with durable capture context and correct content', async () => {
     const user = userEvent.setup();
     const { hook, mutate } = makeMutationHook();
     renderWithClient(
@@ -126,10 +126,36 @@ describe('RecentNotesTile — inline add form', () => {
 
     expect(mutate).toHaveBeenCalledOnce();
     expect(mutate).toHaveBeenCalledWith(
-      expect.objectContaining<Partial<NoteCreate>>({
+      expect.objectContaining<Partial<NoteCapture>>({
         organization_id: 10,
         content: 'Called Alice re renewal.',
-        role: 'user',
+        capture_source: 'mastercontrol',
+      }),
+    );
+  });
+
+  it('passes project context when opened from a project page', async () => {
+    const user = userEvent.setup();
+    const { hook, mutate } = makeMutationHook();
+    renderWithClient(
+      <RecentNotesTile
+        orgId={10}
+        projectId={44}
+        captureSource="mastercontrol_project"
+        _useNotes={makeHook([userNote])}
+        _useCreateNote={hook}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Add note' }));
+    await user.type(screen.getByRole('textbox'), 'Project-specific update.');
+    await user.click(screen.getByRole('button', { name: 'Save Note' }));
+
+    expect(mutate).toHaveBeenCalledWith(
+      expect.objectContaining<Partial<NoteCapture>>({
+        organization_id: 10,
+        project_id: 44,
+        capture_source: 'mastercontrol_project',
       }),
     );
   });

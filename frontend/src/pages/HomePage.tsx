@@ -2,6 +2,7 @@ import { useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Clock, Check, X, RefreshCw } from 'lucide-react';
 import { Tile } from '../components/tiles/Tile';
+import { NoteApprovalsTile } from '../components/notes/NoteApprovalsTile';
 import { useTasks, useCompleteTask } from '../api/useTasks';
 import { useOrganizations } from '../api/useOrganizations';
 import {
@@ -689,7 +690,7 @@ export function HomePage() {
         style={{
           display: 'grid',
           gridTemplateColumns: 'repeat(2, 1fr)',
-          gridTemplateRows: 'auto auto',
+          gridTemplateRows: 'auto auto auto',
           gap: 16,
         }}
         // Single-column below 900px via inline media query workaround — handled by Tailwind class below
@@ -713,6 +714,10 @@ export function HomePage() {
         {/* Bottom-right: Reports placeholder */}
         <div style={{ gridColumn: 2, gridRow: 2 }}>
           <TodaysReportsWidget />
+        </div>
+
+        <div style={{ gridColumn: '1 / -1', gridRow: 3, minHeight: 280 }}>
+          <NoteApprovalsTile />
         </div>
       </div>
     </div>

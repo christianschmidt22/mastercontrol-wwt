@@ -39,6 +39,34 @@ export const NoteCreateSchema = z.object({
   provenance: NoteProvenanceSchema.optional(),
 });
 
+export const CaptureNoteSchema = z.object({
+  organization_id: z.number().int().min(1),
+  project_id: z.number().int().min(1).optional().nullable(),
+  content: z.string().min(1),
+  capture_source: z.string().trim().min(1).max(120).optional().nullable(),
+});
+
+export const NoteProposalStatusSchema = z.enum([
+  'pending',
+  'approved',
+  'denied',
+  'discussing',
+]);
+
+export const NoteProposalQuerySchema = z.object({
+  status: NoteProposalStatusSchema.optional(),
+  limit: z.coerce.number().int().min(1).max(200).optional(),
+});
+
+export const NoteProposalStatusUpdateSchema = z.object({
+  status: z.enum(['approved', 'denied', 'discussing']),
+  discussion: z.string().max(2000).optional().nullable(),
+});
+
+export const NoteProposalParamsSchema = z.object({
+  id: z.coerce.number().int().min(1),
+});
+
 /** GET /api/notes/recent query params — limit clamped to max 50 */
 export const RecentNotesQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(50).optional(),
@@ -65,4 +93,6 @@ export type NoteRole = z.infer<typeof NoteRoleSchema>;
 export type NoteProvenance = z.infer<typeof NoteProvenanceSchema>;
 export type Note = z.infer<typeof NoteSchema>;
 export type NoteCreate = z.infer<typeof NoteCreateSchema>;
+export type CaptureNote = z.infer<typeof CaptureNoteSchema>;
+export type NoteProposalStatus = z.infer<typeof NoteProposalStatusSchema>;
 export type NoteWithOrg = z.infer<typeof NoteWithOrgSchema>;

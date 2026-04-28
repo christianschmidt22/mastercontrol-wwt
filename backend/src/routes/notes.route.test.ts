@@ -1,10 +1,15 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import request from 'supertest';
 import type { Express } from 'express';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import { db } from '../db/database.js';
 import { buildApp } from '../test/app.js';
-import { makeOrg, makeNote, makeThread } from '../test/factories.js';
+import { makeOrg, makeNote, makeProject, makeThread } from '../test/factories.js';
 import { noteModel } from '../models/note.model.js';
+import { noteProposalModel } from '../models/noteProposal.model.js';
+import { settingsModel } from '../models/settings.model.js';
 
 let app: Express;
 beforeAll(async () => {
@@ -80,6 +85,100 @@ describe('POST /api/notes', () => {
       .send({ organization_id: org.id, content: 'Bad role', role: 'system_hack' });
 
     expect(res.status).toBe(400);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/notes/capture
+// ---------------------------------------------------------------------------
+
+describe('POST /api/notes/capture', () => {
+  it('writes a markdown note, indexes it, and queues a proposal', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'mastercontrol-notes-'));
+    settingsModel.set('mastercontrol_root', root);
+    const org = makeOrg({ name: 'Capture Customer' });
+    const project = makeProject(org.id, { name: 'Cutover Project' });
+
+    const res = await request(app)
+      .post('/api/notes/capture')
+      .send({
+        organization_id: org.id,
+        project_id: project.id,
+        content: 'Fairview needs a revised cutover plan by Friday.',
+        capture_source: 'test_capture',
+      });
+
+    expect(res.status).toBe(201);
+    expect(res.body.note).toMatchObject({
+      organization_id: org.id,
+      project_id: project.id,
+      capture_source: 'test_capture',
+      content: 'Fairview needs a revised cutover plan by Friday.',
+      role: 'user',
+      confirmed: true,
+    });
+    expect(typeof res.body.markdown_path).toBe('string');
+    expect(fs.existsSync(res.body.markdown_path as string)).toBe(true);
+    expect(fs.readFileSync(res.body.markdown_path as string, 'utf8')).toContain(
+      'Fairview needs a revised cutover plan by Friday.',
+    );
+
+    const proposals = noteProposalModel.listByStatus('pending', 10);
+    expect(proposals.some((proposal) => proposal.source_note_id === res.body.note.id))
+      .toBe(true);
+  });
+
+  it('rejects a project that belongs to another organization', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'mastercontrol-notes-'));
+    settingsModel.set('mastercontrol_root', root);
+    const org = makeOrg();
+    const otherOrg = makeOrg();
+    const project = makeProject(otherOrg.id);
+
+    const res = await request(app)
+      .post('/api/notes/capture')
+      .send({
+        organization_id: org.id,
+        project_id: project.id,
+        content: 'This should not attach cross-org.',
+      });
+
+    expect(res.status).toBe(400);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// GET/POST /api/notes/proposals
+// ---------------------------------------------------------------------------
+
+describe('note proposals approval queue', () => {
+  it('lists pending proposals and updates their status', async () => {
+    const org = makeOrg();
+    const note = makeNote(org.id, { content: 'Customer asked for a budget quote.' });
+    const proposal = noteProposalModel.create({
+      source_note_id: note.id,
+      organization_id: org.id,
+      type: 'customer_ask',
+      title: 'Review ask',
+      summary: 'Customer asked for a budget quote.',
+      evidence_quote: 'Customer asked for a budget quote.',
+    });
+
+    const listRes = await request(app).get('/api/notes/proposals?status=pending');
+    expect(listRes.status).toBe(200);
+    expect((listRes.body as Array<{ id: number }>).some((row) => row.id === proposal.id))
+      .toBe(true);
+
+    const updateRes = await request(app)
+      .post(`/api/notes/proposals/${proposal.id}/status`)
+      .send({ status: 'discussing', discussion: 'Needs a task, not an insight.' });
+
+    expect(updateRes.status).toBe(200);
+    expect(updateRes.body).toMatchObject({
+      id: proposal.id,
+      status: 'discussing',
+      discussion: 'Needs a task, not an insight.',
+    });
   });
 });
 

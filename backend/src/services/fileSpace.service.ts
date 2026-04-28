@@ -17,6 +17,10 @@ function configuredRoot(): string | null {
   return value && value.trim() ? value.trim() : null;
 }
 
+export function isMastercontrolRootConfigured(): boolean {
+  return configuredRoot() !== null;
+}
+
 export function getMastercontrolRoot(): string {
   return configuredRoot() ?? DEFAULT_MASTERCONTROL_ROOT;
 }
@@ -128,5 +132,43 @@ export function ensureProjectFolder(
   return {
     path: projectPath,
     created: rootWasConfigured ? ensureDirectory(projectPath) : false,
+  };
+}
+
+export function getOrgNotesFolderPath(org: Organization): string {
+  const year = new Date().getFullYear().toString();
+  return path.join(getOrgFolderPath(org), '_notes', year);
+}
+
+export function ensureOrgNotesFolder(org: Organization): FileSpacePath {
+  const notesPath = getOrgNotesFolderPath(org);
+  const rootWasConfigured = configuredRoot() !== null;
+  return {
+    path: notesPath,
+    created: rootWasConfigured ? ensureDirectory(notesPath) : false,
+  };
+}
+
+export function getProjectNotesFolderPath(
+  org: Organization,
+  projectName: string,
+): string {
+  const year = new Date().getFullYear().toString();
+  return path.join(
+    getProjectFolderPath(org, projectName),
+    '_notes',
+    year,
+  );
+}
+
+export function ensureProjectNotesFolder(
+  org: Organization,
+  projectName: string,
+): FileSpacePath {
+  const notesPath = getProjectNotesFolderPath(org, projectName);
+  const rootWasConfigured = configuredRoot() !== null;
+  return {
+    path: notesPath,
+    created: rootWasConfigured ? ensureDirectory(notesPath) : false,
   };
 }

@@ -16,6 +16,8 @@ interface NoteRow {
   ai_response: string | null;
   source_path: string | null;
   file_mtime: string | null;
+  project_id: number | null;
+  capture_source: string | null;
   role: NoteRole;
   thread_id: number | null;
   provenance: string | null;
@@ -36,6 +38,8 @@ export interface Note {
   ai_response: string | null;
   source_path: string | null;
   file_mtime: string | null;
+  project_id: number | null;
+  capture_source: string | null;
   role: NoteRole;
   thread_id: number | null;
   provenance: NoteProvenance | null;
@@ -55,6 +59,8 @@ export interface NoteInput {
   ai_response?: string | null;
   source_path?: string | null;
   file_mtime?: string | null;
+  project_id?: number | null;
+  capture_source?: string | null;
   role?: NoteRole;
   thread_id?: number | null;
 }
@@ -64,11 +70,23 @@ const listStmt = db.prepare<[number], NoteRow>(
 );
 const getStmt = db.prepare<[number], NoteRow>('SELECT * FROM notes WHERE id = ?');
 const insertStmt = db.prepare<
-  [number, string, string | null, string | null, string | null, NoteRole, number | null, string | null, number]
+  [
+    number,
+    string,
+    string | null,
+    string | null,
+    string | null,
+    number | null,
+    string | null,
+    NoteRole,
+    number | null,
+    string | null,
+    number,
+  ]
 >(
   `INSERT INTO notes
-     (organization_id, content, ai_response, source_path, file_mtime, role, thread_id, provenance, confirmed)
-   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+     (organization_id, content, ai_response, source_path, file_mtime, project_id, capture_source, role, thread_id, provenance, confirmed)
+   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 );
 const updateAiStmt = db.prepare<[string, number]>('UPDATE notes SET ai_response = ? WHERE id = ?');
 const confirmStmt = db.prepare<[number]>('UPDATE notes SET confirmed = 1 WHERE id = ?');
@@ -134,6 +152,8 @@ export interface NoteIngestInput {
   file_mtime: string;
   file_id: string;
   content_sha256: string;
+  project_id?: number | null;
+  capture_source?: string | null;
 }
 
 const getByFileIdStmt = db.prepare<[string], NoteRow>(
@@ -142,11 +162,19 @@ const getByFileIdStmt = db.prepare<[string], NoteRow>(
 
 // Parameters: org_id, content, source_path, file_mtime, file_id, content_sha256, last_seen_at
 const insertImportedStmt = db.prepare<
-  [number, string, string, string, string, string, string]
+  [number, string, string, string, number | null, string | null, string, string, string]
 >(
   `INSERT INTO notes
-     (organization_id, content, source_path, file_mtime, role, file_id, content_sha256, last_seen_at, confirmed)
-   VALUES (?, ?, ?, ?, 'imported', ?, ?, ?, 1)`,
+     (organization_id, content, source_path, file_mtime, project_id, capture_source, role, file_id, content_sha256, last_seen_at, confirmed)
+   VALUES (?, ?, ?, ?, ?, ?, 'imported', ?, ?, ?, 1)`,
+);
+
+const insertCapturedStmt = db.prepare<
+  [number, string, string, string, number | null, string, string, string, string]
+>(
+  `INSERT INTO notes
+     (organization_id, content, source_path, file_mtime, project_id, capture_source, role, file_id, content_sha256, last_seen_at, confirmed)
+   VALUES (?, ?, ?, ?, ?, ?, 'user', ?, ?, ?, 1)`,
 );
 
 const updateByIngestStmt = db.prepare<[string, string, string, string, number]>(
@@ -423,6 +451,8 @@ export const noteModel = {
       input.ai_response ?? null,
       input.source_path ?? null,
       input.file_mtime ?? null,
+      input.project_id ?? null,
+      input.capture_source ?? null,
       input.role ?? 'user',
       input.thread_id ?? null,
       null,    // provenance — populated only by createInsight
@@ -444,6 +474,8 @@ export const noteModel = {
     const result = insertStmt.run(
       targetOrgId,
       content,
+      null,
+      null,
       null,
       null,
       null,
@@ -495,6 +527,28 @@ export const noteModel = {
       input.content,
       input.source_path,
       input.file_mtime,
+      input.project_id ?? null,
+      input.capture_source ?? null,
+      input.file_id,
+      input.content_sha256,
+      now,
+    );
+    return hydrate(getStmt.get(Number(result.lastInsertRowid))!);
+  },
+
+  /**
+   * Insert a user-authored note captured through MasterControl and already
+   * written to markdown. role='user', confirmed=1, last_seen_at=now().
+   */
+  createCaptured(input: NoteIngestInput): Note {
+    const now = new Date().toISOString();
+    const result = insertCapturedStmt.run(
+      input.organization_id,
+      input.content,
+      input.source_path,
+      input.file_mtime,
+      input.project_id ?? null,
+      input.capture_source ?? 'mastercontrol',
       input.file_id,
       input.content_sha256,
       now,

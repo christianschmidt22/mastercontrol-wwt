@@ -33,6 +33,11 @@ export type {
   NoteProvenance,
   Note,
   NoteCreate,
+  NoteCapture,
+  NoteCaptureResponse,
+  NoteProposal,
+  NoteProposalStatus,
+  NoteProposalType,
   NoteWithOrg,
 } from './note';
 
