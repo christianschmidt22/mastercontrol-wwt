@@ -9,11 +9,12 @@ export const tasksRouter = Router();
 
 // GET /?status=&due_before=&org_id=
 tasksRouter.get('/', validateQuery(TaskListQuerySchema), (req, res) => {
-  const q = req.validated as { status?: TaskStatus; due_before?: string; org_id?: number };
+  const q = req.validated as { status?: TaskStatus; due_before?: string; org_id?: number; project_id?: number };
   const tasks = taskModel.list({
     status: q.status,
     due_before: q.due_before,
     org_id: q.org_id,
+    project_id: q.project_id,
   });
   res.json(tasks);
 });
@@ -24,6 +25,7 @@ tasksRouter.post('/', validateBody(TaskCreateSchema), (req, res) => {
     title: string;
     organization_id?: number | null;
     contact_id?: number | null;
+    project_id?: number | null;
     due_date?: string | null;
     status?: TaskStatus;
   };
@@ -39,6 +41,7 @@ tasksRouter.put('/:id', validateBody(TaskUpdateSchema), (req, res, next) => {
     title?: string;
     organization_id?: number | null;
     contact_id?: number | null;
+    project_id?: number | null;
     due_date?: string | null;
     status?: TaskStatus;
   };

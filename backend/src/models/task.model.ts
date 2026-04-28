@@ -6,6 +6,7 @@ export interface Task {
   id: number;
   organization_id: number | null;
   contact_id: number | null;
+  project_id: number | null;
   title: string;
   due_date: string | null;
   status: TaskStatus;
@@ -17,6 +18,7 @@ export interface TaskInput {
   title: string;
   organization_id?: number | null;
   contact_id?: number | null;
+  project_id?: number | null;
   due_date?: string | null;
   status?: TaskStatus;
 }
@@ -25,6 +27,7 @@ export interface TaskFilters {
   status?: TaskStatus;
   due_before?: string;
   org_id?: number;
+  project_id?: number;
 }
 
 export interface TaskUpdate {
@@ -35,8 +38,8 @@ export interface TaskUpdate {
 
 const getStmt = db.prepare<[number], Task>('SELECT * FROM tasks WHERE id = ?');
 
-const insertStmt = db.prepare<[string, number | null, number | null, string | null, TaskStatus]>(
-  'INSERT INTO tasks (title, organization_id, contact_id, due_date, status) VALUES (?, ?, ?, ?, ?)'
+const insertStmt = db.prepare<[string, number | null, number | null, number | null, string | null, TaskStatus]>(
+  'INSERT INTO tasks (title, organization_id, contact_id, project_id, due_date, status) VALUES (?, ?, ?, ?, ?, ?)'
 );
 
 const updateStmt = db.prepare<[string, string | null, TaskStatus, number]>(
@@ -49,10 +52,6 @@ const completeStmt = db.prepare<[number]>(
 
 const deleteStmt = db.prepare<[number]>('DELETE FROM tasks WHERE id = ?');
 
-/**
- * Build the list query dynamically based on filters. All parameters are bound
- * to prevent injection; the WHERE clause is constructed from safe enum keys.
- */
 function buildListQuery(filters: TaskFilters): { sql: string; params: unknown[] } {
   const clauses: string[] = [];
   const params: unknown[] = [];
@@ -68,6 +67,10 @@ function buildListQuery(filters: TaskFilters): { sql: string; params: unknown[] 
   if (filters.org_id !== undefined) {
     clauses.push('organization_id = ?');
     params.push(filters.org_id);
+  }
+  if (filters.project_id !== undefined) {
+    clauses.push('project_id = ?');
+    params.push(filters.project_id);
   }
 
   const where = clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : '';
@@ -90,6 +93,7 @@ export const taskModel = {
       input.title,
       input.organization_id ?? null,
       input.contact_id ?? null,
+      input.project_id ?? null,
       input.due_date ?? null,
       input.status ?? 'open'
     );
@@ -108,8 +112,6 @@ export const taskModel = {
     return getStmt.get(id);
   },
 
-  /** Sets status='done' and stamps completed_at = datetime('now').
-   *  Returns the updated row or undefined if no task with that id exists. */
   complete: (id: number): Task | undefined => {
     const result = completeStmt.run(id);
     if (result.changes === 0) return undefined;

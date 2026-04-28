@@ -16,11 +16,15 @@ import { ingestRouter } from './routes/ingest.route.js';
 import { oemScanRouter } from './routes/oem-scan.route.js';
 import { subagentRouter } from './routes/subagent.route.js';
 import { shellRouter } from './routes/shell.route.js';
+import { calendarRouter } from './routes/calendar.route.js';
+import { alertsRouter } from './routes/alerts.route.js';
+import { projectResourcesRouter } from './routes/projectResources.route.js';
 import { seedDailyTaskReview } from './services/reports.service.js';
 import {
   runMissedJobs,
   startInProcessScheduler,
 } from './services/scheduler.service.js';
+import { scheduleCalendarSync } from './services/calendarSync.service.js';
 
 runMigrations();
 
@@ -82,6 +86,9 @@ app.use('/api/ingest', ingestRouter);
 app.use('/api/oem', oemScanRouter);
 app.use('/api/subagent', subagentRouter);
 app.use('/api/shell', shellRouter);
+app.use('/api/calendar', calendarRouter);
+app.use('/api/alerts', alertsRouter);
+app.use('/api/projects/:projectId/resources', projectResourcesRouter);
 
 app.use(errorHandler);
 
@@ -122,6 +129,14 @@ try {
 } catch (err) {
   console.warn(
     '[mastercontrol] startInProcessScheduler failed — scheduled reports will not fire from this process.',
+    err instanceof Error ? err.message : String(err),
+  );
+}
+try {
+  scheduleCalendarSync();
+} catch (err) {
+  console.warn(
+    '[mastercontrol] scheduleCalendarSync failed — calendar sync will not run.',
     err instanceof Error ? err.message : String(err),
   );
 }

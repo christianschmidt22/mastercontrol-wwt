@@ -6,7 +6,8 @@ export type NoteProposalType =
   | 'project_update'
   | 'risk_blocker'
   | 'oem_mention'
-  | 'customer_insight';
+  | 'customer_insight'
+  | 'internal_resource';
 
 export type NoteProposalStatus = 'pending' | 'approved' | 'denied' | 'discussing';
 
@@ -88,6 +89,12 @@ const updateStatusStmt = db.prepare<[NoteProposalStatus, string | null, number]>
    WHERE id = ?`,
 );
 
+const deleteByIdStmt = db.prepare<[number]>('DELETE FROM note_proposals WHERE id = ?');
+
+const deleteBySourceNoteIfPendingStmt = db.prepare<[number]>(
+  `DELETE FROM note_proposals WHERE source_note_id = ? AND status = 'pending'`,
+);
+
 export const noteProposalModel = {
   listByStatus(status: NoteProposalStatus, limit: number): NoteProposal[] {
     return listByStatusStmt.all(status, limit).map(hydrate);
@@ -120,5 +127,15 @@ export const noteProposalModel = {
   ): NoteProposal | undefined {
     updateStatusStmt.run(status, discussion ?? null, id);
     return this.get(id);
+  },
+
+  deleteById(id: number): boolean {
+    return deleteByIdStmt.run(id).changes > 0;
+  },
+
+  /** Delete all pending proposals for a source note. Called after real LLM
+   *  extraction succeeds to replace the initial triage placeholder. */
+  deleteBySourceNoteIfPending(sourceNoteId: number): number {
+    return deleteBySourceNoteIfPendingStmt.run(sourceNoteId).changes;
   },
 };

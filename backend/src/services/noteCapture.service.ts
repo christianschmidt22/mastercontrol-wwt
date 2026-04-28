@@ -11,7 +11,7 @@ import {
   isMastercontrolRootConfigured,
   slugifyFolderName,
 } from './fileSpace.service.js';
-import { createInitialNoteProposal } from './noteProposal.service.js';
+import { createInitialNoteProposal, runLlmExtraction } from './noteProposal.service.js';
 
 export interface CaptureNoteInput {
   organization_id: number;
@@ -133,6 +133,15 @@ export function captureMarkdownNote(input: CaptureNoteInput): CaptureNoteResult 
   });
 
   createInitialNoteProposal(note, org, project);
+
+  // Fire LLM extraction async — on success, replaces the triage placeholder
+  // with real typed proposals. Errors are non-fatal; the triage remains.
+  void runLlmExtraction(note, org, project).catch((err: unknown) => {
+    console.warn('[noteCapture] runLlmExtraction failed (non-fatal)', {
+      note_id: note.id,
+      message: err instanceof Error ? err.message : String(err),
+    });
+  });
 
   return { note, markdown_path: filePath };
 }

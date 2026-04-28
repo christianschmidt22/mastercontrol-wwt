@@ -15,6 +15,7 @@ export interface TaskFilters {
   status?: TaskStatus;
   dueBefore?: string;
   orgId?: number;
+  projectId?: number;
 }
 
 export const taskKeys = {
@@ -35,6 +36,8 @@ export function useTasks(filters: TaskFilters = {}): UseQueryResult<Task[]> {
       if (filters.dueBefore) params.set('due_before', filters.dueBefore);
       if (filters.orgId !== undefined)
         params.set('org_id', String(filters.orgId));
+      if (filters.projectId !== undefined)
+        params.set('project_id', String(filters.projectId));
       const qs = params.toString();
       return request<Task[]>('GET', qs ? `/api/tasks?${qs}` : '/api/tasks');
     },

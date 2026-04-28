@@ -24,6 +24,9 @@ export const SECRET_KEYS: ReadonlySet<string> = new Set([
   // separately from the per-org-chat key so the user can use a different
   // billing account for ad-hoc subagent tasks.
   'personal_anthropic_api_key',
+  // ICS subscription URL for M365 calendar sync. Contains an embedded auth
+  // token so treat it with the same care as an API key.
+  'calendar_ics_url',
 ]);
 
 const ENC_PREFIX = 'enc:';

@@ -2,6 +2,91 @@
 
 ## Unreleased
 
+- Project resources + next steps:
+  - `018_project_tasks_and_resources.sql` migration: adds nullable `project_id`
+    FK to `tasks`; new `project_resources` table (id, project_id, organization_id,
+    name, role, team, notes, created_at, updated_at).
+  - `task.model.ts` + `task.schema.ts`: `project_id` field on Task, TaskInput,
+    TaskFilters, TaskCreate, TaskUpdate. `GET /api/tasks?project_id=N` filter added.
+  - `projectResource.model.ts` + schema + `GET|POST|PUT|DELETE
+    /api/projects/:projectId/resources` route (mounted with mergeParams: true).
+  - `internal_resource` added to `NoteProposalType`, to the LLM extraction tool
+    enum + system prompt, and to `applyApproval()` — creates a `project_resources`
+    row when a project is in scope.
+  - `task_follow_up` approval now passes `project_id` when one is present so
+    project-scoped tasks show up in the new tile rather than only globally.
+  - `ProjectNextStepsTile` — shows open tasks for the current project
+    (`GET /api/tasks?project_id=N&status=open`), inline add-step form, check-
+    button to complete.
+  - `ProjectResourcesTile` — lists WWT internal resources engaged on the project
+    (SE, BDM, overlay, etc.), inline add form (name/role/team), hover remove
+    button.
+  - Both tiles added to `ProjectPage` in a two-column grid below the notes tile.
+
+- Calendar sync + system alerts:
+  - `calendar_ics_url` stored DPAPI-encrypted in settings (same security model
+    as the Anthropic API key). ICS URL is never logged or committed.
+  - `016_calendar.sql` migration: `calendar_events` table with uid primary key
+    (recurring instances use `uid:YYYY-MM-DD` composite key).
+  - `calendarSync.service.ts` fetches ICS via `fetch()`, parses with
+    `node-ical`, expands recurring events for a 90-day window using
+    `expandRecurringEvent`, upserts into `calendar_events`, and prunes events
+    older than 7 days. Scheduled at 06:00, 12:00, 17:00 via node-cron.
+    Startup sync fires immediately on boot (fire-and-forget).
+  - `GET /api/calendar/today?date=YYYY-MM-DD` reads from local cache (<1 ms).
+    `POST /api/calendar/sync` triggers an on-demand refresh.
+  - `017_alerts.sql` migration: `system_alerts` table with severity, source,
+    message, detail, and read_at columns.
+  - `logAlert(severity, source, message, err?)` convenience helper used by all
+    background jobs so failures surface in the UI instead of dying silently.
+    Calendar sync failure paths call `logAlert('error', 'calendarSync', ...)`.
+  - `GET /api/alerts`, `GET /api/alerts/count`, `POST /api/alerts/:id/read`,
+    `POST /api/alerts/read-all` routes with 60-second frontend polling.
+  - `AlertBell` component in the Shell header: fixed top-right, vermilion dot
+    badge when unread alerts exist, panel with dismiss-per-item and dismiss-all.
+    Closes on outside click and Escape; focus-visible ring.
+  - `TodayAgendaTile` on the Home page: reads today's events from the local
+    cache, shows time / title / location / attendee count, inline Sync button
+    that triggers `POST /api/calendar/sync` and shows last-sync timestamp.
+- Open Projects tile + customer page tab filter:
+  - Renamed "Priority Projects" tile to **"Open Projects"** on customer pages.
+  - Tile now shows `active`, `qualifying`, and `paused` projects; paused
+    projects render in amber text to differentiate without using the vermilion
+    accent.
+  - Folder button (opens project folder in Windows Explorer via
+    `shell:AppsFolder` / direct `doc_url`) is always visible next to the
+    status pill rather than hidden until hover.
+  - "All projects" button (Archive icon) added next to "+ Add project" in the
+    tile header. Opens a fixed-position modal showing all projects grouped into
+    Open and Closed, with click-to-navigate to each project's tab.
+  - Customer page tabs now only show `active` and `qualifying` projects; paused
+    and closed projects are reachable through the "All projects" modal only.
+- Notes ingest extraction engine:
+  - Real LLM extraction for captured notes using `extractNoteProposals()` in
+    `claude.service.ts`. Uses claude-haiku-4-5 with forced tool-use output so
+    results are typed JSON. R-021: the `report_note_proposals` tool is
+    output-only (not a write tool). R-026: note content wrapped in
+    `<untrusted_document>`.
+  - `runLlmExtraction()` in `noteProposal.service.ts` fires async (fire-and-
+    forget) after every note capture. On success it replaces the initial triage
+    placeholder with real typed proposals; on failure (no API key, timeout) the
+    triage remains as fallback.
+  - Proposal types with structured payloads: `customer_ask`, `task_follow_up`,
+    `project_update`, `risk_blocker`, `oem_mention`, `customer_insight`.
+  - `applyApproval()` creates durable records on Approve:
+    - `task_follow_up` → `tasks` row (with due_date if extracted)
+    - `customer_ask` → user note with "Customer Ask:" prefix
+    - `project_update` → user note on the project
+    - `risk_blocker` → user note + open task flagged `[Risk]`
+    - `oem_mention` → user note on the target OEM org (resolved from name during
+      extraction; falls back to current org)
+    - `customer_insight` → confirmed `agent_insight` note (immediately confirmed
+      since the user approved it)
+  - `POST /api/notes/proposals/:id/status` with `status: approved` now calls
+    `applyApproval` before stamping the status, keeping the proposal in
+    `pending` if record creation fails.
+  - 11 new service tests in `noteProposal.service.test.ts`; 3 new route tests
+    for the approve → creates-record path.
 - Notes manager foundation:
   - Added durable markdown note capture through `/api/notes/capture`.
     Captured notes write to scoped customer/OEM `_notes/<year>` folders, or

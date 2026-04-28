@@ -1,6 +1,7 @@
-import { useEffect, useState, type CSSProperties } from 'react';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { LayoutGrid } from 'lucide-react';
+import { Folder, LayoutGrid, Settings } from 'lucide-react';
+import { useOpenPath } from '../api/useShell';
 import { TileGrid, type TileGridItem } from '../components/tiles/TileGrid';
 import { useTileLayout, type TileLayout } from '../components/tiles/useTileLayout';
 import { ChatTile } from '../components/tiles/customer/ChatTile';
@@ -11,6 +12,8 @@ import { ContactsTile } from '../components/tiles/customer/ContactsTile';
 import { ReferenceTile } from '../components/tiles/customer/ReferenceTile';
 import { DocumentsTile } from '../components/tiles/customer/DocumentsTile';
 import { OrgTimelineTile } from '../components/tiles/customer/OrgTimelineTile';
+import { ProjectNextStepsTile } from '../components/tiles/customer/ProjectNextStepsTile';
+import { ProjectResourcesTile } from '../components/tiles/customer/ProjectResourcesTile';
 import { useOrganization } from '../api/useOrganizations';
 import { useProjects, useUpdateProject } from '../api/useProjects';
 import { CustomerPageHeader } from '../components/customers/CustomerPageHeader';
@@ -96,27 +99,29 @@ function CustomerTabs({
         Home
       </button>
 
-      {projects.map((project) => {
-        const isActive = project.id === activeProjectId;
-        return (
-          <button
-            key={project.id}
-            type="button"
-            role="tab"
-            aria-selected={isActive}
-            onClick={() => navigate(`/customers/${customerId}/projects/${project.id}`)}
-            title={project.name}
-            style={{
-              ...tabStyleBase,
-              fontWeight: isActive ? 600 : 400,
-              borderBottomColor: isActive ? 'var(--ink-1)' : 'transparent',
-              color: isActive ? 'var(--ink-1)' : 'var(--ink-2)',
-            }}
-          >
-            {project.name}
-          </button>
-        );
-      })}
+      {projects
+        .filter((p) => p.status === 'active' || p.status === 'qualifying')
+        .map((project) => {
+          const isActive = project.id === activeProjectId;
+          return (
+            <button
+              key={project.id}
+              type="button"
+              role="tab"
+              aria-selected={isActive}
+              onClick={() => navigate(`/customers/${customerId}/projects/${project.id}`)}
+              title={project.name}
+              style={{
+                ...tabStyleBase,
+                fontWeight: isActive ? 600 : 400,
+                borderBottomColor: isActive ? 'var(--ink-1)' : 'transparent',
+                color: isActive ? 'var(--ink-1)' : 'var(--ink-2)',
+              }}
+            >
+              {project.name}
+            </button>
+          );
+        })}
 
       {projectsLoading && (
         <span
@@ -258,29 +263,224 @@ function ProjectHeaderNote({ project }: { project: Project }) {
   );
 }
 
+// ── Status chip colors ────────────────────────────────────────────────────────
+
+const STATUS_CHIP: Record<ProjectStatus, { color: string; bg: string }> = {
+  active:     { color: '#16a34a',          bg: 'rgba(22,163,74,0.10)'   },
+  qualifying: { color: '#2563eb',          bg: 'rgba(37,99,235,0.09)'   },
+  paused:     { color: '#c2710c',          bg: 'rgba(194,113,12,0.12)'  },
+  won:        { color: '#16a34a',          bg: 'rgba(22,163,74,0.10)'   },
+  lost:       { color: 'var(--accent)',    bg: 'rgba(180,40,30,0.09)'   },
+  closed:     { color: 'var(--ink-3)',     bg: 'var(--bg-2)'            },
+};
+
+function StatusChip({ status }: { status: ProjectStatus }) {
+  const { color, bg } = STATUS_CHIP[status] ?? STATUS_CHIP.closed;
+  return (
+    <span
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        padding: '3px 10px',
+        borderRadius: 99,
+        fontSize: 11,
+        fontWeight: 600,
+        fontFamily: 'var(--body)',
+        letterSpacing: '0.04em',
+        textTransform: 'capitalize',
+        color,
+        background: bg,
+        userSelect: 'none',
+      }}
+    >
+      {status}
+    </span>
+  );
+}
+
+// ── Project config popover ────────────────────────────────────────────────────
+
+function ProjectConfigPanel({ project }: { project: Project }) {
+  const updateProject = useUpdateProject();
+  const [open, setOpen] = useState(false);
+  const [status, setStatus] = useState<ProjectStatus>(project.status);
+  const [docUrl, setDocUrl] = useState(project.doc_url ?? '');
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  // Sync local state when project changes (tab switch)
+  useEffect(() => {
+    setStatus(project.status);
+    setDocUrl(project.doc_url ?? '');
+  }, [project.id, project.status, project.doc_url]);
+
+  // Close on outside click
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (
+        panelRef.current && !panelRef.current.contains(e.target as Node) &&
+        btnRef.current && !btnRef.current.contains(e.target as Node)
+      ) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
+  // Close on Escape
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setOpen(false); btnRef.current?.focus(); }
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [open]);
+
+  const isDirty = status !== project.status || docUrl !== (project.doc_url ?? '');
+
+  const handleSave = () => {
+    updateProject.mutate({
+      id: project.id,
+      status,
+      doc_url: normalizeOptional(docUrl),
+    }, { onSuccess: () => setOpen(false) });
+  };
+
+  return (
+    <div style={{ position: 'relative' }}>
+      <button
+        ref={btnRef}
+        type="button"
+        aria-label="Project settings"
+        aria-expanded={open}
+        aria-haspopup="dialog"
+        onClick={() => setOpen(v => !v)}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          width: 30,
+          height: 30,
+          border: '1px solid var(--rule)',
+          borderRadius: 6,
+          background: 'var(--bg)',
+          color: open ? 'var(--ink-1)' : 'var(--ink-3)',
+          cursor: 'pointer',
+          padding: 0,
+        }}
+      >
+        <Settings size={14} strokeWidth={1.5} aria-hidden="true" />
+      </button>
+
+      {open && (
+        <div
+          ref={panelRef}
+          role="dialog"
+          aria-label="Project settings"
+          style={{
+            position: 'absolute',
+            top: 36,
+            right: 0,
+            width: 280,
+            background: 'var(--bg)',
+            border: '1px solid var(--rule)',
+            borderRadius: 8,
+            boxShadow: '0 4px 20px rgba(0,0,0,0.10)',
+            padding: 18,
+            zIndex: 200,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 14,
+          }}
+        >
+          {/* Status */}
+          <div>
+            <label style={projectFieldLabelStyle} htmlFor="cfg-status">Status</label>
+            <select
+              id="cfg-status"
+              value={status}
+              onChange={e => setStatus(e.target.value as ProjectStatus)}
+              style={projectFieldStyle}
+            >
+              {PROJECT_STATUSES.map(s => (
+                <option key={s} value={s} style={{ background: 'var(--bg)', color: 'var(--ink-1)' }}>
+                  {s}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Folder */}
+          <div>
+            <label style={projectFieldLabelStyle} htmlFor="cfg-folder">Folder path</label>
+            <input
+              id="cfg-folder"
+              value={docUrl}
+              placeholder="Not set"
+              onChange={e => setDocUrl(e.target.value)}
+              style={{ ...projectFieldStyle, fontFamily: 'var(--mono)', fontSize: 12 }}
+            />
+          </div>
+
+          {/* Metadata */}
+          <dl style={{ margin: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <div>
+              <dt style={projectMetaLabelStyle}>Created</dt>
+              <dd style={{ margin: 0, fontSize: 13, color: 'var(--ink-1)', fontFamily: 'var(--body)' }}>
+                {formatDate(project.created_at)}
+              </dd>
+            </div>
+            <div>
+              <dt style={projectMetaLabelStyle}>Updated</dt>
+              <dd style={{ margin: 0, fontSize: 13, color: 'var(--ink-1)', fontFamily: 'var(--body)' }}>
+                {formatDate(project.updated_at)}
+              </dd>
+            </div>
+          </dl>
+
+          {/* Save */}
+          <button
+            type="button"
+            disabled={!isDirty || updateProject.isPending}
+            onClick={handleSave}
+            style={{
+              ...projectActionStyle,
+              background: isDirty ? 'var(--bg-2)' : 'var(--bg)',
+              color: isDirty ? 'var(--ink-1)' : 'var(--ink-3)',
+              cursor: isDirty && !updateProject.isPending ? 'pointer' : 'not-allowed',
+              width: '100%',
+              justifyContent: 'center',
+            }}
+          >
+            {updateProject.isPending ? 'Saving…' : 'Save changes'}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Project page ──────────────────────────────────────────────────────────────
+
 function ProjectPage({ project }: { project: Project }) {
   const updateProject = useUpdateProject();
+  const { mutate: openPath } = useOpenPath();
   const [draft, setDraft] = useState({
     name: project.name,
-    status: project.status,
     description: project.description ?? '',
-    docUrl: project.doc_url ?? '',
   });
 
   useEffect(() => {
     setDraft({
       name: project.name,
-      status: project.status,
       description: project.description ?? '',
-      docUrl: project.doc_url ?? '',
     });
-  }, [project.id, project.name, project.status, project.description, project.doc_url]);
+  }, [project.id, project.name, project.description]);
 
   const isDirty =
     draft.name !== project.name ||
-    draft.status !== project.status ||
-    draft.description !== (project.description ?? '') ||
-    draft.docUrl !== (project.doc_url ?? '');
+    draft.description !== (project.description ?? '');
 
   const nameIsValid = draft.name.trim().length > 0;
 
@@ -289,30 +489,58 @@ function ProjectPage({ project }: { project: Project }) {
     updateProject.mutate({
       id: project.id,
       name: draft.name.trim(),
-      status: draft.status,
       description: normalizeOptional(draft.description),
-      doc_url: normalizeOptional(draft.docUrl),
     });
   };
 
   return (
-    <div
-      style={{
-        display: 'grid',
-        gridTemplateColumns: 'minmax(0, 2fr) minmax(260px, 1fr)',
-        gap: 18,
-        alignItems: 'start',
-      }}
-    >
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+      {/*
+        Fixed overlay next to the AlertBell (top:12 right:16, ~42px wide).
+        Right offset = 16 (bell margin) + 42 (bell width) + 10 (gap) = 68px.
+      */}
+      <div
+        style={{
+          position: 'fixed',
+          top: 10,
+          right: 68,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 6,
+          zIndex: 500,
+        }}
+      >
+        <StatusChip status={project.status} />
+        {project.doc_url && (
+          <button
+            type="button"
+            aria-label="Open project folder"
+            title={project.doc_url}
+            onClick={() => openPath(project.doc_url!)}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: 30,
+              height: 30,
+              border: '1px solid var(--rule)',
+              borderRadius: 6,
+              background: 'var(--bg)',
+              color: 'var(--ink-3)',
+              cursor: 'pointer',
+              padding: 0,
+            }}
+          >
+            <Folder size={14} strokeWidth={1.5} aria-hidden="true" />
+          </button>
+        )}
+        <ProjectConfigPanel project={project} />
+      </div>
+
+      {/* Main editable form — single full-width column */}
       <form
         aria-label={`${project.name} project details`}
-        onSubmit={(event) => {
-          event.preventDefault();
-          handleSave();
-        }}
-        style={{ display: 'contents' }}
-      >
-      <div
+        onSubmit={e => { e.preventDefault(); handleSave(); }}
         style={{
           border: '1px solid var(--rule)',
           borderRadius: 8,
@@ -320,13 +548,11 @@ function ProjectPage({ project }: { project: Project }) {
           background: 'var(--bg)',
         }}
       >
-        <label style={projectFieldLabelStyle} htmlFor="project-name">
-          Project
-        </label>
+        <label style={projectFieldLabelStyle} htmlFor="project-name">Project</label>
         <input
           id="project-name"
           value={draft.name}
-          onChange={(event) => setDraft((next) => ({ ...next, name: event.target.value }))}
+          onChange={e => setDraft(n => ({ ...n, name: e.target.value }))}
           aria-invalid={!nameIsValid}
           style={{
             ...projectFieldStyle,
@@ -346,9 +572,7 @@ function ProjectPage({ project }: { project: Project }) {
           value={draft.description}
           rows={5}
           placeholder="No project description yet."
-          onChange={(event) =>
-            setDraft((next) => ({ ...next, description: event.target.value }))
-          }
+          onChange={e => setDraft(n => ({ ...n, description: e.target.value }))}
           style={{ ...projectFieldStyle, resize: 'vertical' }}
         />
         <div style={{ display: 'flex', gap: 8, marginTop: 18, alignItems: 'center' }}>
@@ -359,22 +583,14 @@ function ProjectPage({ project }: { project: Project }) {
               ...projectActionStyle,
               background: isDirty && nameIsValid ? 'var(--bg-2)' : 'var(--bg)',
               color: isDirty && nameIsValid ? 'var(--ink-1)' : 'var(--ink-3)',
-              cursor:
-                isDirty && nameIsValid && !updateProject.isPending ? 'pointer' : 'not-allowed',
+              cursor: isDirty && nameIsValid && !updateProject.isPending ? 'pointer' : 'not-allowed',
             }}
           >
             {updateProject.isPending ? 'Saving...' : 'Save project'}
           </button>
           <button
             type="button"
-            onClick={() =>
-              setDraft({
-                name: project.name,
-                status: project.status,
-                description: project.description ?? '',
-                docUrl: project.doc_url ?? '',
-              })
-            }
+            onClick={() => setDraft({ name: project.name, description: project.description ?? '' })}
             disabled={!isDirty}
             style={{
               ...projectActionStyle,
@@ -385,78 +601,19 @@ function ProjectPage({ project }: { project: Project }) {
             Reset
           </button>
         </div>
-      </div>
-
-      <aside
-        aria-label="Project reference"
-        style={{
-          border: '1px solid var(--rule)',
-          borderRadius: 8,
-          padding: 18,
-          background: 'var(--bg)',
-        }}
-      >
-        <dl style={{ display: 'flex', flexDirection: 'column', gap: 12, margin: 0 }}>
-          <div>
-            <label style={projectFieldLabelStyle} htmlFor="project-status">
-              Status
-            </label>
-            <select
-              id="project-status"
-              value={draft.status}
-              onChange={(event) =>
-                setDraft((next) => ({
-                  ...next,
-                  status: event.target.value as ProjectStatus,
-                }))
-              }
-              style={projectFieldStyle}
-            >
-              {PROJECT_STATUSES.map((status) => (
-                <option
-                  key={status}
-                  value={status}
-                  style={{ background: 'var(--bg)', color: 'var(--ink-1)' }}
-                >
-                  {status}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <dt style={projectMetaLabelStyle}>Created</dt>
-            <dd style={{ margin: 0, fontFamily: 'var(--body)', fontSize: 13, color: 'var(--ink-1)' }}>
-              {formatDate(project.created_at)}
-            </dd>
-          </div>
-          <div>
-            <dt style={projectMetaLabelStyle}>Updated</dt>
-            <dd style={{ margin: 0, fontFamily: 'var(--body)', fontSize: 13, color: 'var(--ink-1)' }}>
-              {formatDate(project.updated_at)}
-            </dd>
-          </div>
-          <div>
-            <label style={projectFieldLabelStyle} htmlFor="project-folder">
-              Folder
-            </label>
-            <input
-              id="project-folder"
-              value={draft.docUrl}
-              placeholder="Not set"
-              onChange={(event) => setDraft((next) => ({ ...next, docUrl: event.target.value }))}
-              style={{ ...projectFieldStyle, fontFamily: 'var(--mono)', fontSize: 12 }}
-            />
-          </div>
-        </dl>
-      </aside>
       </form>
 
-      <div style={{ gridColumn: '1 / -1', minHeight: 280 }}>
+      <div style={{ minHeight: 280 }}>
         <RecentNotesTile
           orgId={project.organization_id}
           projectId={project.id}
           captureSource="mastercontrol_project"
         />
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 18 }}>
+        <ProjectNextStepsTile projectId={project.id} orgId={project.organization_id} />
+        <ProjectResourcesTile projectId={project.id} />
       </div>
     </div>
   );
@@ -592,7 +749,7 @@ export function CustomerPage() {
     },
     {
       id: 'priority-projects',
-      title: 'Priority Projects',
+      title: 'Open Projects',
       node: <PriorityProjectsTile orgId={orgId} />,
     },
     {

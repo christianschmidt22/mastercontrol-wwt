@@ -52,7 +52,7 @@ describe('PriorityProjectsTile — empty state', () => {
   it('shows empty-state copy when no active/qualifying projects', () => {
     renderWithClient(<PriorityProjectsTile orgId={10} _useProjects={makeHook([])} />);
     expect(
-      screen.getByText('No projects on record. Add one when an engagement starts.'),
+      screen.getByText('No open projects. Add one when an engagement starts.'),
     ).toBeInTheDocument();
   });
 
@@ -61,12 +61,12 @@ describe('PriorityProjectsTile — empty state', () => {
     expect(screen.getByRole('status')).toBeInTheDocument();
   });
 
-  it('shows empty state when all projects are non-active statuses', () => {
+  it('shows empty state when all projects are non-open statuses', () => {
     renderWithClient(
       <PriorityProjectsTile orgId={10} _useProjects={makeHook([wonProject])} />,
     );
     expect(
-      screen.getByText('No projects on record. Add one when an engagement starts.'),
+      screen.getByText('No open projects. Add one when an engagement starts.'),
     ).toBeInTheDocument();
   });
 
@@ -75,7 +75,7 @@ describe('PriorityProjectsTile — empty state', () => {
       <PriorityProjectsTile orgId={10} _useProjects={makeHook(undefined, true)} />,
     );
     expect(
-      screen.queryByText('No projects on record. Add one when an engagement starts.'),
+      screen.queryByText('No open projects. Add one when an engagement starts.'),
     ).toBeNull();
   });
 });
@@ -95,7 +95,7 @@ describe('PriorityProjectsTile — data view', () => {
       <PriorityProjectsTile orgId={10} _useProjects={makeHook([activeProject])} />,
     );
     expect(
-      screen.queryByText('No projects on record. Add one when an engagement starts.'),
+      screen.queryByText('No open projects. Add one when an engagement starts.'),
     ).toBeNull();
   });
 
@@ -199,7 +199,7 @@ describe('PriorityProjectsTile — inline add form', () => {
 
     await user.click(screen.getByRole('button', { name: 'Add project' }));
     await user.type(screen.getByLabelText('Name'), 'New Security Initiative');
-    // status defaults to 'active' — will pass the ACTIVE_STATUSES filter
+    // status defaults to 'active' — will pass the OPEN_STATUSES filter
     await user.click(screen.getByRole('button', { name: 'Save' }));
 
     // Optimistic item appears immediately alongside the existing project
@@ -216,7 +216,7 @@ describe('PriorityProjectsTile — inline add form', () => {
     await user.selectOptions(screen.getByLabelText('Status'), 'closed');
     await user.click(screen.getByRole('button', { name: 'Save' }));
 
-    // 'closed' is not in ACTIVE_STATUSES so it won't show in Priority Projects
+    // 'closed' is not in OPEN_STATUSES so it won't show in Open Projects
     expect(screen.queryByText('Closed Deal')).toBeNull();
   });
 });

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Clock, Check, X, RefreshCw } from 'lucide-react';
 import { Tile } from '../components/tiles/Tile';
 import { NoteApprovalsTile } from '../components/notes/NoteApprovalsTile';
+import { TodayAgendaTile } from '../components/tiles/home/TodayAgendaTile';
 import { useTasks, useCompleteTask } from '../api/useTasks';
 import { useOrganizations } from '../api/useOrganizations';
 import {
@@ -716,7 +717,12 @@ export function HomePage() {
           <TodaysReportsWidget />
         </div>
 
-        <div style={{ gridColumn: '1 / -1', gridRow: 3, minHeight: 280 }}>
+        {/* Row 3: Today's agenda — full width */}
+        <div style={{ gridColumn: '1 / -1', gridRow: 3 }}>
+          <TodayAgendaTile />
+        </div>
+
+        <div style={{ gridColumn: '1 / -1', gridRow: 4, minHeight: 280 }}>
           <NoteApprovalsTile />
         </div>
       </div>

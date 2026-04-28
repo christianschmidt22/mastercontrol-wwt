@@ -1,5 +1,5 @@
 import { useState, useCallback, useId, type FormEvent, type CSSProperties } from 'react';
-import { Mail, Phone, Plus } from 'lucide-react';
+import { Mail, MessageSquare, PhoneCall, Plus } from 'lucide-react';
 import { Tile } from '../Tile';
 import { TileEmptyState } from '../TileEmptyState';
 import type { Contact, ContactCreate } from '../../../types';
@@ -343,7 +343,8 @@ export function ContactsTile({ orgId, _useContacts, _useCreateContact }: Contact
                 borderBottom: '1px solid var(--rule)',
               }}
             >
-              <div style={{ minWidth: 0 }}>
+              {/* Text info — always visible */}
+              <div style={{ minWidth: 0, flex: 1 }}>
                 <div
                   style={{
                     fontSize: 14,
@@ -369,14 +370,41 @@ export function ContactsTile({ orgId, _useContacts, _useCreateContact }: Contact
                     {contact.title}
                   </div>
                 )}
+                {contact.email && (
+                  <div
+                    style={{
+                      fontSize: 11,
+                      color: 'var(--ink-3)',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {contact.email}
+                  </div>
+                )}
+                {contact.phone && (
+                  <div
+                    style={{
+                      fontSize: 11,
+                      color: 'var(--ink-3)',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {contact.phone}
+                  </div>
+                )}
               </div>
 
-              {/* Email/phone — visible on hover */}
+              {/* Action icons — visible on hover */}
               <div
                 style={{
                   display: 'flex',
                   gap: 4,
                   alignItems: 'center',
+                  flexShrink: 0,
                   opacity: hoveredId === contact.id ? 1 : 0,
                   transition: 'opacity 150ms var(--ease)',
                 }}
@@ -386,6 +414,7 @@ export function ContactsTile({ orgId, _useContacts, _useCreateContact }: Contact
                   <a
                     href={`mailto:${contact.email}`}
                     aria-label={`Email ${contact.name}`}
+                    tabIndex={hoveredId === contact.id ? 0 : -1}
                     style={{
                       display: 'flex',
                       alignItems: 'center',
@@ -401,10 +430,11 @@ export function ContactsTile({ orgId, _useContacts, _useCreateContact }: Contact
                     <Mail size={12} strokeWidth={1.5} aria-hidden="true" />
                   </a>
                 )}
-                {contact.phone && (
+                {contact.email && (
                   <a
-                    href={`tel:${contact.phone}`}
-                    aria-label={`Call ${contact.name}`}
+                    href={`msteams://teams.microsoft.com/l/chat/0/0?users=${encodeURIComponent(contact.email)}`}
+                    aria-label={`Teams message ${contact.name}`}
+                    tabIndex={hoveredId === contact.id ? 0 : -1}
                     style={{
                       display: 'flex',
                       alignItems: 'center',
@@ -417,7 +447,27 @@ export function ContactsTile({ orgId, _useContacts, _useCreateContact }: Contact
                       background: 'transparent',
                     }}
                   >
-                    <Phone size={12} strokeWidth={1.5} aria-hidden="true" />
+                    <MessageSquare size={12} strokeWidth={1.5} aria-hidden="true" />
+                  </a>
+                )}
+                {contact.email && (
+                  <a
+                    href={`msteams://teams.microsoft.com/l/call/0/0?users=${encodeURIComponent(contact.email)}`}
+                    aria-label={`Teams call ${contact.name}`}
+                    tabIndex={hoveredId === contact.id ? 0 : -1}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      width: 26,
+                      height: 26,
+                      borderRadius: 4,
+                      border: '1px solid var(--rule)',
+                      color: 'var(--ink-3)',
+                      background: 'transparent',
+                    }}
+                  >
+                    <PhoneCall size={12} strokeWidth={1.5} aria-hidden="true" />
                   </a>
                 )}
               </div>

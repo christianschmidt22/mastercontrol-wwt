@@ -9,6 +9,7 @@ import { buildApp } from '../test/app.js';
 import { makeOrg, makeNote, makeProject, makeThread } from '../test/factories.js';
 import { noteModel } from '../models/note.model.js';
 import { noteProposalModel } from '../models/noteProposal.model.js';
+import { taskModel } from '../models/task.model.js';
 import { settingsModel } from '../models/settings.model.js';
 
 let app: Express;
@@ -152,7 +153,7 @@ describe('POST /api/notes/capture', () => {
 // ---------------------------------------------------------------------------
 
 describe('note proposals approval queue', () => {
-  it('lists pending proposals and updates their status', async () => {
+  it('lists pending proposals and updates their status to discussing', async () => {
     const org = makeOrg();
     const note = makeNote(org.id, { content: 'Customer asked for a budget quote.' });
     const proposal = noteProposalModel.create({
@@ -179,6 +180,66 @@ describe('note proposals approval queue', () => {
       status: 'discussing',
       discussion: 'Needs a task, not an insight.',
     });
+  });
+
+  it('approve task_follow_up creates a task and marks proposal approved', async () => {
+    const org = makeOrg();
+    const note = makeNote(org.id, { content: 'Need to send the revised SOW.' });
+    const proposal = noteProposalModel.create({
+      source_note_id: note.id,
+      organization_id: org.id,
+      type: 'task_follow_up',
+      title: 'Send revised SOW',
+      summary: 'AE should send the revised SOW.',
+      evidence_quote: 'Need to send the revised SOW.',
+      proposed_payload: { description: 'Send revised SOW to procurement.', due_date: '2026-05-15' },
+    });
+
+    const tasksBefore = taskModel.list({ org_id: org.id }).length;
+
+    const res = await request(app)
+      .post(`/api/notes/proposals/${proposal.id}/status`)
+      .send({ status: 'approved' });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ id: proposal.id, status: 'approved' });
+
+    const tasksAfter = taskModel.list({ org_id: org.id });
+    expect(tasksAfter.length).toBe(tasksBefore + 1);
+    const created = tasksAfter.find((t) => t.title === 'Send revised SOW');
+    expect(created).toBeDefined();
+    expect(created!.due_date).toBe('2026-05-15');
+  });
+
+  it('approve customer_insight creates a confirmed agent_insight note', async () => {
+    const org = makeOrg();
+    const note = makeNote(org.id, { content: 'Budget resets every January.' });
+    const proposal = noteProposalModel.create({
+      source_note_id: note.id,
+      organization_id: org.id,
+      type: 'customer_insight',
+      title: 'Budget cycle is January',
+      summary: 'Budget resets every January.',
+      evidence_quote: 'Budget resets every January.',
+      proposed_payload: { insight: 'Customer budget cycle resets in January.' },
+    });
+
+    const res = await request(app)
+      .post(`/api/notes/proposals/${proposal.id}/status`)
+      .send({ status: 'approved' });
+
+    expect(res.status).toBe(200);
+    const insightNotes = noteModel.listFor(org.id).filter(
+      (n) => n.role === 'agent_insight' && n.confirmed,
+    );
+    expect(insightNotes.some((n) => n.content.includes('Budget cycle is January'))).toBe(true);
+  });
+
+  it('returns 404 for a non-existent proposal', async () => {
+    const res = await request(app)
+      .post('/api/notes/proposals/999999/status')
+      .send({ status: 'denied' });
+    expect(res.status).toBe(404);
   });
 });
 

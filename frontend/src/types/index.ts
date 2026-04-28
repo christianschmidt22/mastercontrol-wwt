@@ -80,3 +80,15 @@ export type {
   AgenticResultOk,
   AgenticResultErr,
 } from './subagent';
+
+export type {
+  CalendarEvent,
+  CalendarTodayResponse,
+  SystemAlert,
+  AlertsResponse,
+} from './calendar';
+
+export type {
+  ProjectResource,
+  ProjectResourceCreate,
+} from './projectResource';

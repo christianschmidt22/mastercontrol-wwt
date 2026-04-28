@@ -12,6 +12,7 @@ import {
 } from '../schemas/note.schema.js';
 import { noteProposalModel } from '../models/noteProposal.model.js';
 import { captureMarkdownNote } from '../services/noteCapture.service.js';
+import { applyApproval } from '../services/noteProposal.service.js';
 import { validateBody, validateParams, validateQuery } from '../lib/validate.js';
 import { bumpOrgVersion } from '../services/claude.service.js';
 import { extractMentions } from '../services/mention.service.js';
@@ -78,6 +79,24 @@ notesRouter.post(
       status: 'approved' | 'denied' | 'discussing';
       discussion?: string | null;
     };
+
+    // For approve, fetch the proposal first and create the durable record
+    // before changing the status, so we can keep it 'pending' on failure.
+    if (status === 'approved') {
+      const existing = noteProposalModel.get(id);
+      if (!existing) return next(new HttpError(404, 'Note proposal not found'));
+      try {
+        applyApproval(existing);
+      } catch (err) {
+        return next(
+          new HttpError(
+            500,
+            `Failed to apply approval: ${err instanceof Error ? err.message : String(err)}`,
+          ),
+        );
+      }
+    }
+
     const proposal = noteProposalModel.setStatus(id, status, discussion);
     if (!proposal) return next(new HttpError(404, 'Note proposal not found'));
     bumpOrgVersion(proposal.organization_id);

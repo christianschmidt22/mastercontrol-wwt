@@ -92,6 +92,7 @@ const SAMPLE_TASK: Task = {
   due_date: null,
   organization_id: null,
   contact_id: null,
+  project_id: null,
   created_at: '2026-04-25T07:00:00.000Z',
   completed_at: null,
 };

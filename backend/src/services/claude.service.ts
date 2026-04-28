@@ -1857,3 +1857,184 @@ export async function extractPrimaryOrgAndMentions(
     return { primary_org_name: null, primary_confidence: null, mentions: [] };
   }
 }
+
+// ---------------------------------------------------------------------------
+// extractNoteProposals — note ingest extraction engine
+//
+// Structured extraction of actionable items from a captured note.
+// Uses tool-use with forced tool_choice to get typed JSON output.
+//
+// R-021: report_note_proposals is an output-only tool (not a write tool).
+// R-026: note content wrapped in <untrusted_document>.
+// ---------------------------------------------------------------------------
+
+const VALID_NOTE_PROPOSAL_TYPES = new Set([
+  'customer_ask',
+  'task_follow_up',
+  'project_update',
+  'risk_blocker',
+  'oem_mention',
+  'customer_insight',
+  'internal_resource',
+]);
+
+const EXTRACT_NOTE_PROPOSALS_TOOL: Anthropic.Tool = {
+  name: 'report_note_proposals',
+  description:
+    'Report all actionable items extracted from the note. ' +
+    'Call with proposals: [] if nothing actionable is found.',
+  input_schema: {
+    type: 'object' as const,
+    properties: {
+      proposals: {
+        type: 'array',
+        description: 'Actionable items found in the note.',
+        items: {
+          type: 'object',
+          properties: {
+            type: {
+              type: 'string',
+              enum: [
+                'customer_ask',
+                'task_follow_up',
+                'project_update',
+                'risk_blocker',
+                'oem_mention',
+                'customer_insight',
+                'internal_resource',
+              ],
+            },
+            title: {
+              type: 'string',
+              description: 'Short title (under 80 characters)',
+            },
+            summary: {
+              type: 'string',
+              description: '1-3 sentence summary',
+            },
+            evidence_quote: {
+              type: 'string',
+              description: 'Verbatim quote from the note supporting this proposal',
+            },
+            confidence: {
+              type: 'number',
+              description: '0.0-1.0 confidence this item is actionable',
+            },
+            payload: {
+              type: 'object',
+              description:
+                'Type-specific details. ' +
+                'task_follow_up: {description, due_date?}. ' +
+                'customer_ask: {description, urgency?, requested_by?}. ' +
+                'project_update: {content, new_status?}. ' +
+                'risk_blocker: {description, severity?}. ' +
+                'oem_mention: {oem_name, context, sentiment?}. ' +
+                'customer_insight: {insight}. ' +
+                'internal_resource: {name, role?, team?, notes?}.',
+              additionalProperties: true,
+            },
+          },
+          required: ['type', 'title', 'summary', 'evidence_quote', 'confidence', 'payload'],
+        },
+      },
+    },
+    required: ['proposals'],
+  },
+};
+
+export interface RawNoteProposal {
+  type: string;
+  title: string;
+  summary: string;
+  evidence_quote: string;
+  confidence: number;
+  payload: Record<string, unknown>;
+}
+
+/**
+ * Extract actionable proposals from a captured note using structured tool output.
+ *
+ * Returns an array of typed proposals for each actionable item found in the note.
+ * Returns [] if nothing actionable is found or on any parse error.
+ *
+ * R-021: report_note_proposals is output-only — not a write tool.
+ * R-026: note content is wrapped in <untrusted_document>.
+ */
+export async function extractNoteProposals(options: {
+  noteContent: string;
+  orgName: string;
+  orgType: 'customer' | 'oem';
+  projectName?: string | null;
+  oemNames?: string[];
+}): Promise<RawNoteProposal[]> {
+  const { noteContent, orgName, orgType, projectName, oemNames = [] } = options;
+
+  const client = getClient();
+  const projectContext = projectName ? ` The note is for project "${projectName}".` : '';
+  const oemContext =
+    oemNames.length > 0 ? ` Known OEM partners to detect: ${oemNames.join(', ')}.` : '';
+
+  const extractModel = 'claude-haiku-4-5';
+  const response = await client.messages.create({
+    model: extractModel,
+    max_tokens: 1024,
+    // R-021: output-only tool, not a write tool.
+    tools: [EXTRACT_NOTE_PROPOSALS_TOOL],
+    tool_choice: { type: 'tool', name: 'report_note_proposals' },
+    system:
+      `You extract actionable items from account executive field notes for a CRM. ` +
+      `The note is from a ${orgType} account: "${orgName}".${projectContext}${oemContext}\n\n` +
+      `Extract only items with clear evidence in the note — do not infer. ` +
+      `Proposal types:\n` +
+      `- customer_ask: Something the customer explicitly needs or is requesting\n` +
+      `- task_follow_up: An action item the AE needs to do\n` +
+      `- project_update: Status or progress update for a project\n` +
+      `- risk_blocker: A risk, concern, or blocker that could affect the deal\n` +
+      `- oem_mention: A reference to an OEM vendor partner\n` +
+      `- customer_insight: An insight about customer behavior, priorities, or strategy\n` +
+      `- internal_resource: A WWT internal staff member (SE, overlay, BDM, architect, etc.) engaged on this project\n\n` +
+      `Use the report_note_proposals tool to report your findings.`,
+    messages: [
+      {
+        role: 'user',
+        // R-026: wrap note content in untrusted-document envelope.
+        content: `<untrusted_document src="note">\n${noteContent}\n</untrusted_document>`,
+      },
+    ],
+  });
+
+  recordUsageFromMessage('ingest', extractModel, response, 'extractNoteProposals');
+
+  try {
+    const toolBlock = response.content.find((b) => b.type === 'tool_use');
+    if (!toolBlock || toolBlock.type !== 'tool_use') return [];
+    const input = toolBlock.input as { proposals?: unknown };
+    if (!Array.isArray(input.proposals)) return [];
+    return input.proposals
+      .filter((item): item is Record<string, unknown> => {
+        if (typeof item !== 'object' || item === null) return false;
+        const p = item as Record<string, unknown>;
+        return (
+          typeof p['type'] === 'string' &&
+          VALID_NOTE_PROPOSAL_TYPES.has(p['type']) &&
+          typeof p['title'] === 'string' &&
+          p['title'].trim().length > 0 &&
+          typeof p['summary'] === 'string' &&
+          typeof p['evidence_quote'] === 'string' &&
+          typeof p['confidence'] === 'number' &&
+          typeof p['payload'] === 'object' &&
+          p['payload'] !== null
+        );
+      })
+      .map((p) => ({
+        type: p['type'] as string,
+        title: (p['title'] as string).trim().slice(0, 200),
+        summary: (p['summary'] as string).trim().slice(0, 500),
+        evidence_quote: (p['evidence_quote'] as string).trim().slice(0, 1000),
+        confidence: Math.max(0, Math.min(1, p['confidence'] as number)),
+        payload: p['payload'] as Record<string, unknown>,
+      }));
+  } catch {
+    return [];
+  }
+}
