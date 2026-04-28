@@ -5,14 +5,12 @@
  * - Large Fraunces org name (h1)
  * - Status pill row: type ('oem'), partner-status chip, last-contact relative time
  * - Two-line "About" from metadata.summary; empty-state CTA when missing
- * - Action row: Edit org, New note (vermilion CTA), Open chat
  * - Hairline separator below
  *
  * ≤180 lines per CLAUDE.md component rule.
- * Vermilion budget: only the "New note" CTA at rest (Q-1).
  */
 
-import { Edit2, MessageSquarePlus, Pencil } from 'lucide-react';
+import { Pencil } from 'lucide-react';
 import type { ReactNode } from 'react';
 import type { Organization } from '../../types';
 
@@ -77,8 +75,6 @@ export interface OemPageHeaderProps {
   /** ISO date of most recent note created_at, fallback if no thread */
   lastNoteAt?: string | null;
   onEditOrg?: () => void;
-  onNewNote?: () => void;
-  onOpenChat?: () => void;
   tabs?: ReactNode;
 }
 
@@ -91,8 +87,6 @@ export function OemPageHeader({
   lastThreadAt,
   lastNoteAt,
   onEditOrg,
-  onNewNote,
-  onOpenChat,
   tabs,
 }: OemPageHeaderProps) {
   const lastContact = formatLastContact(lastThreadAt ?? lastNoteAt);
@@ -220,90 +214,6 @@ export function OemPageHeader({
           )}
         </div>
 
-        {/* Right: action buttons */}
-        <div
-          style={{
-            display: 'flex',
-            gap: 8,
-            alignItems: 'center',
-            flexShrink: 0,
-            paddingTop: 36,
-          }}
-        >
-          {/* Edit org */}
-          <button
-            type="button"
-            onClick={onEditOrg}
-            aria-label="Edit organization"
-            style={{
-              fontFamily: 'var(--body)',
-              fontSize: 12,
-              fontWeight: 500,
-              padding: '7px 14px',
-              borderRadius: 6,
-              cursor: 'pointer',
-              border: '1px solid var(--rule)',
-              background: 'var(--bg)',
-              color: 'var(--ink-2)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
-              transition: 'background-color 150ms var(--ease), color 150ms var(--ease)',
-            }}
-          >
-            <Edit2 size={13} strokeWidth={1.5} aria-hidden="true" />
-            Edit
-          </button>
-
-          {/* Open chat */}
-          <button
-            type="button"
-            onClick={onOpenChat}
-            aria-label="Open chat thread"
-            style={{
-              fontFamily: 'var(--body)',
-              fontSize: 12,
-              fontWeight: 500,
-              padding: '7px 14px',
-              borderRadius: 6,
-              cursor: 'pointer',
-              border: '1px solid var(--rule)',
-              background: 'var(--bg)',
-              color: 'var(--ink-2)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
-              transition: 'background-color 150ms var(--ease), color 150ms var(--ease)',
-            }}
-          >
-            <MessageSquarePlus size={13} strokeWidth={1.5} aria-hidden="true" />
-            Chat
-          </button>
-
-          {/* New note — vermilion CTA (one rest-state accent per screen) */}
-          <button
-            type="button"
-            onClick={onNewNote}
-            aria-label="Add new note"
-            style={{
-              fontFamily: 'var(--body)',
-              fontSize: 12,
-              fontWeight: 600,
-              padding: '7px 16px',
-              borderRadius: 6,
-              cursor: 'pointer',
-              border: '1px solid var(--accent)',
-              background: 'var(--bg)',
-              color: 'var(--accent)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
-              transition: 'background-color 150ms var(--ease)',
-            }}
-          >
-            New note
-          </button>
-        </div>
       </div>
 
       {/* Hairline separator */}

@@ -199,6 +199,21 @@ function ActivityDot() {
   );
 }
 
+function customerPinRank(name: string): number {
+  const normalized = name.toLowerCase();
+  if (normalized.includes('c.h. robinson') || normalized.includes('chr')) return 0;
+  if (normalized.includes('fairview')) return 1;
+  return 2;
+}
+
+function orderSidebarCustomers<T extends { name: string }>(customers: T[]): T[] {
+  return [...customers].sort((a, b) => {
+    const rankDiff = customerPinRank(a.name) - customerPinRank(b.name);
+    if (rankDiff !== 0) return rankDiff;
+    return a.name.localeCompare(b.name);
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Sidebar
 // ---------------------------------------------------------------------------
@@ -301,6 +316,7 @@ export function Sidebar() {
   }, []);
 
   const customerList = customers ?? [];
+  const orderedCustomerList = orderSidebarCustomers(customerList);
   return (
     <nav
       ref={setNavRef}
@@ -369,7 +385,7 @@ export function Sidebar() {
         )}
         {!customersLoading &&
           !customersError &&
-          customerList.map((c) => (
+          orderedCustomerList.map((c) => (
             <NavLink
               key={c.id}
               to={`/customers/${c.id}`}

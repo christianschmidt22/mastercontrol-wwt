@@ -185,6 +185,13 @@ const oemTabStyleBase: CSSProperties = {
   transition: 'color 150ms var(--ease), border-color 150ms var(--ease)',
 };
 
+function formatOemTabLabel(name: string): string {
+  const normalized = name.toLowerCase();
+  if (normalized.includes('dell')) return 'Dell';
+  if (normalized.includes('pure')) return 'Pure';
+  return name;
+}
+
 function OemTabs({
   oems,
   selectedId,
@@ -203,9 +210,10 @@ function OemTabs({
       style={{
         display: 'flex',
         gap: 0,
+        flexWrap: 'wrap',
+        rowGap: 4,
         borderBottom: '1px solid var(--rule)',
         marginBottom: 0,
-        overflowX: 'auto',
       }}
     >
       {oems.map((oem) => {
@@ -220,15 +228,12 @@ function OemTabs({
             title={oem.name}
             style={{
               ...oemTabStyleBase,
-              maxWidth: 220,
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
               fontWeight: isActive ? 600 : 400,
               borderBottomColor: isActive ? 'var(--ink-1)' : 'transparent',
               color: isActive ? 'var(--ink-1)' : 'var(--ink-2)',
             }}
           >
-            {oem.name}
+            {formatOemTabLabel(oem.name)}
           </button>
         );
       })}

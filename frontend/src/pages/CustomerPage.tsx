@@ -1,4 +1,4 @@
-import { useState, type CSSProperties } from 'react';
+import { useEffect, useState, type CSSProperties } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { LayoutGrid } from 'lucide-react';
 import { TileGrid, type TileGridItem } from '../components/tiles/TileGrid';
@@ -12,10 +12,10 @@ import { ReferenceTile } from '../components/tiles/customer/ReferenceTile';
 import { DocumentsTile } from '../components/tiles/customer/DocumentsTile';
 import { OrgTimelineTile } from '../components/tiles/customer/OrgTimelineTile';
 import { useOrganization } from '../api/useOrganizations';
-import { useProjects } from '../api/useProjects';
+import { useProjects, useUpdateProject } from '../api/useProjects';
 import { CustomerPageHeader } from '../components/customers/CustomerPageHeader';
 import { CrossOrgInsightsPanel } from '../components/customers/CrossOrgInsightsPanel';
-import type { Project } from '../types';
+import type { Project, ProjectStatus } from '../types';
 
 /**
  * Default 12-col layout per DESIGN.md § Tile dashboard.
@@ -75,9 +75,10 @@ function CustomerTabs({
       style={{
         display: 'flex',
         gap: 0,
+        flexWrap: 'wrap',
+        rowGap: 4,
         borderBottom: '1px solid var(--rule)',
         marginBottom: 0,
-        overflowX: 'auto',
       }}
     >
       <button
@@ -107,9 +108,6 @@ function CustomerTabs({
             title={project.name}
             style={{
               ...tabStyleBase,
-              maxWidth: 220,
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
               fontWeight: isActive ? 600 : 400,
               borderBottomColor: isActive ? 'var(--ink-1)' : 'transparent',
               color: isActive ? 'var(--ink-1)' : 'var(--ink-2)',
@@ -137,16 +135,173 @@ function CustomerTabs({
   );
 }
 
-function ProjectPage({ project }: { project: Project }) {
-  const metaItems = [
-    ['Status', project.status],
-    ['Created', new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).format(new Date(project.created_at))],
-    ['Updated', new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).format(new Date(project.updated_at))],
-  ];
+const PROJECT_STATUSES: ProjectStatus[] = ['active', 'qualifying', 'paused', 'won', 'lost', 'closed'];
+
+const projectFieldLabelStyle: CSSProperties = {
+  display: 'block',
+  fontFamily: 'var(--body)',
+  fontSize: 11,
+  fontWeight: 600,
+  letterSpacing: '0.06em',
+  textTransform: 'uppercase',
+  color: 'var(--ink-3)',
+  marginBottom: 6,
+};
+
+const projectFieldStyle: CSSProperties = {
+  width: '100%',
+  border: '1px solid var(--rule)',
+  borderRadius: 6,
+  background: 'var(--bg)',
+  color: 'var(--ink-1)',
+  fontFamily: 'var(--body)',
+  fontSize: 14,
+  lineHeight: 1.5,
+  padding: '8px 10px',
+  outline: 'none',
+};
+
+const projectMetaLabelStyle: CSSProperties = {
+  fontFamily: 'var(--body)',
+  fontSize: 11,
+  color: 'var(--ink-3)',
+  textTransform: 'uppercase',
+  letterSpacing: '0.06em',
+  marginBottom: 3,
+};
+
+const projectActionStyle: CSSProperties = {
+  fontFamily: 'var(--body)',
+  fontSize: 12,
+  fontWeight: 500,
+  padding: '7px 12px',
+  borderRadius: 6,
+  border: '1px solid var(--rule)',
+  background: 'var(--bg)',
+  color: 'var(--ink-2)',
+  cursor: 'pointer',
+};
+
+function normalizeOptional(value: string): string | null {
+  const trimmed = value.trim();
+  return trimmed ? trimmed : null;
+}
+
+function formatDate(value: string): string {
+  return new Intl.DateTimeFormat('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  }).format(new Date(value));
+}
+
+function ProjectHeaderNote({ project }: { project: Project }) {
+  const updateProject = useUpdateProject();
+  const [note, setNote] = useState(project.notes_url ?? '');
+
+  useEffect(() => {
+    setNote(project.notes_url ?? '');
+  }, [project.id, project.notes_url]);
+
+  const isDirty = note !== (project.notes_url ?? '');
+
+  const handleSave = () => {
+    if (!isDirty) return;
+    updateProject.mutate({ id: project.id, notes_url: normalizeOptional(note) });
+  };
 
   return (
-    <section
-      aria-labelledby="project-page-title"
+    <form
+      onSubmit={(event) => {
+        event.preventDefault();
+        handleSave();
+      }}
+      style={{ display: 'grid', gap: 8 }}
+    >
+      <textarea
+        value={note}
+        aria-label={`${project.name} project note`}
+        placeholder="Add a project note..."
+        rows={2}
+        onChange={(event) => setNote(event.target.value)}
+        style={{
+          ...projectFieldStyle,
+          minHeight: 58,
+          resize: 'vertical',
+          color: note ? 'var(--ink-2)' : 'var(--ink-3)',
+        }}
+      />
+      {isDirty && (
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <button
+            type="submit"
+            disabled={updateProject.isPending}
+            style={{
+              ...projectActionStyle,
+              background: 'var(--bg-2)',
+              color: 'var(--ink-1)',
+              cursor: updateProject.isPending ? 'not-allowed' : 'pointer',
+            }}
+          >
+            {updateProject.isPending ? 'Saving...' : 'Save note'}
+          </button>
+          <button
+            type="button"
+            onClick={() => setNote(project.notes_url ?? '')}
+            style={projectActionStyle}
+          >
+            Reset
+          </button>
+        </div>
+      )}
+    </form>
+  );
+}
+
+function ProjectPage({ project }: { project: Project }) {
+  const updateProject = useUpdateProject();
+  const [draft, setDraft] = useState({
+    name: project.name,
+    status: project.status,
+    description: project.description ?? '',
+    docUrl: project.doc_url ?? '',
+  });
+
+  useEffect(() => {
+    setDraft({
+      name: project.name,
+      status: project.status,
+      description: project.description ?? '',
+      docUrl: project.doc_url ?? '',
+    });
+  }, [project.id, project.name, project.status, project.description, project.doc_url]);
+
+  const isDirty =
+    draft.name !== project.name ||
+    draft.status !== project.status ||
+    draft.description !== (project.description ?? '') ||
+    draft.docUrl !== (project.doc_url ?? '');
+
+  const nameIsValid = draft.name.trim().length > 0;
+
+  const handleSave = () => {
+    if (!isDirty || !nameIsValid) return;
+    updateProject.mutate({
+      id: project.id,
+      name: draft.name.trim(),
+      status: draft.status,
+      description: normalizeOptional(draft.description),
+      doc_url: normalizeOptional(draft.docUrl),
+    });
+  };
+
+  return (
+    <form
+      aria-label={`${project.name} project details`}
+      onSubmit={(event) => {
+        event.preventDefault();
+        handleSave();
+      }}
       style={{
         display: 'grid',
         gridTemplateColumns: 'minmax(0, 2fr) minmax(260px, 1fr)',
@@ -162,43 +317,71 @@ function ProjectPage({ project }: { project: Project }) {
           background: 'var(--bg)',
         }}
       >
-        <p
-          style={{
-            fontFamily: 'var(--body)',
-            fontSize: 11,
-            fontWeight: 600,
-            letterSpacing: '0.08em',
-            textTransform: 'uppercase',
-            color: 'var(--ink-3)',
-            marginBottom: 10,
-          }}
-        >
+        <label style={projectFieldLabelStyle} htmlFor="project-name">
           Project
-        </p>
-        <h2
-          id="project-page-title"
+        </label>
+        <input
+          id="project-name"
+          value={draft.name}
+          onChange={(event) => setDraft((next) => ({ ...next, name: event.target.value }))}
+          aria-invalid={!nameIsValid}
           style={{
+            ...projectFieldStyle,
             fontFamily: 'var(--display)',
             fontSize: 34,
             lineHeight: 1.08,
             fontWeight: 500,
-            color: 'var(--ink-1)',
-            marginBottom: 14,
+            padding: '8px 10px 10px',
+            borderColor: nameIsValid ? 'var(--rule)' : 'var(--accent)',
           }}
-        >
-          {project.name}
-        </h2>
-        <p
-          style={{
-            fontFamily: 'var(--body)',
-            fontSize: 14,
-            lineHeight: 1.65,
-            color: project.description ? 'var(--ink-2)' : 'var(--ink-3)',
-            maxWidth: '76ch',
-          }}
-        >
-          {project.description || 'No project description yet.'}
-        </p>
+        />
+        <label style={{ ...projectFieldLabelStyle, marginTop: 18 }} htmlFor="project-description">
+          Description
+        </label>
+        <textarea
+          id="project-description"
+          value={draft.description}
+          rows={5}
+          placeholder="No project description yet."
+          onChange={(event) =>
+            setDraft((next) => ({ ...next, description: event.target.value }))
+          }
+          style={{ ...projectFieldStyle, resize: 'vertical' }}
+        />
+        <div style={{ display: 'flex', gap: 8, marginTop: 18, alignItems: 'center' }}>
+          <button
+            type="submit"
+            disabled={!isDirty || !nameIsValid || updateProject.isPending}
+            style={{
+              ...projectActionStyle,
+              background: isDirty && nameIsValid ? 'var(--bg-2)' : 'var(--bg)',
+              color: isDirty && nameIsValid ? 'var(--ink-1)' : 'var(--ink-3)',
+              cursor:
+                isDirty && nameIsValid && !updateProject.isPending ? 'pointer' : 'not-allowed',
+            }}
+          >
+            {updateProject.isPending ? 'Saving...' : 'Save project'}
+          </button>
+          <button
+            type="button"
+            onClick={() =>
+              setDraft({
+                name: project.name,
+                status: project.status,
+                description: project.description ?? '',
+                docUrl: project.doc_url ?? '',
+              })
+            }
+            disabled={!isDirty}
+            style={{
+              ...projectActionStyle,
+              color: isDirty ? 'var(--ink-2)' : 'var(--ink-3)',
+              cursor: isDirty ? 'pointer' : 'not-allowed',
+            }}
+          >
+            Reset
+          </button>
+        </div>
       </div>
 
       <aside
@@ -211,77 +394,59 @@ function ProjectPage({ project }: { project: Project }) {
         }}
       >
         <dl style={{ display: 'flex', flexDirection: 'column', gap: 12, margin: 0 }}>
-          {metaItems.map(([label, value]) => (
-            <div key={label}>
-              <dt
-                style={{
-                  fontFamily: 'var(--body)',
-                  fontSize: 11,
-                  color: 'var(--ink-3)',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.06em',
-                  marginBottom: 3,
-                }}
-              >
-                {label}
-              </dt>
-              <dd
-                style={{
-                  margin: 0,
-                  fontFamily: 'var(--body)',
-                  fontSize: 13,
-                  color: 'var(--ink-1)',
-                }}
-              >
-                {value}
-              </dd>
-            </div>
-          ))}
-          <ProjectLink label="Folder" value={project.doc_url} />
-          <ProjectLink label="Notes" value={project.notes_url} />
+          <div>
+            <label style={projectFieldLabelStyle} htmlFor="project-status">
+              Status
+            </label>
+            <select
+              id="project-status"
+              value={draft.status}
+              onChange={(event) =>
+                setDraft((next) => ({
+                  ...next,
+                  status: event.target.value as ProjectStatus,
+                }))
+              }
+              style={projectFieldStyle}
+            >
+              {PROJECT_STATUSES.map((status) => (
+                <option
+                  key={status}
+                  value={status}
+                  style={{ background: 'var(--bg)', color: 'var(--ink-1)' }}
+                >
+                  {status}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <dt style={projectMetaLabelStyle}>Created</dt>
+            <dd style={{ margin: 0, fontFamily: 'var(--body)', fontSize: 13, color: 'var(--ink-1)' }}>
+              {formatDate(project.created_at)}
+            </dd>
+          </div>
+          <div>
+            <dt style={projectMetaLabelStyle}>Updated</dt>
+            <dd style={{ margin: 0, fontFamily: 'var(--body)', fontSize: 13, color: 'var(--ink-1)' }}>
+              {formatDate(project.updated_at)}
+            </dd>
+          </div>
+          <div>
+            <label style={projectFieldLabelStyle} htmlFor="project-folder">
+              Folder
+            </label>
+            <input
+              id="project-folder"
+              value={draft.docUrl}
+              placeholder="Not set"
+              onChange={(event) => setDraft((next) => ({ ...next, docUrl: event.target.value }))}
+              style={{ ...projectFieldStyle, fontFamily: 'var(--mono)', fontSize: 12 }}
+            />
+          </div>
         </dl>
       </aside>
-    </section>
-  );
-}
-
-function ProjectLink({ label, value }: { label: string; value: string | null }) {
-  return (
-    <div>
-      <dt
-        style={{
-          fontFamily: 'var(--body)',
-          fontSize: 11,
-          color: 'var(--ink-3)',
-          textTransform: 'uppercase',
-          letterSpacing: '0.06em',
-          marginBottom: 3,
-        }}
-      >
-        {label}
-      </dt>
-      <dd style={{ margin: 0 }}>
-        {value ? (
-          <a
-            href={value}
-            style={{
-              fontFamily: 'var(--mono)',
-              fontSize: 12,
-              color: 'var(--ink-1)',
-              wordBreak: 'break-all',
-              textDecoration: 'underline',
-              textUnderlineOffset: 3,
-            }}
-          >
-            {value}
-          </a>
-        ) : (
-          <span style={{ fontFamily: 'var(--body)', fontSize: 13, color: 'var(--ink-3)' }}>
-            Not set
-          </span>
-        )}
-      </dd>
-    </div>
+    </form>
   );
 }
 
@@ -465,6 +630,9 @@ export function CustomerPage() {
               activeProjectId={activeProjectId}
               projectsLoading={projectsLoading}
             />
+          }
+          summaryOverride={
+            activeProject ? <ProjectHeaderNote project={activeProject} /> : undefined
           }
         />
       ) : (

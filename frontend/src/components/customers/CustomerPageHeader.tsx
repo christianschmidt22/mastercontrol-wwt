@@ -285,6 +285,7 @@ export interface CustomerPageHeaderProps {
   /** ISO date of most recent note created_at, fallback if no thread */
   lastNoteAt?: string | null;
   tabs?: ReactNode;
+  summaryOverride?: ReactNode;
 }
 
 // ---------------------------------------------------------------------------
@@ -316,6 +317,7 @@ export function CustomerPageHeader({
   lastThreadAt,
   lastNoteAt,
   tabs,
+  summaryOverride,
 }: CustomerPageHeaderProps) {
   const lastTouched = formatLastTouched(lastThreadAt ?? lastNoteAt);
   const summary =
@@ -427,7 +429,9 @@ export function CustomerPageHeader({
           )}
 
           {/* About / summary — click to edit */}
-          {editingSummary ? (
+          {summaryOverride !== undefined ? (
+            <div style={{ maxWidth: '72ch' }}>{summaryOverride}</div>
+          ) : editingSummary ? (
             <SummaryEditor
               initial={summary}
               onSave={saveSummary}

@@ -1,12 +1,12 @@
 /**
  * OemPageHeader.test.tsx
  *
- * 6 cases:
+ * Header behavior:
  *   1. Renders the org name in an h1
  *   2. Renders the 'oem' type status pill
  *   3. Shows "Click to add summary" when metadata.summary is absent
  *   4. Shows summary text when metadata.summary is present
- *   5. Edit button calls onEditOrg handler
+ *   5. Empty summary CTA calls onEditOrg handler
  *   6. formatLastContact — relative time formatting
  */
 
@@ -73,18 +73,11 @@ describe('OemPageHeader — rendering', () => {
     expect(screen.getByText('strategic')).toBeInTheDocument();
   });
 
-  it('calls onEditOrg when Edit button is clicked', () => {
+  it('calls onEditOrg when the empty summary CTA is clicked', () => {
     const onEditOrg = vi.fn();
     renderHeader({ onEditOrg });
-    fireEvent.click(screen.getByRole('button', { name: /edit organization/i }));
+    fireEvent.click(screen.getByRole('button', { name: /click to add summary/i }));
     expect(onEditOrg).toHaveBeenCalledTimes(1);
-  });
-
-  it('calls onNewNote when New note button is clicked', () => {
-    const onNewNote = vi.fn();
-    renderHeader({ onNewNote });
-    fireEvent.click(screen.getByRole('button', { name: /add new note/i }));
-    expect(onNewNote).toHaveBeenCalledTimes(1);
   });
 });
 
