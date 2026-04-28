@@ -227,12 +227,21 @@ button (per Vercel guideline: animations / streams must be interruptible).
 
 ## Settings & secrets
 
-The Anthropic API key is stored in the `settings` table under the key
-`anthropic_api_key`. The backend reads it lazily — every Anthropic
-request reconstructs the client from the current value, so the user can
-rotate keys without restarting. The key is never sent to the frontend;
-the Settings page submits the new value via `PUT /api/settings` and the
-GET response masks it as `***...last4`.
+Core AI authentication is controlled by `settings.claude_auth_mode`:
+
+- `subscription` forces the Claude Code OAuth session created by
+  `claude /login`.
+- `auto` uses `settings.anthropic_api_key` when present, otherwise falls
+  back to the Claude Code login session.
+- `api_key` forces the metered Anthropic API-key path.
+
+The fallback Anthropic API key is stored in the `settings` table under the
+key `anthropic_api_key`. The backend reads it lazily, so the user can rotate
+keys without restarting. Secret settings are never sent to the frontend; the
+Settings page submits new values via `PUT /api/settings` and `GET` responses
+mask them as `***...last4`. Claude Code OAuth credentials stay in
+`~/.claude/.credentials.json`; MasterControl checks for that file but never
+stores or returns its tokens.
 
 Non-secret path settings are stored in the same table:
 

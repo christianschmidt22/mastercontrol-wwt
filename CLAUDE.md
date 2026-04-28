@@ -63,6 +63,10 @@ Full data model: [`schema.sql`](backend/src/db/schema.sql) and
 - Components: one per file, named exports, under ~150 lines.
 
 ## AI Integration Rules
+- Core AI auth is selected by `settings.claude_auth_mode`: `subscription`
+  uses the local Claude Code OAuth session from `claude /login`; `auto`
+  uses `anthropic_api_key` when present and otherwise uses Claude Code;
+  `api_key` forces the metered SDK key path.
 - System prompt is hydrated from `agent_configs` and sent split into two
   blocks (R-016): a **stable** block with `cache_control: ephemeral`
   (playbook + org name + type + metadata + contacts + projects) and a
@@ -86,9 +90,11 @@ Full data model: [`schema.sql`](backend/src/db/schema.sql) and
   `<untrusted_document src="…">…</untrusted_document>` and never
   enable write tools (`record_insight`) in the same call (R-021,
   R-026).
-- Anthropic API key is DPAPI-wrapped in `settings.value` for any key
-  in `SECRET_KEYS`. Routes only ever return `getMasked(...)`. The
-  plaintext getter is callable only from `claude.service.ts` (R-003).
+- Fallback Anthropic API keys are DPAPI-wrapped in `settings.value` for
+  any key in `SECRET_KEYS`. Routes only ever return `getMasked(...)`.
+  The plaintext getter is callable only from service-layer code. Claude
+  Code OAuth tokens remain in `~/.claude/.credentials.json` and are never
+  returned by routes.
 
 ## Code Standards
 - TypeScript strict. No `any`. No `ts-ignore` without a comment explaining

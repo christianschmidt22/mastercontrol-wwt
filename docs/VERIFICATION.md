@@ -6,7 +6,10 @@
 
 Required:
 - Node.js **18.18+** ([download](https://nodejs.org/))
-- An Anthropic API key (paste it into the app's Settings page on first run)
+- Claude Code authenticated with `claude /login` for the recommended
+  subscription/Enterprise path.
+- Optional fallback: an Anthropic API key, configured in Settings only if
+  you want to force metered API billing.
 - Windows recommended (DPAPI integration); macOS/Linux works with the no-op encryption fallback documented in `backend/src/models/settings.model.ts`
 
 ```bash
@@ -58,7 +61,7 @@ npm run dev    # backend on :3001, frontend on :5173 (both bound to 127.0.0.1 �
 
 Open `http://localhost:5173` and exercise:
 
-1. **Settings**: paste an Anthropic API key. After save, GET should display `***last4` (DPAPI-encrypted on Windows; no-op fallback on other platforms).
+1. **Settings**: set **Core Claude Authentication** to **Claude Code login** after `claude /login`. If testing the fallback path, paste an Anthropic API key; after save, GET should display `***last4` (DPAPI-encrypted on Windows; no-op fallback on other platforms).
 2. **Sidebar `+ Add customer`**: create a customer "Fairview Health". It appears in the sidebar.
 3. **Customer page**: open Fairview. The 7-tile dashboard renders in default layout (Chat / Priority Projects / Tasks / Recent Notes / Contacts / Reference / Documents).
 4. **Customize layout**: click the button. Tiles get the dashed accent border + drag-grip + resize handle. Drag a tile, resize a tile, then **press Tab to a tile and use the keyboard "Move tile" affordance** — `Enter` activates move mode, arrow keys move, `Esc` cancels. Save. Refresh — layout persists.

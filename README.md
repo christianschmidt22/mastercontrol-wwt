@@ -18,9 +18,12 @@ reports module, scheduler, four new agent tools (`search_notes`,
 **Prerequisites**
 
 - Node 18.18 or later
-- An Anthropic API key (for the per-org Claude agents)
+- Claude Code login for the per-org Claude agents and extraction pipeline:
+  run `claude /login` with your Claude.ai Team/Enterprise/Max account.
+- Optional fallback: an Anthropic API key if you want metered API billing
+  instead of the Claude Code login session.
 - Windows recommended — Phase 2 ingest assumes OneDrive paths on Windows.
-  The DPAPI secret-wrapping for the API key uses `@primno/dpapi`; on
+  DPAPI secret-wrapping for fallback API keys uses `@primno/dpapi`; on
   non-Windows the library is a no-op (plaintext fallback).
 
 **Steps**
@@ -35,9 +38,9 @@ npm run dev
 # 3. Open the browser
 #    http://localhost:5173
 
-# 4. Open Settings (sidebar bottom) → paste your Anthropic API key → Save.
-#    The key is stored DPAPI-encrypted in the local SQLite DB; the GET
-#    response only returns the last 4 characters masked.
+# 4. Open Settings (sidebar bottom) → Core Claude Authentication.
+#    Pick "Claude Code login" after running `claude /login`.
+#    "Auto" uses an API key if present, otherwise the Claude Code login.
 ```
 
 ---

@@ -11,7 +11,9 @@ Two Task Scheduler entries are registered once under the current user account. N
 - Node 18.18 or later on PATH (verified: Node 24.15.0 on the target machine).
 - Repo cloned at `C:\mastercontrol\`.
 - `npm install` completed successfully in both workspaces.
-- Anthropic API key configured in Settings (optional at install time — the scheduler runs without it, but report runs will land in `report_runs` with `status='failed'` and `error='API key not configured'` until the key is set).
+- Claude Code authenticated with `claude /login`, and Settings ->
+  **Core Claude Authentication** set to **Claude Code login** or **Auto**.
+  An Anthropic API key remains an optional fallback if you force API-key mode.
 
 ---
 
@@ -95,7 +97,9 @@ Right-click `MasterControl Scheduler Tick` → **Run**. Wait a few seconds. Chec
   ```
   GET http://127.0.0.1:3001/api/reports/<schedule-id>/runs
   ```
-  A row with `status='done'` (or `status='failed'` with `error='API key not configured'` if no key is set) confirms the tick reached the database. Either outcome means the CLI ran correctly.
+  A row with `status='done'` confirms the tick reached the database. If
+  auth is not configured, the run may be `status='failed'` with an auth
+  error; either outcome means the CLI ran correctly.
 
 **c. Confirm the backend starts at logon.**
 Reboot or log off and log back in. After the desktop appears, browse to `http://127.0.0.1:5173`. If the app loads, the logon trigger fired and both processes are running. If the page does not load within ~20 seconds, check the Troubleshooting section below.
@@ -115,7 +119,7 @@ This removes only the Task Scheduler entries. It does not stop any currently run
 
 ## 5. Troubleshooting
 
-- **Last Run Result: `0x1`** — Node not on PATH for the task's user context. This usually means Node was installed per-user (e.g., via nvm or fnm) and the PATH set in the user's shell profile is not inherited by Task Scheduler. Fix: in the task's **Actions** tab, set the full path to `node.exe` explicitly (e.g., `C:\Users\schmichr\AppData\Roaming\fnm\node.exe`) or switch to **Run only when user is logged on** so the interactive session's PATH applies. Never use **Run whether user is logged on or not** for these tasks — DPAPI-encrypted secrets (the Anthropic API key) are scoped to the user profile and will not decrypt under a non-interactive session.
+- **Last Run Result: `0x1`** — Node not on PATH for the task's user context. This usually means Node was installed per-user (e.g., via nvm or fnm) and the PATH set in the user's shell profile is not inherited by Task Scheduler. Fix: in the task's **Actions** tab, set the full path to `node.exe` explicitly (e.g., `C:\Users\schmichr\AppData\Roaming\fnm\node.exe`) or switch to **Run only when user is logged on** so the interactive session's PATH applies. Never use **Run whether user is logged on or not** for these tasks — Claude Code OAuth credentials and DPAPI-encrypted fallback secrets are scoped to the interactive user profile and will not work under a non-interactive session.
 
 - **Tick fires but no row appears in `report_runs`** — the schedule's `last_run_at` is already at or after the most recent fire-time. This is expected behavior: `runMissedJobs()` is idempotent by design, and the `UNIQUE(schedule_id, fire_time)` constraint silently drops duplicate inserts. To confirm the tick is working, check **Last Run Result** in Task Scheduler (`0x0` = success) rather than counting new rows.
 

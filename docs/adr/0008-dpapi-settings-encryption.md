@@ -4,6 +4,10 @@
 **Date**: 2026-04-25
 **Implements**: R-003
 
+**2026-04-28 update**: Core AI can now use Claude Code OAuth credentials from
+`claude /login` via `settings.claude_auth_mode=subscription`. This ADR still
+governs the fallback API-key path and other secret settings stored in SQLite.
+
 ---
 
 ## Context
@@ -71,8 +75,8 @@ No key material is stored in the application code or the database.
 
 Implementation in `backend/src/models/settings.model.ts`:
 
-- `SECRET_KEYS = new Set(['anthropic_api_key'])` — the set of keys whose
-  values are encrypted at rest.
+- `SECRET_KEYS` includes `anthropic_api_key`, `personal_anthropic_api_key`,
+  and other secret settings whose values are encrypted at rest.
 - On write (`set(key, value)`): if `key ∈ SECRET_KEYS`, call
   `dpapi.protect(Buffer.from(value))` and store
   `'enc:' + base64(ciphertext)`. On non-Windows, store the value without
@@ -84,8 +88,10 @@ Implementation in `backend/src/models/settings.model.ts`:
   - `getMasked(key)` — decrypts, takes the last 4 characters, returns
     `'***' + last4`. This is what the Settings route and any other HTTP
     surface uses.
-- `claude.service.ts` and `reports.service.ts` call `get('anthropic_api_key')`
-  directly when constructing the Anthropic client.
+- Service-layer code calls `get('anthropic_api_key')` directly only when the
+  app is using the fallback API-key auth mode. The Claude Code login path reads
+  OAuth credentials from `~/.claude/.credentials.json` through the Claude Agent
+  SDK and does not copy those tokens into SQLite.
 
 The chokepoint pattern — only the service layer calls `get`, everything
 else calls `getMasked` — means a future audit of "where does the plaintext

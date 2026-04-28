@@ -112,7 +112,8 @@ approval tile lists proposed records extracted from captured notes and opens
 a detail modal with evidence plus Approve, Deny, and Discuss actions.
 
 ### Settings Page
-- Anthropic API key (write-only; mask after save).
+- Core Claude Authentication: Auto, Claude Code login, or API key fallback.
+- Anthropic API key fallback (write-only; mask after save).
 - Default model (`claude-sonnet-4-6` default; pickable: Opus 4.7, Sonnet
   4.6, Haiku 4.5).
 - MasterControl files root path (default
