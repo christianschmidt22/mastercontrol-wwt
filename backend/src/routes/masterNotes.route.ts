@@ -3,6 +3,7 @@ import {
   loadMasterNote,
   processMasterNote,
   saveMasterNote,
+  scanExternalMasterNoteEdits,
 } from '../services/masterNote.service.js';
 import {
   MasterNoteSaveSchema,
@@ -15,6 +16,17 @@ import { logAlert } from '../models/systemAlert.model.js';
 import { bumpOrgVersion } from '../services/claude.service.js';
 
 export const masterNotesRouter = Router();
+
+// POST /api/master-notes/scan-external — manually trigger the hourly
+// external-edit scanner. Returns counters for scanned/updated/errors.
+masterNotesRouter.post('/scan-external', async (_req, res, next) => {
+  try {
+    const result = await scanExternalMasterNoteEdits();
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
 
 // GET /api/master-notes/orgs/:orgId — load org-scoped master note
 masterNotesRouter.get(
