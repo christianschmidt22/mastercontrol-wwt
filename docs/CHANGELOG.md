@@ -2,12 +2,15 @@
 
 ## Unreleased
 
+- Project next steps now keep completed tasks visible in the tile with a reopen
+  action, and reopening a task clears its completion timestamp.
+
 - Claude Code structured extraction no longer forces `maxTurns: 1`; org
   mention, primary-org, and note proposal extraction now use the subscription
   helper's three-turn default so schema-enforced output can complete.
 - `019_note_proposals_internal_resource.sql` rebuilds the note proposal CHECK
   constraint so live databases accept `internal_resource` approval items.
-- Backend Vitest now runs files serially by default to avoid intermittent
+- Backend Vitest now runs with one worker by default to avoid intermittent
   Windows fork-worker exits during the full suite.
 
 - Claude Code login for core AI:

@@ -192,3 +192,16 @@ describe('taskModel.create', () => {
     expect(task.status).toBe('open');
   });
 });
+
+describe('taskModel.update status transitions', () => {
+  it('clears completed_at when a completed task is reopened', () => {
+    const task = makeTask({ title: 'Reopen task', status: 'open' });
+    const completed = taskModel.complete(task.id)!;
+    expect(completed.completed_at).not.toBeNull();
+
+    const reopened = taskModel.update(task.id, { status: 'open' })!;
+
+    expect(reopened.status).toBe('open');
+    expect(reopened.completed_at).toBeNull();
+  });
+});

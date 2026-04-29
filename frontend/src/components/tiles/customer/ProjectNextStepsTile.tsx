@@ -1,12 +1,33 @@
 import { useState, useCallback, type FormEvent, type CSSProperties } from 'react';
-import { Check, Plus } from 'lucide-react';
+import { Check, Plus, RotateCcw } from 'lucide-react';
 import { Tile } from '../Tile';
 import { TileEmptyState } from '../TileEmptyState';
-import { useTasks, useCompleteTask, useCreateTask } from '../../../api/useTasks';
+import {
+  useTasks as useTasksReal,
+  useCompleteTask,
+  useCreateTask,
+  useUpdateTask,
+} from '../../../api/useTasks';
+import type { Task } from '../../../types';
 
 interface ProjectNextStepsTileProps {
   projectId: number;
   orgId: number;
+  _useTasks?: (params: { projectId: number }) => { data: Task[] | undefined; isLoading: boolean };
+  _useTaskMutations?: () => {
+    complete: (taskId: number) => void;
+    reopen: (taskId: number) => void;
+    create: (
+      body: {
+        title: string;
+        organization_id: number;
+        project_id: number;
+        due_date: string | null;
+      },
+      options?: { onSuccess?: () => void },
+    ) => void;
+    isCreating: boolean;
+  };
 }
 
 const inputCss: CSSProperties = {
@@ -21,10 +42,49 @@ const inputCss: CSSProperties = {
   boxSizing: 'border-box',
 };
 
-export function ProjectNextStepsTile({ projectId, orgId }: ProjectNextStepsTileProps) {
-  const { data: tasks, isLoading } = useTasks({ projectId, status: 'open' });
+function useTasksForTile(params: { projectId: number }) {
+  return useTasksReal({ projectId: params.projectId });
+}
+
+function useTaskMutationsReal() {
   const completeTask = useCompleteTask();
+  const updateTask = useUpdateTask();
   const createTask = useCreateTask();
+
+  return {
+    complete: (taskId: number) => completeTask.mutate(taskId),
+    reopen: (taskId: number) => updateTask.mutate({ id: taskId, status: 'open' }),
+    create: (
+      body: {
+        title: string;
+        organization_id: number;
+        project_id: number;
+        due_date: string | null;
+      },
+      options?: { onSuccess?: () => void },
+    ) => createTask.mutate(body, options),
+    isCreating: createTask.isPending,
+  };
+}
+
+function formatCompletedAt(value: string | null): string {
+  if (!value) return 'Completed';
+  return `Completed ${new Intl.DateTimeFormat('en-US', {
+    month: 'short',
+    day: 'numeric',
+  }).format(new Date(value))}`;
+}
+
+export function ProjectNextStepsTile({
+  projectId,
+  orgId,
+  _useTasks,
+  _useTaskMutations,
+}: ProjectNextStepsTileProps) {
+  const useTasks = _useTasks ?? useTasksForTile;
+  const useTaskMutations = _useTaskMutations ?? useTaskMutationsReal;
+  const { data: tasks, isLoading } = useTasks({ projectId });
+  const taskMutations = useTaskMutations();
 
   const [adding, setAdding] = useState(false);
   const [titleVal, setTitleVal] = useState('');
@@ -45,7 +105,7 @@ export function ProjectNextStepsTile({ projectId, orgId }: ProjectNextStepsTileP
       e.preventDefault();
       const title = titleVal.trim();
       if (!title) return;
-      createTask.mutate(
+      taskMutations.create(
         {
           title,
           organization_id: orgId,
@@ -55,10 +115,14 @@ export function ProjectNextStepsTile({ projectId, orgId }: ProjectNextStepsTileP
         { onSuccess: () => { resetForm(); setAdding(false); } },
       );
     },
-    [titleVal, dueDateVal, orgId, projectId, createTask, resetForm],
+    [titleVal, dueDateVal, orgId, projectId, taskMutations, resetForm],
   );
 
-  const openTasks = tasks ?? [];
+  const allTasks = tasks ?? [];
+  const openTasks = allTasks.filter((task) => task.status === 'open');
+  const completedTasks = allTasks
+    .filter((task) => task.status === 'done')
+    .sort((a, b) => (b.completed_at ?? '').localeCompare(a.completed_at ?? ''));
 
   return (
     <Tile
@@ -131,7 +195,7 @@ export function ProjectNextStepsTile({ projectId, orgId }: ProjectNextStepsTileP
             </button>
             <button
               type="submit"
-              disabled={createTask.isPending}
+              disabled={taskMutations.isCreating}
               style={{
                 padding: '4px 10px',
                 fontSize: 12,
@@ -139,7 +203,7 @@ export function ProjectNextStepsTile({ projectId, orgId }: ProjectNextStepsTileP
                 borderRadius: 4,
                 background: 'var(--accent)',
                 color: '#fff',
-                cursor: createTask.isPending ? 'not-allowed' : 'pointer',
+                cursor: taskMutations.isCreating ? 'not-allowed' : 'pointer',
                 fontFamily: 'var(--body)',
               }}
             >
@@ -152,7 +216,7 @@ export function ProjectNextStepsTile({ projectId, orgId }: ProjectNextStepsTileP
       {isLoading && <p style={{ fontSize: 13, color: 'var(--ink-3)' }}>Loading…</p>}
 
       {!isLoading && openTasks.length === 0 && !adding && (
-        <TileEmptyState copy="No open next steps." ariaLive />
+        <TileEmptyState copy={completedTasks.length > 0 ? 'No open next steps.' : 'No next steps yet.'} ariaLive />
       )}
 
       {openTasks.length > 0 && (
@@ -170,8 +234,8 @@ export function ProjectNextStepsTile({ projectId, orgId }: ProjectNextStepsTileP
             >
               <button
                 type="button"
-                aria-label={`Complete: ${task.title}`}
-                onClick={() => completeTask.mutate(task.id)}
+                aria-label={`Mark complete: ${task.title}`}
+                onClick={() => taskMutations.complete(task.id)}
                 style={{
                   flexShrink: 0,
                   marginTop: 2,
@@ -211,6 +275,89 @@ export function ProjectNextStepsTile({ projectId, orgId }: ProjectNextStepsTileP
             </li>
           ))}
         </ul>
+      )}
+
+      {completedTasks.length > 0 && (
+        <section
+          aria-label="Completed next steps"
+          style={{ marginTop: openTasks.length > 0 ? 10 : 0 }}
+        >
+          <div
+            style={{
+              fontSize: 11,
+              color: 'var(--ink-3)',
+              textTransform: 'uppercase',
+              letterSpacing: 0,
+              marginBottom: 4,
+            }}
+          >
+            Completed
+          </div>
+          <ul
+            role="list"
+            style={{
+              listStyle: 'none',
+              margin: 0,
+              padding: 0,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 4,
+            }}
+          >
+            {completedTasks.map((task) => (
+              <li
+                key={task.id}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  padding: '5px 0',
+                  borderBottom: '1px solid var(--rule)',
+                }}
+              >
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div
+                    style={{
+                      fontSize: 13,
+                      color: 'var(--ink-3)',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                      textDecoration: 'line-through',
+                    }}
+                  >
+                    {task.title}
+                  </div>
+                  <div style={{ fontSize: 11, color: 'var(--ink-3)' }}>
+                    {formatCompletedAt(task.completed_at)}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  aria-label={`Reopen: ${task.title}`}
+                  onClick={() => taskMutations.reopen(task.id)}
+                  style={{
+                    flexShrink: 0,
+                    width: 24,
+                    height: 24,
+                    borderRadius: 4,
+                    border: '1px solid var(--rule)',
+                    background: 'transparent',
+                    color: 'var(--ink-3)',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: 0,
+                  }}
+                  title="Reopen"
+                >
+                  <RotateCcw size={12} strokeWidth={1.7} aria-hidden="true" />
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
       )}
     </Tile>
   );

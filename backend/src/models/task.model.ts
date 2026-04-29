@@ -42,12 +42,21 @@ const insertStmt = db.prepare<[string, number | null, number | null, number | nu
   'INSERT INTO tasks (title, organization_id, contact_id, project_id, due_date, status) VALUES (?, ?, ?, ?, ?, ?)'
 );
 
-const updateStmt = db.prepare<[string, string | null, TaskStatus, number]>(
-  "UPDATE tasks SET title = ?, due_date = ?, status = ? WHERE id = ?"
+const updateStmt = db.prepare<[string, string | null, TaskStatus, TaskStatus, TaskStatus, number]>(
+  `UPDATE tasks
+   SET title = ?,
+       due_date = ?,
+       status = ?,
+       completed_at = CASE
+         WHEN ? = 'done' THEN COALESCE(completed_at, datetime('now'))
+         WHEN ? IN ('open', 'snoozed') THEN NULL
+         ELSE completed_at
+       END
+   WHERE id = ?`
 );
 
 const completeStmt = db.prepare<[number]>(
-  "UPDATE tasks SET status = 'done', completed_at = datetime('now') WHERE id = ?"
+  "UPDATE tasks SET status = 'done', completed_at = COALESCE(completed_at, datetime('now')) WHERE id = ?"
 );
 
 const deleteStmt = db.prepare<[number]>('DELETE FROM tasks WHERE id = ?');
@@ -103,10 +112,13 @@ export const taskModel = {
   update: (id: number, patch: TaskUpdate): Task | undefined => {
     const current = getStmt.get(id);
     if (!current) return undefined;
+    const nextStatus = patch.status ?? current.status;
     updateStmt.run(
       patch.title ?? current.title,
       patch.due_date !== undefined ? (patch.due_date ?? null) : current.due_date,
-      patch.status ?? current.status,
+      nextStatus,
+      nextStatus,
+      nextStatus,
       id
     );
     return getStmt.get(id);
