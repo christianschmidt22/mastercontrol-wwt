@@ -1,3 +1,4 @@
+import * as crypto from 'node:crypto';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import {
@@ -14,6 +15,7 @@ import {
 import { HttpError } from '../middleware/errorHandler.js';
 import { noteModel } from '../models/note.model.js';
 import { runLlmExtraction } from './noteProposal.service.js';
+import { logAlert } from '../models/systemAlert.model.js';
 
 const MASTER_NOTE_FILENAME = 'master-notes.md';
 
@@ -157,4 +159,89 @@ export async function processMasterNote(
   await runLlmExtraction(noteRow, org, project);
   masterNoteModel.markIngested(mn.id, mn.content_sha256);
   return { ran: true };
+}
+
+/**
+ * Hourly scanner: walk every master_notes row and check whether the on-disk
+ * file has been edited externally (VS Code, OneDrive sync from another
+ * device). When the disk mtime is newer than what we last recorded:
+ *   - If the file's sha256 differs from `content_sha256`: pull the new
+ *     content into the DB and re-run extraction.
+ *   - If the sha is identical (e.g. OneDrive touched the file without
+ *     changing bytes): just bump `file_mtime` so we stop re-reading it.
+ *
+ * Per-row failures never abort the loop — they're logged to system_alerts.
+ */
+export async function scanExternalMasterNoteEdits(): Promise<{
+  scanned: number;
+  updated: number;
+  errors: number;
+}> {
+  let scanned = 0;
+  let updated = 0;
+  let errors = 0;
+
+  for (const mn of masterNoteModel.listAll()) {
+    if (!mn.file_path) continue;
+    scanned += 1;
+
+    try {
+      let stat: fs.Stats;
+      try {
+        stat = fs.statSync(mn.file_path);
+      } catch (err) {
+        const code =
+          err instanceof Error && 'code' in err
+            ? (err as NodeJS.ErrnoException).code
+            : undefined;
+        if (code === 'ENOENT') {
+          // File was deleted manually — skip silently; the user may rebuild
+          // it on the next save.
+          continue;
+        }
+        throw err;
+      }
+
+      const diskMtimeIso = stat.mtime.toISOString();
+      const dbMtimeMs = mn.file_mtime ? new Date(mn.file_mtime).getTime() : 0;
+      const diskMtimeMs = stat.mtime.getTime();
+      if (diskMtimeMs <= dbMtimeMs) continue;
+
+      const content = fs.readFileSync(mn.file_path, 'utf8');
+      const diskSha = crypto.createHash('sha256').update(content, 'utf8').digest('hex');
+
+      if (diskSha === mn.content_sha256) {
+        // Content unchanged — just update mtime so we don't re-hash next tick.
+        masterNoteModel.upsert({
+          organization_id: mn.organization_id,
+          project_id: mn.project_id,
+          content: mn.content,
+          file_path: mn.file_path,
+          file_mtime: diskMtimeIso,
+        });
+        continue;
+      }
+
+      masterNoteModel.upsert({
+        organization_id: mn.organization_id,
+        project_id: mn.project_id,
+        content,
+        file_path: mn.file_path,
+        file_mtime: diskMtimeIso,
+      });
+      updated += 1;
+      await processMasterNote(mn.id, { force: false });
+    } catch (err) {
+      errors += 1;
+      const message = err instanceof Error ? err.message : String(err);
+      logAlert(
+        'warn',
+        'masterNoteScan',
+        `External master-note scan failed: ${message}`,
+        { master_note_id: mn.id },
+      );
+    }
+  }
+
+  return { scanned, updated, errors };
 }
