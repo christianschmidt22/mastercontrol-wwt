@@ -124,3 +124,40 @@ describe('006_reports.sql — UNIQUE(schedule_id, fire_time)', () => {
     expect(() => insertRun.run(scheduleId, 1700000000)).toThrow(/UNIQUE constraint failed|SQLITE_CONSTRAINT/);
   });
 });
+
+// ---------------------------------------------------------------------------
+// 019_note_proposals_internal_resource.sql — proposal type check
+// ---------------------------------------------------------------------------
+
+describe('019_note_proposals_internal_resource.sql — proposal type check', () => {
+  it('accepts internal_resource proposals in the approval queue', () => {
+    const org = makeOrg({ type: 'customer', name: 'Org A (resource proposal)' });
+    const noteId = (
+      db
+        .prepare(
+          `INSERT INTO notes (organization_id, content, role)
+           VALUES (?, ?, 'user')
+           RETURNING id`,
+        )
+        .get(org.id, 'From: Maya Patel, WWT Security Architect') as { id: number }
+    ).id;
+
+    const inserted = db
+      .prepare(
+        `INSERT INTO note_proposals
+           (source_note_id, organization_id, type, title, summary, evidence_quote, proposed_payload)
+         VALUES (?, ?, 'internal_resource', ?, ?, ?, ?)
+         RETURNING type`,
+      )
+      .get(
+        noteId,
+        org.id,
+        'Maya Patel engaged',
+        'Maya Patel is engaged as the WWT security architect.',
+        'From: Maya Patel, WWT Security Architect',
+        '{"name":"Maya Patel","role":"Security Architect"}',
+      ) as { type: string };
+
+    expect(inserted.type).toBe('internal_resource');
+  });
+});

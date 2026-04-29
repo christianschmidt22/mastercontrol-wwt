@@ -2180,7 +2180,6 @@ export async function extractOrgMentions(
         `organization names are mentioned: ${nameList}. Return only matching ` +
         `names from the list with confidence from 0.0 to 1.0.`,
       model: ingestModel,
-      maxTurns: 1,
       source: 'ingest',
       taskSummary: 'extractOrgMentions',
       outputSchema: {
@@ -2283,7 +2282,6 @@ export async function extractPrimaryOrgAndMentions(
         `Choose the single primary organization the note is mainly about, then list ` +
         `other organizations that are mentioned. Only use exact names from the list.`,
       model: ingestModel,
-      maxTurns: 1,
       source: 'ingest',
       taskSummary: 'extractPrimaryOrgAndMentions',
       outputSchema: {
@@ -2527,7 +2525,6 @@ export async function extractNoteProposals(options: {
       prompt: `<untrusted_document src="note">\n${noteContent}\n</untrusted_document>`,
       systemPrompt: extractionInstructions,
       model: extractModel,
-      maxTurns: 1,
       source: 'ingest',
       taskSummary: 'extractNoteProposals',
       outputSchema: {

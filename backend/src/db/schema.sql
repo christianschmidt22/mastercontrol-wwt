@@ -104,7 +104,8 @@ CREATE TABLE IF NOT EXISTS note_proposals (
     'project_update',
     'risk_blocker',
     'oem_mention',
-    'customer_insight'
+    'customer_insight',
+    'internal_resource'
   )),
   title TEXT NOT NULL,
   summary TEXT NOT NULL,

@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Claude Code structured extraction no longer forces `maxTurns: 1`; org
+  mention, primary-org, and note proposal extraction now use the subscription
+  helper's three-turn default so schema-enforced output can complete.
+- `019_note_proposals_internal_resource.sql` rebuilds the note proposal CHECK
+  constraint so live databases accept `internal_resource` approval items.
+- Backend Vitest now runs files serially by default to avoid intermittent
+  Windows fork-worker exits during the full suite.
+
 - Claude Code login for core AI:
   - Core CRM AI calls now support `claude_auth_mode=subscription`, using the
     local Claude Code OAuth session from `claude /login` instead of requiring
