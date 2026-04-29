@@ -1,23 +1,9 @@
 import type { ReactNode, CSSProperties } from 'react';
-import { useCallback } from 'react';
-import {
-  DndContext,
-  closestCenter,
-  KeyboardSensor,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  type DragEndEvent,
-} from '@dnd-kit/core';
-import {
-  SortableContext,
-  sortableKeyboardCoordinates,
-  rectSortingStrategy,
-  useSortable,
-  arrayMove,
-} from '@dnd-kit/sortable';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import GridLayout, { type Layout, type LayoutItem } from 'react-grid-layout';
+import 'react-grid-layout/css/styles.css';
+import 'react-resizable/css/styles.css';
 import type { TileLayout } from './useTileLayout';
-import { TileEditChrome } from './TileEditChrome';
 
 export interface TileGridItem {
   id: string;
@@ -32,205 +18,233 @@ interface TileGridProps {
   onLayoutChange: (next: TileLayout[]) => void;
 }
 
+const COLS = 12;
+const ROW_HEIGHT = 80;
+const MARGIN: [number, number] = [14, 14];
+const NARROW_BREAKPOINT = 1100;
+
 /**
- * Sortable tile in edit mode — uses useSortable from @dnd-kit.
+ * Convert app-shape ({1-based x,y, hidden}) ↔ react-grid-layout shape (0-based).
  */
-function SortableTileSlot({
-  item,
-  layoutEntry,
-  onMove,
-  onResize,
-}: {
-  item: TileGridItem;
-  layoutEntry: TileLayout;
-  onMove: (id: string, pos: Pick<TileLayout, 'x' | 'y'>) => void;
-  onResize: (id: string, size: Pick<TileLayout, 'w' | 'h'>) => void;
-}) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
-    useSortable({ id: item.id });
+function toRgl(layout: TileLayout[], editMode: boolean): LayoutItem[] {
+  return layout
+    .filter((l) => !l.hidden)
+    .map((l): LayoutItem => ({
+      i: l.id,
+      x: Math.max(0, l.x - 1),
+      y: Math.max(0, l.y - 1),
+      w: Math.max(1, l.w),
+      h: Math.max(1, l.h),
+      minW: 2,
+      minH: 2,
+      static: !editMode,
+      isDraggable: editMode,
+      isResizable: editMode,
+    }));
+}
 
-  // Manually stringify the transform instead of using CSS.Transform.toString
-  // to avoid importing @dnd-kit/utilities separately.
-  const transformStr = transform
-    ? `translate3d(${transform.x}px, ${transform.y}px, 0) scaleX(${transform.scaleX}) scaleY(${transform.scaleY})`
-    : undefined;
+function fromRgl(rgl: Layout, previous: TileLayout[]): TileLayout[] {
+  const byId = new Map(previous.map((l) => [l.id, l]));
+  const next = rgl.map<TileLayout>((l) => ({
+    id: l.i,
+    x: l.x + 1,
+    y: l.y + 1,
+    w: l.w,
+    h: l.h,
+    hidden: byId.get(l.i)?.hidden,
+  }));
 
-  const style: CSSProperties = {
-    transform: transformStr,
-    transition: transition ?? undefined,
-    opacity: isDragging ? 0.5 : 1,
-    height: '100%',
+  // Preserve any hidden tiles that were filtered out before passing to RGL.
+  for (const prev of previous) {
+    if (prev.hidden && !next.some((l) => l.id === prev.id)) {
+      next.push(prev);
+    }
+  }
+  return next;
+}
+
+function layoutsEqual(a: TileLayout[], b: TileLayout[]): boolean {
+  if (a.length !== b.length) return false;
+  const sortKey = (l: TileLayout) => l.id;
+  const sa = [...a].sort((x, y) => sortKey(x).localeCompare(sortKey(y)));
+  const sb = [...b].sort((x, y) => sortKey(x).localeCompare(sortKey(y)));
+  for (let i = 0; i < sa.length; i++) {
+    const ai = sa[i]!;
+    const bi = sb[i]!;
+    if (
+      ai.id !== bi.id ||
+      ai.x !== bi.x ||
+      ai.y !== bi.y ||
+      ai.w !== bi.w ||
+      ai.h !== bi.h ||
+      Boolean(ai.hidden) !== Boolean(bi.hidden)
+    )
+      return false;
+  }
+  return true;
+}
+
+/**
+ * Tracks a parent's clientWidth so we can pass an explicit width to GridLayout
+ * (it requires a width prop). We stay off `WidthProvider` to keep SSR-safe and
+ * avoid the extra ResizeObserver wrapper.
+ */
+function useElementWidth<T extends HTMLElement>() {
+  const ref = useRef<T | null>(null);
+  const [width, setWidth] = useState(1200);
+
+  useEffect(() => {
+    if (!ref.current) return;
+    const el = ref.current;
+    const update = () => setWidth(el.clientWidth);
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  return [ref, width] as const;
+}
+
+/**
+ * TileGrid — dashboard container.
+ *
+ * Wraps react-grid-layout. Tiles in `items` placed using `layout` (1-based);
+ * edit mode unlocks drag-by-tile and corner resize. Collisions push other
+ * tiles down (vertical compaction) so growing one never overlaps another.
+ *
+ * On narrow viewports (<1100px) drops to a single-column scrolling stack
+ * sorted by the layout's reading order (y, then x).
+ */
+export function TileGrid({ items, layout, editMode, onLayoutChange }: TileGridProps) {
+  const [containerRef, width] = useElementWidth<HTMLDivElement>();
+  const isNarrow = width > 0 && width < NARROW_BREAKPOINT;
+
+  const rglLayout = useMemo(() => toRgl(layout, editMode), [layout, editMode]);
+
+  const visibleItems = useMemo(() => items.filter((item) => {
+    const entry = layout.find((l) => l.id === item.id);
+    return !entry?.hidden;
+  }), [items, layout]);
+
+  // Stack order on narrow viewports — top-down by row, then left-to-right.
+  const stackedItems = useMemo(() => {
+    return [...visibleItems].sort((a, b) => {
+      const la = layout.find((l) => l.id === a.id) ?? { x: 1, y: 1 };
+      const lb = layout.find((l) => l.id === b.id) ?? { x: 1, y: 1 };
+      return la.y - lb.y || la.x - lb.x;
+    });
+  }, [visibleItems, layout]);
+
+  const handleLayoutChange = (next: Layout) => {
+    const merged = fromRgl(next, layout);
+    if (!layoutsEqual(merged, layout)) {
+      onLayoutChange(merged);
+    }
   };
 
   return (
-    <div ref={setNodeRef} style={style}>
-      <TileEditChrome
-        tileTitle={item.title}
-        layout={layoutEntry}
-        onMove={(pos) => onMove(item.id, pos)}
-        onResize={(size) => onResize(item.id, size)}
-        dragHandleProps={
-          { ...attributes, ...listeners }
-        }
-      >
-        {item.node}
-      </TileEditChrome>
+    <div ref={containerRef} className="tile-grid-wrapper">
+      <style>{tileGridCss}</style>
+
+      {isNarrow ? (
+        <div className="tile-grid-stack">
+          {stackedItems.map((item) => (
+            <div key={item.id} className="tile-grid-stack-cell">
+              {item.node}
+            </div>
+          ))}
+        </div>
+      ) : (
+        <GridLayout
+          className={`tile-grid${editMode ? ' tile-grid--edit' : ''}`}
+          layout={rglLayout}
+          gridConfig={{ cols: COLS, rowHeight: ROW_HEIGHT, margin: MARGIN }}
+          dragConfig={{
+            enabled: editMode,
+            cancel: 'input,textarea,select,button,a,[data-no-drag]',
+          }}
+          resizeConfig={{ enabled: editMode }}
+          width={width || 1200}
+          onLayoutChange={handleLayoutChange}
+        >
+          {visibleItems.map((item) => (
+            <div key={item.id} className="tile-grid-cell">
+              <div className="tile-grid-cell-inner">{item.node}</div>
+            </div>
+          ))}
+        </GridLayout>
+      )}
     </div>
   );
 }
 
-/**
- * TileGrid — the dashboard container.
- *
- * Normal mode: tiles placed via CSS Grid using inline-style gridColumn/gridRow.
- * Edit mode: wrapped in DndContext + SortableContext for drag reordering.
- *
- * Responsive breakpoints:
- *   ≥1440px: 12-col grid (as designed)
- *   1100-1440px: 8-col grid; tile width clamped to min(w, 8)
- *   <1100px: single-column scroll, edit mode disabled (tiles in layout order)
- *
- * The outer `.tile-grid-wrapper` carries the responsive CSS classes.
- */
-export function TileGrid({ items, layout, editMode, onLayoutChange }: TileGridProps) {
-  const sensors = useSensors(
-    useSensor(PointerSensor),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    }),
-  );
+const cellInner: CSSProperties = {
+  height: '100%',
+  display: 'flex',
+  flexDirection: 'column',
+};
 
-  const getLayoutEntry = useCallback(
-    (id: string): TileLayout =>
-      layout.find((l) => l.id === id) ?? { id, x: 1, y: 1, w: 5, h: 3 },
-    [layout],
-  );
+const tileGridCss = `
+.tile-grid-wrapper { width: 100%; }
 
-  const handleDragEnd = useCallback(
-    (event: DragEndEvent) => {
-      const { active, over } = event;
-      if (!over || active.id === over.id) return;
+.tile-grid-cell,
+.tile-grid-cell .tile-grid-cell-inner {
+  height: 100%;
+}
+.tile-grid-cell .tile-grid-cell-inner { ${cssBlock(cellInner)} }
 
-      const oldIndex = items.findIndex((i) => i.id === active.id);
-      const newIndex = items.findIndex((i) => i.id === over.id);
-      if (oldIndex === -1 || newIndex === -1) return;
-
-      // Reorder: swap the two layouts' positions
-      const newItems = arrayMove(items, oldIndex, newIndex);
-      const newLayout = newItems.map((item, idx) => {
-        const orig = getLayoutEntry(item.id);
-        const displacedItem = items[idx];
-        if (!displacedItem) return orig; // shouldn't happen — array lengths match
-        const displaced = getLayoutEntry(displacedItem.id);
-        return { ...orig, x: displaced.x, y: displaced.y };
-      });
-      onLayoutChange(newLayout);
-    },
-    [items, getLayoutEntry, onLayoutChange],
-  );
-
-  const handleKeyboardMove = useCallback(
-    (id: string, pos: Pick<TileLayout, 'x' | 'y'>) => {
-      const next = layout.map((l) => (l.id === id ? { ...l, ...pos } : l));
-      onLayoutChange(next);
-    },
-    [layout, onLayoutChange],
-  );
-
-  const handleResize = useCallback(
-    (id: string, size: Pick<TileLayout, 'w' | 'h'>) => {
-      const next = layout.map((l) => (l.id === id ? { ...l, ...size } : l));
-      onLayoutChange(next);
-    },
-    [layout, onLayoutChange],
-  );
-
-  const visibleItems = items.filter((item) => {
-    const entry = getLayoutEntry(item.id);
-    return !entry.hidden;
-  });
-
-  // Responsive grid CSS is done via a style block injected here
-  return (
-    <>
-      <style>{`
-        .tile-grid {
-          display: grid;
-          grid-template-columns: repeat(12, 1fr);
-          grid-auto-rows: 80px;
-          gap: 14px;
-        }
-        @media (max-width: 1440px) and (min-width: 1100px) {
-          .tile-grid {
-            grid-template-columns: repeat(8, 1fr);
-          }
-        }
-        @media (max-width: 1099px) {
-          .tile-grid {
-            display: flex;
-            flex-direction: column;
-            gap: 14px;
-          }
-        }
-      `}</style>
-
-      {editMode ? (
-        <DndContext
-          sensors={sensors}
-          collisionDetection={closestCenter}
-          onDragEnd={handleDragEnd}
-        >
-          <SortableContext items={visibleItems.map((i) => i.id)} strategy={rectSortingStrategy}>
-            <div className="tile-grid">
-              {visibleItems.map((item) => {
-                const entry = getLayoutEntry(item.id);
-                return (
-                  <div
-                    key={item.id}
-                    className="tile-grid-cell"
-                    style={gridCellStyle(entry)}
-                  >
-                    <SortableTileSlot
-                      item={item}
-                      layoutEntry={entry}
-                      onMove={handleKeyboardMove}
-                      onResize={handleResize}
-                    />
-                  </div>
-                );
-              })}
-            </div>
-          </SortableContext>
-        </DndContext>
-      ) : (
-        <div className="tile-grid">
-          {visibleItems.map((item) => {
-            const entry = getLayoutEntry(item.id);
-            return (
-              <div
-                key={item.id}
-                className="tile-grid-cell"
-                style={gridCellStyle(entry)}
-              >
-                {item.node}
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </>
-  );
+/* Edit mode: subtle accent ring, never blocks pointer events on the content. */
+.tile-grid--edit .tile-grid-cell {
+  outline: 1px dashed var(--accent);
+  outline-offset: -2px;
+  border-radius: 9px;
+  cursor: grab;
+}
+.tile-grid--edit .tile-grid-cell:active {
+  cursor: grabbing;
 }
 
-/**
- * Returns inline grid placement style for a tile.
- * On narrow viewports (<1100px) CSS overrides display to flex-column
- * so the grid placement is a no-op.
- */
-function gridCellStyle(entry: TileLayout): CSSProperties {
-  return {
-    gridColumn: `${entry.x} / span ${entry.w}`,
-    gridRow: `${entry.y} / span ${entry.h}`,
-    minHeight: 0,
-  };
+/* RGL placeholder (drop target during drag/resize) */
+.tile-grid .react-grid-placeholder {
+  background: var(--accent) !important;
+  opacity: 0.12 !important;
+  border-radius: 8px !important;
+  transition: transform 160ms var(--ease, ease), opacity 160ms ease !important;
+}
+
+/* RGL resize handle — replace the default arrow icon with a discreet caret */
+.tile-grid .react-resizable-handle {
+  background: none;
+  width: 18px;
+  height: 18px;
+}
+.tile-grid .react-resizable-handle::after {
+  content: '';
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  width: 9px;
+  height: 9px;
+  border-right: 2px solid var(--accent);
+  border-bottom: 2px solid var(--accent);
+  border-radius: 0 0 2px 0;
+  opacity: 0;
+  transition: opacity 140ms var(--ease, ease);
+}
+.tile-grid--edit .react-resizable-handle::after { opacity: 1; }
+
+/* Narrow stack fallback */
+.tile-grid-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.tile-grid-stack-cell { min-height: 240px; }
+`;
+
+function cssBlock(style: CSSProperties): string {
+  return Object.entries(style)
+    .map(([k, v]) => `${k.replace(/[A-Z]/g, (m) => '-' + m.toLowerCase())}:${v};`)
+    .join('');
 }

@@ -2401,9 +2401,7 @@ export async function extractPrimaryOrgAndMentions(
 const VALID_NOTE_PROPOSAL_TYPES = new Set([
   'customer_ask',
   'task_follow_up',
-  'risk_blocker',
   'oem_mention',
-  'customer_insight',
   'internal_resource',
 ]);
 
@@ -2426,9 +2424,7 @@ const EXTRACT_NOTE_PROPOSALS_TOOL: Anthropic.Tool = {
               enum: [
                 'customer_ask',
                 'task_follow_up',
-                'risk_blocker',
                 'oem_mention',
-                'customer_insight',
                 'internal_resource',
               ],
             },
@@ -2454,9 +2450,7 @@ const EXTRACT_NOTE_PROPOSALS_TOOL: Anthropic.Tool = {
                 'Type-specific details. ' +
                 'task_follow_up: {description, due_date?}. ' +
                 'customer_ask: {description, urgency?, requested_by?}. ' +
-                'risk_blocker: {description, severity?}. ' +
                 'oem_mention: {oem_name, context, sentiment?}. ' +
-                'customer_insight: {insight}. ' +
                 'internal_resource: {name, role?, team?, notes?}.',
               additionalProperties: true,
             },
@@ -2493,32 +2487,85 @@ export async function extractNoteProposals(options: {
   orgType: 'customer' | 'oem';
   projectName?: string | null;
   oemNames?: string[];
+  /** Existing contacts on this org so the model can resolve names → ids
+   *  rather than re-extracting people who already exist. */
+  knownContacts?: Array<{ id: number; name: string; role?: string | null }>;
+  /** Optional revise context: when set, this is a redo-with-feedback call.
+   *  The model is told to produce ONE revised proposal that reflects the
+   *  user's correction, replacing the original. */
+  revise?: {
+    originalProposal: {
+      type: string;
+      title: string;
+      summary: string;
+      payload: Record<string, unknown>;
+    };
+    feedback: string;
+  };
 }): Promise<RawNoteProposal[]> {
-  const { noteContent, orgName, orgType, projectName, oemNames = [] } = options;
+  const {
+    noteContent,
+    orgName,
+    orgType,
+    projectName,
+    oemNames = [],
+    knownContacts = [],
+    revise,
+  } = options;
 
   const projectContext = projectName ? ` The note is for project "${projectName}".` : '';
   const oemContext =
     oemNames.length > 0 ? ` Known OEM partners to detect: ${oemNames.join(', ')}.` : '';
+  const contactContext =
+    knownContacts.length > 0
+      ? `\n\nKnown contacts on this account (use these IDs in proposal payloads when a person is named):\n` +
+        knownContacts
+          .map((c) => `  - id=${c.id} name="${c.name}"${c.role ? ` role="${c.role}"` : ''}`)
+          .join('\n')
+      : '';
+
+  const reviseBlock = revise
+    ? `\n\n=== REDO WITH FEEDBACK ===\n` +
+      `You previously generated this proposal:\n` +
+      `  type: ${revise.originalProposal.type}\n` +
+      `  title: ${revise.originalProposal.title}\n` +
+      `  summary: ${revise.originalProposal.summary}\n` +
+      `  payload: ${JSON.stringify(revise.originalProposal.payload)}\n\n` +
+      `The user said this was wrong. Their feedback:\n  "${revise.feedback}"\n\n` +
+      `Produce ONE revised proposal that reflects their correction. ` +
+      `If the feedback says no proposal should be generated, return an empty array. ` +
+      `Do NOT just repeat the original — apply the feedback. ` +
+      `If the user is changing the type (e.g. "this should be a task, not an insight"), use the new type. ` +
+      `If the user is rewriting wording, use their wording.`
+    : '';
 
   const extractModel = 'claude-sonnet-4-6';
   const extractionInstructions =
     `You extract actionable items from an account executive's field note for a CRM. ` +
-    `The note is from a ${orgType} account: "${orgName}".${projectContext}${oemContext}\n\n` +
-    `The note itself is already saved - do NOT propose a "project update" that just restates it.\n\n` +
-    `Focus on items that create new records:\n` +
-    `- task_follow_up: A concrete next step or action item the AE must do. ` +
-      `Include a due_date (YYYY-MM-DD) when a specific date is mentioned. ` +
-      `Meetings to attend, calls to schedule, and follow-ups to send all qualify.\n` +
-    `- internal_resource: A WWT employee who is actively engaged on this account or project. ` +
-      `For email threads, only extract people who appear in a From: line (i.e. they actually sent a message). ` +
-      `Do NOT extract people who are only in To: or CC: - being copied does not mean they are engaged. ` +
-      `Include their apparent role or team if mentioned (SE, BDM, overlay, architect, etc.). ` +
-      `Skip the AE themselves - only extract colleagues.\n` +
-    `- customer_ask: Something the customer is explicitly requesting or needs from WWT\n` +
-    `- risk_blocker: A risk, concern, or blocker that could affect the deal\n` +
-    `- oem_mention: A reference to an OEM vendor partner (${oemNames.length > 0 ? oemNames.join(', ') : 'Cisco, NetApp, Dell, etc.'})\n` +
-    `- customer_insight: A durable insight about customer priorities, strategy, or decision-making\n\n` +
-    `Extract only what has clear evidence in the note.`;
+    `The note is from a ${orgType} account: "${orgName}".${projectContext}${oemContext}${contactContext}\n\n` +
+    `The note itself is already saved — do NOT propose a "project update" that just restates it.\n\n` +
+    `RULES OF EXTRACTION (apply strictly):\n` +
+    `1. Only extract when there is a SPECIFIC, EXPLICIT signal in the note. If you have to guess, skip it.\n` +
+    `2. Set confidence honestly: 0.85+ only when the note literally states the action/fact; ` +
+       `0.6–0.8 when it's strongly implied; below 0.6 — skip it, don't propose.\n` +
+    `3. The evidence_quote MUST be a verbatim phrase from the note. If you can't quote it, you can't extract it.\n` +
+    `4. Prefer fewer, higher-quality proposals over many speculative ones. ` +
+       `Two real findings beat six generic ones. If the note has nothing actionable, return [].\n` +
+    `5. When a proposal references a specific person AND that person matches a known contact, ` +
+       `include "contact_id": <id> in the payload so the proposal is linked to them.\n\n` +
+    `TYPES (use only when the bar above is met):\n` +
+    `- task_follow_up: A concrete next step the AE must do. ` +
+      `Include due_date (YYYY-MM-DD) ONLY when the note literally states a date. ` +
+      `If no date is given, omit due_date — the system will default to one week out. ` +
+      `Meetings to attend, calls to schedule, follow-ups to send all qualify.\n` +
+    `- internal_resource: A WWT employee actively engaged on this account/project. ` +
+      `For email threads, only extract people who appear in a From: line. ` +
+      `NEVER extract from To: or CC: alone. Skip the AE themselves.\n` +
+    `- customer_ask: Something the customer is EXPLICITLY requesting from WWT. ` +
+      `"They might want X eventually" does NOT qualify. Quote the literal ask. ` +
+      `Approval saves this as queryable internal memory only — it does not show on dashboards.\n` +
+    `- oem_mention: A reference to an OEM partner (${oemNames.length > 0 ? oemNames.join(', ') : 'Cisco, NetApp, Dell, etc.'}). ` +
+      `Only when the OEM is named or clearly implied; passing references don't qualify.${reviseBlock}`;
 
   if (resolveClaudeAuthMode() === 'subscription') {
     const result = await runClaudeCodePrompt({
@@ -2542,9 +2589,7 @@ export async function extractNoteProposals(options: {
                   enum: [
                     'customer_ask',
                     'task_follow_up',
-                    'risk_blocker',
                     'oem_mention',
-                    'customer_insight',
                     'internal_resource',
                   ],
                 },
@@ -2598,24 +2643,7 @@ export async function extractNoteProposals(options: {
     // R-021: output-only tool, not a write tool.
     tools: [EXTRACT_NOTE_PROPOSALS_TOOL],
     tool_choice: { type: 'tool', name: 'report_note_proposals' },
-    system:
-      `You extract actionable items from an account executive's field note for a CRM. ` +
-      `The note is from a ${orgType} account: "${orgName}".${projectContext}${oemContext}\n\n` +
-      `The note itself is already saved — do NOT propose a "project update" that just restates it.\n\n` +
-      `Focus on items that create new records:\n` +
-      `- task_follow_up: A concrete next step or action item the AE must do. ` +
-        `Include a due_date (YYYY-MM-DD) when a specific date is mentioned. ` +
-        `Meetings to attend, calls to schedule, and follow-ups to send all qualify.\n` +
-      `- internal_resource: A WWT employee who is actively engaged on this account or project. ` +
-        `For email threads, only extract people who appear in a From: line (i.e. they actually sent a message). ` +
-        `Do NOT extract people who are only in To: or CC: — being copied does not mean they are engaged. ` +
-        `Include their apparent role or team if mentioned (SE, BDM, overlay, architect, etc.). ` +
-        `Skip the AE themselves — only extract colleagues.\n` +
-      `- customer_ask: Something the customer is explicitly requesting or needs from WWT\n` +
-      `- risk_blocker: A risk, concern, or blocker that could affect the deal\n` +
-      `- oem_mention: A reference to an OEM vendor partner (${oemNames.length > 0 ? oemNames.join(', ') : 'Cisco, NetApp, Dell, etc.'})\n` +
-      `- customer_insight: A durable insight about customer priorities, strategy, or decision-making\n\n` +
-      `Extract only what has clear evidence in the note. Use the report_note_proposals tool.`,
+    system: extractionInstructions + ' Use the report_note_proposals tool.',
     messages: [
       {
         role: 'user',

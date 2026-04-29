@@ -1,17 +1,14 @@
-import { useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Clock, Check, X, RefreshCw } from 'lucide-react';
+import { Clock, RefreshCw } from 'lucide-react';
 import { Tile } from '../components/tiles/Tile';
 import { NoteApprovalsTile } from '../components/notes/NoteApprovalsTile';
 import { TodayAgendaTile } from '../components/tiles/home/TodayAgendaTile';
+import { TaskEditDialog } from '../components/tasks/TaskEditDialog';
 import { useTasks, useCompleteTask } from '../api/useTasks';
 import { useOrganizations } from '../api/useOrganizations';
-import {
-  useUnconfirmedInsightsAcrossOrgs,
-  useConfirmInsight,
-  useRejectInsight,
-  noteKeys,
-} from '../api/useNotes';
+import { noteKeys } from '../api/useNotes';
+import { BacklogTile } from '../components/backlog/BacklogTile';
 import { useQueries } from '@tanstack/react-query';
 import { request } from '../api/http';
 import type { Task, Note, Organization } from '../types';
@@ -19,10 +16,6 @@ import type { Task, Note, Organization } from '../types';
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-function todayStr(): string {
-  return new Date().toISOString().slice(0, 10);
-}
 
 function isOverdue(dueDate: string | null): boolean {
   if (!dueDate) return false;
@@ -129,13 +122,22 @@ interface TodayTasksWidgetProps {
 }
 
 function TodayTasksWidget({ orgMap }: TodayTasksWidgetProps) {
-  const today = todayStr();
-  const tasksQuery = useTasks({ status: 'open', dueBefore: today });
+  // No status / due-date filter on the request — pull everything and filter
+  // client-side to open OR snoozed, so the home tile shows the full active
+  // backlog (not just things due today).
+  const tasksQuery = useTasks();
   const { mutate: completeTask } = useCompleteTask();
+  const [editingTask, setEditingTask] = useState<Task | null>(null);
 
-  // Filter client-side: due_before returns tasks with due <= today (overdue + today),
-  // so we display them all as "due today or earlier"
-  const tasks: Task[] = tasksQuery.data ?? [];
+  const tasks: Task[] = (tasksQuery.data ?? [])
+    .filter((t) => t.status === 'open' || t.status === 'snoozed')
+    .sort((a, b) => {
+      // Descending by due_date — latest due first, undated last.
+      if (!a.due_date && !b.due_date) return 0;
+      if (!a.due_date) return 1;
+      if (!b.due_date) return -1;
+      return b.due_date.localeCompare(a.due_date);
+    });
 
   const handleComplete = useCallback(
     (id: number) => {
@@ -145,7 +147,7 @@ function TodayTasksWidget({ orgMap }: TodayTasksWidgetProps) {
   );
 
   return (
-    <Tile title="Today's Tasks" count={tasksQuery.isLoading ? '…' : tasks.length || undefined}>
+    <Tile title="Tasks" count={tasksQuery.isLoading ? '…' : tasks.length || undefined}>
       {tasksQuery.isError && (
         <TileError
           message="Couldn't load tasks"
@@ -158,7 +160,7 @@ function TodayTasksWidget({ orgMap }: TodayTasksWidgetProps) {
         </p>
       )}
       {!tasksQuery.isLoading && !tasksQuery.isError && tasks.length === 0 && (
-        <EmptyState text="Nothing due today." />
+        <EmptyState text="No open tasks." />
       )}
       {tasks.length > 0 && (
         <ul
@@ -183,59 +185,61 @@ function TodayTasksWidget({ orgMap }: TodayTasksWidgetProps) {
                   borderBottom: '1px dotted var(--rule)',
                 }}
               >
-                <label
-                  htmlFor={checkId}
+                <input
+                  id={checkId}
+                  type="checkbox"
+                  aria-label={`Mark complete: ${task.title}`}
+                  checked={false}
+                  onChange={() => handleComplete(task.id)}
+                  onClick={(e) => e.stopPropagation()}
                   style={{
-                    display: 'flex',
-                    alignItems: 'baseline',
-                    gap: 10,
-                    flex: 1,
+                    width: 14,
+                    height: 14,
+                    flexShrink: 0,
                     cursor: 'pointer',
+                    accentColor: 'var(--ink-3)',
+                    transform: 'translateY(2px)',
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={() => setEditingTask(task)}
+                  style={{
+                    flex: 1,
                     minWidth: 0,
+                    background: 'transparent',
+                    border: 'none',
+                    padding: 0,
+                    margin: 0,
+                    cursor: 'pointer',
+                    textAlign: 'left',
+                    fontFamily: 'var(--body)',
                   }}
                 >
-                  <input
-                    id={checkId}
-                    type="checkbox"
-                    checked={false}
-                    onChange={() => handleComplete(task.id)}
+                  <span
                     style={{
-                      width: 14,
-                      height: 14,
-                      flexShrink: 0,
-                      cursor: 'pointer',
-                      accentColor: 'var(--ink-3)',
-                      transform: 'translateY(2px)',
+                      fontSize: 14,
+                      color: 'var(--ink-1)',
+                      display: 'block',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
                     }}
-                  />
-                  <div style={{ flex: 1, minWidth: 0 }}>
+                  >
+                    {task.title}
+                  </span>
+                  {orgName && (
                     <span
                       style={{
-                        fontSize: 14,
-                        color: 'var(--ink-1)',
-                        fontFamily: 'var(--body)',
+                        fontSize: 11,
+                        color: 'var(--ink-3)',
                         display: 'block',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap',
                       }}
                     >
-                      {task.title}
+                      {orgName}
                     </span>
-                    {orgName && (
-                      <span
-                        style={{
-                          fontSize: 11,
-                          color: 'var(--ink-3)',
-                          fontFamily: 'var(--body)',
-                          display: 'block',
-                        }}
-                      >
-                        {orgName}
-                      </span>
-                    )}
-                  </div>
-                </label>
+                  )}
+                </button>
                 {task.due_date && (
                   <time
                     dateTime={task.due_date}
@@ -253,6 +257,10 @@ function TodayTasksWidget({ orgMap }: TodayTasksWidgetProps) {
             );
           })}
         </ul>
+      )}
+
+      {editingTask && (
+        <TaskEditDialog task={editingTask} onClose={() => setEditingTask(null)} />
       )}
     </Tile>
   );
@@ -400,187 +408,6 @@ function RecentNotesWidget({ orgs }: RecentNotesWidgetProps) {
 }
 
 // ---------------------------------------------------------------------------
-// Widget 3 — Agent insights (cross-org aggregator)
-// ---------------------------------------------------------------------------
-
-function AgentInsightsWidget() {
-  const navigate = useNavigate();
-  const insightsQuery = useUnconfirmedInsightsAcrossOrgs(20);
-  const { mutate: confirmInsight } = useConfirmInsight();
-  const { mutate: rejectInsight } = useRejectInsight();
-
-  const insights = insightsQuery.data ?? [];
-
-  return (
-    <Tile
-      title="Agent Insights"
-      count={insightsQuery.isLoading ? '…' : insights.length || undefined}
-    >
-      {/* aria-live so accept/dismiss updates announce to screen readers */}
-      <div aria-live="polite" aria-atomic="false">
-        {insightsQuery.isError && (
-          <TileError
-            message="Couldn't load insights"
-            onRetry={() => void insightsQuery.refetch()}
-          />
-        )}
-        {insightsQuery.isLoading && (
-          <p style={{ fontSize: 13, color: 'var(--ink-3)', fontFamily: 'var(--body)' }}>
-            Loading…
-          </p>
-        )}
-        {!insightsQuery.isLoading && !insightsQuery.isError && insights.length === 0 && (
-          <EmptyState text="No insights pending review." />
-        )}
-        {insights.length > 0 && (
-          <ul
-            role="list"
-            style={{
-              listStyle: 'none',
-              margin: 0,
-              padding: 0,
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 12,
-            }}
-          >
-            {insights.map((note) => {
-              const orgPath =
-                note.org_type === 'customer'
-                  ? `/customers/${note.organization_id}`
-                  : `/oem/${note.organization_id}`;
-              return (
-                <li
-                  key={note.id}
-                  style={{
-                    position: 'relative',
-                    paddingLeft: 12,
-                    borderBottom: '1px dotted var(--rule)',
-                    paddingBottom: 10,
-                  }}
-                >
-                  {/* Vermilion dot — transient signal per DESIGN.md Q-1 */}
-                  <span
-                    aria-hidden="true"
-                    style={{
-                      position: 'absolute',
-                      left: 0,
-                      top: 5,
-                      width: 4,
-                      height: 4,
-                      borderRadius: '50%',
-                      background: 'var(--accent)',
-                    }}
-                  />
-                  <p
-                    style={{
-                      fontSize: 13,
-                      color: 'var(--ink-1)',
-                      fontFamily: 'var(--body)',
-                      margin: '0 0 4px',
-                      lineHeight: 1.5,
-                      overflow: 'hidden',
-                      display: '-webkit-box',
-                      WebkitLineClamp: 2,
-                      WebkitBoxOrient: 'vertical',
-                    }}
-                  >
-                    {note.content}
-                  </p>
-                  <p
-                    style={{
-                      fontSize: 11,
-                      color: 'var(--ink-3)',
-                      fontFamily: 'var(--body)',
-                      margin: '0 0 6px',
-                    }}
-                  >
-                    <button
-                      type="button"
-                      onClick={() => navigate(orgPath)}
-                      style={{
-                        background: 'none',
-                        border: 'none',
-                        padding: 0,
-                        cursor: 'pointer',
-                        fontSize: 11,
-                        color: 'var(--ink-2)',
-                        fontFamily: 'var(--body)',
-                        textDecoration: 'underline',
-                        textDecorationStyle: 'dotted',
-                        textUnderlineOffset: 2,
-                      }}
-                      aria-label={`Go to ${note.org_name}`}
-                    >
-                      {note.org_name}
-                    </button>
-                    {' · '}
-                    <time
-                      dateTime={note.created_at}
-                      style={{ fontVariantNumeric: 'tabular-nums' }}
-                    >
-                      {formatNoteTimestamp(note.created_at)}
-                    </time>
-                  </p>
-                  <div style={{ display: 'flex', gap: 6 }}>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        confirmInsight({ id: note.id, orgId: note.organization_id })
-                      }
-                      aria-label={`Accept insight from ${note.org_name}`}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 4,
-                        background: 'transparent',
-                        border: '1px solid var(--accent)',
-                        borderRadius: 4,
-                        padding: '2px 8px',
-                        fontSize: 11,
-                        color: 'var(--accent)',
-                        cursor: 'pointer',
-                        fontFamily: 'var(--body)',
-                      }}
-                    >
-                      <Check size={10} strokeWidth={2} aria-hidden="true" />
-                      Accept
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        rejectInsight({ id: note.id, orgId: note.organization_id })
-                      }
-                      aria-label={`Dismiss insight from ${note.org_name}`}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 4,
-                        background: 'transparent',
-                        border: '1px solid var(--rule)',
-                        borderRadius: 4,
-                        padding: '2px 8px',
-                        fontSize: 11,
-                        color: 'var(--ink-2)',
-                        cursor: 'pointer',
-                        fontFamily: 'var(--body)',
-                      }}
-                    >
-                      <X size={10} strokeWidth={2} aria-hidden="true" />
-                      Dismiss
-                    </button>
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </div>
-    </Tile>
-  );
-}
-
-// ---------------------------------------------------------------------------
 // Widget 4 — Today's reports (placeholder)
 // ---------------------------------------------------------------------------
 
@@ -707,9 +534,9 @@ export function HomePage() {
           <RecentNotesWidget orgs={allOrgs} orgMap={orgMap} />
         </div>
 
-        {/* Bottom-left: Agent insights */}
+        {/* Bottom-left: MasterControl backlog */}
         <div style={{ gridColumn: 1, gridRow: 2 }}>
-          <AgentInsightsWidget />
+          <BacklogTile />
         </div>
 
         {/* Bottom-right: Reports placeholder */}

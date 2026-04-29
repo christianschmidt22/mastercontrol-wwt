@@ -95,14 +95,17 @@ function OemDashboard({ org, tabs }: OemDashboardProps) {
       <OemPageHeader org={org} tabs={tabs} />
       <OemCrossRefsPanel orgId={org.id} />
 
-      {/* Section header + edit controls */}
+      {/* Edit controls — fixed top-right next to the AlertBell. Right offset
+          mirrors the customer page (16 bell margin + 42 bell width + 10 gap). */}
       <div
         style={{
+          position: 'fixed',
+          top: 10,
+          right: 68,
           display: 'flex',
           alignItems: 'center',
-          justifyContent: 'flex-end',
-          gap: 8,
-          marginBottom: 20,
+          gap: 6,
+          zIndex: 500,
         }}
       >
         {editMode ? (
@@ -112,7 +115,7 @@ function OemDashboard({ org, tabs }: OemDashboardProps) {
               onClick={() => void handleReset()}
               style={secondaryBtnStyle}
             >
-              Reset to default
+              Reset
             </button>
             <button type="button" onClick={handleCancel} style={secondaryBtnStyle}>
               Cancel
@@ -136,15 +139,10 @@ function OemDashboard({ org, tabs }: OemDashboardProps) {
             type="button"
             onClick={() => setEditMode(true)}
             aria-label="Customize OEM tile layout"
-            style={{
-              ...secondaryBtnStyle,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
-            }}
+            title="Customize layout"
+            style={iconBtnStyle}
           >
             <LayoutGrid size={14} strokeWidth={1.5} aria-hidden="true" />
-            Customize layout
           </button>
         )}
       </div>
@@ -163,13 +161,30 @@ const secondaryBtnStyle: CSSProperties = {
   fontFamily: 'var(--body)',
   fontSize: 12,
   fontWeight: 500,
-  padding: '7px 14px',
+  padding: '7px 12px',
   borderRadius: 6,
   cursor: 'pointer',
   border: '1px solid var(--rule)',
   background: 'var(--bg)',
   color: 'var(--ink-2)',
+  height: 30,
+  display: 'flex',
+  alignItems: 'center',
   transition: 'background-color 150ms var(--ease), color 150ms var(--ease), border-color 150ms var(--ease)',
+};
+
+const iconBtnStyle: CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  width: 30,
+  height: 30,
+  border: '1px solid var(--rule)',
+  borderRadius: 6,
+  background: 'var(--bg)',
+  color: 'var(--ink-3)',
+  cursor: 'pointer',
+  padding: 0,
 };
 
 const oemTabStyleBase: CSSProperties = {

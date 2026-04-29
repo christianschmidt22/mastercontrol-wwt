@@ -563,20 +563,38 @@ function DefaultModelSection() {
 // ─── ThemeSection ─────────────────────────────────────────────────────────────
 
 const THEME_OPTIONS: Array<{ value: Theme; label: string }> = [
-  { value: 'light', label: 'Light' },
-  { value: 'dark', label: 'Dark' },
-  { value: 'system', label: 'System' },
+  { value: 'light',   label: 'Light' },
+  { value: 'dark',    label: 'Dark' },
+  { value: 'system',  label: 'System' },
+  { value: 'pine',    label: 'Pine (dark green)' },
+  { value: 'moss',    label: 'Moss (light green)' },
+  { value: 'carbon',  label: 'Carbon' },
+  { value: 'oxblood', label: 'Oxblood' },
+  { value: 'ridge',   label: 'Ridge (dark green)' },
+  { value: 'verdant', label: 'Verdant (deep emerald)' },
+];
+
+const ALL_THEME_CLASSES = [
+  'light',
+  'dark',
+  'theme-pine',
+  'theme-moss',
+  'theme-carbon',
+  'theme-oxblood',
+  'theme-ridge',
+  'theme-verdant',
 ];
 
 /**
  * Apply theme class to document root synchronously.
- * 'system' removes both classes, deferring to prefers-color-scheme.
+ * 'system' removes all classes, deferring to prefers-color-scheme.
  */
 export function applyThemeToDocument(theme: Theme): void {
   const root = document.documentElement;
-  root.classList.remove('light', 'dark');
+  root.classList.remove(...ALL_THEME_CLASSES);
   if (theme === 'light') root.classList.add('light');
   else if (theme === 'dark') root.classList.add('dark');
+  else if (theme !== 'system') root.classList.add(`theme-${theme}`);
 }
 
 function ThemeSection() {

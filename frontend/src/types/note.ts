@@ -48,10 +48,7 @@ export interface NoteCaptureResponse {
 export type NoteProposalType =
   | 'customer_ask'
   | 'task_follow_up'
-  | 'project_update'
-  | 'risk_blocker'
   | 'oem_mention'
-  | 'customer_insight'
   | 'internal_resource';
 
 export type NoteProposalStatus = 'pending' | 'approved' | 'denied' | 'discussing';
@@ -61,6 +58,7 @@ export interface NoteProposal {
   source_note_id: number;
   organization_id: number;
   project_id: number | null;
+  contact_id: number | null;
   type: NoteProposalType;
   title: string;
   summary: string;

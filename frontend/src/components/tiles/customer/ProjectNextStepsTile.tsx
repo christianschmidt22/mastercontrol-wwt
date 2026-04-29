@@ -9,6 +9,7 @@ import {
   useUpdateTask,
 } from '../../../api/useTasks';
 import type { Task } from '../../../types';
+import { TaskEditDialog } from '../../tasks/TaskEditDialog';
 
 interface ProjectNextStepsTileProps {
   projectId: number;
@@ -89,6 +90,7 @@ export function ProjectNextStepsTile({
   const [adding, setAdding] = useState(false);
   const [titleVal, setTitleVal] = useState('');
   const [dueDateVal, setDueDateVal] = useState('');
+  const [editingTask, setEditingTask] = useState<Task | null>(null);
 
   const resetForm = useCallback(() => {
     setTitleVal('');
@@ -254,7 +256,21 @@ export function ProjectNextStepsTile({
               >
                 <Check size={10} strokeWidth={2} aria-hidden="true" />
               </button>
-              <div style={{ minWidth: 0, flex: 1 }}>
+              <button
+                type="button"
+                onClick={() => setEditingTask(task)}
+                style={{
+                  minWidth: 0,
+                  flex: 1,
+                  background: 'transparent',
+                  border: 'none',
+                  padding: 0,
+                  margin: 0,
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                  fontFamily: 'var(--body)',
+                }}
+              >
                 <div
                   style={{
                     fontSize: 13,
@@ -271,7 +287,7 @@ export function ProjectNextStepsTile({
                     Due {task.due_date}
                   </div>
                 )}
-              </div>
+              </button>
             </li>
           ))}
         </ul>
@@ -315,7 +331,21 @@ export function ProjectNextStepsTile({
                   borderBottom: '1px solid var(--rule)',
                 }}
               >
-                <div style={{ minWidth: 0, flex: 1 }}>
+                <button
+                  type="button"
+                  onClick={() => setEditingTask(task)}
+                  style={{
+                    minWidth: 0,
+                    flex: 1,
+                    background: 'transparent',
+                    border: 'none',
+                    padding: 0,
+                    margin: 0,
+                    cursor: 'pointer',
+                    textAlign: 'left',
+                    fontFamily: 'var(--body)',
+                  }}
+                >
                   <div
                     style={{
                       fontSize: 13,
@@ -331,7 +361,7 @@ export function ProjectNextStepsTile({
                   <div style={{ fontSize: 11, color: 'var(--ink-3)' }}>
                     {formatCompletedAt(task.completed_at)}
                   </div>
-                </div>
+                </button>
                 <button
                   type="button"
                   aria-label={`Reopen: ${task.title}`}
@@ -358,6 +388,10 @@ export function ProjectNextStepsTile({
             ))}
           </ul>
         </section>
+      )}
+
+      {editingTask && (
+        <TaskEditDialog task={editingTask} onClose={() => setEditingTask(null)} />
       )}
     </Tile>
   );

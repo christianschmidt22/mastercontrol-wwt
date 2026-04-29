@@ -1,120 +1,81 @@
-import { useState, useCallback, useId, type FormEvent } from 'react';
+import { useCallback, useId, useState, type FormEvent } from 'react';
 import { Plus } from 'lucide-react';
-import { Tile } from '../Tile';
-import { TileEmptyState } from '../TileEmptyState';
-import type { Task } from '../../../types';
-import { useTasks as useTasksReal, useCompleteTask, useCreateTask } from '../../../api/useTasks';
-import type { TaskStatus } from '../../../types';
-import { TaskEditDialog } from '../../tasks/TaskEditDialog';
+import { Tile } from '../tiles/Tile';
+import { TileEmptyState } from '../tiles/TileEmptyState';
+import {
+  type BacklogItem,
+  useBacklogItems,
+  useCompleteBacklogItem,
+  useCreateBacklogItem,
+} from '../../api/useBacklogItems';
+import { BacklogEditDialog } from './BacklogEditDialog';
 
-interface UseTasksResult {
-  data: Task[] | undefined;
-  isLoading: boolean;
-}
-
-interface UseTaskMutations {
-  complete: (taskId: number) => void;
-  create: (title: string, orgId: number, dueDate?: string | null) => void;
-}
-
-function useTasksForTile(params: { orgId: number; status: string }): UseTasksResult {
-  return useTasksReal({ orgId: params.orgId, status: params.status as TaskStatus });
-}
-
-function useTaskMutationsReal(): UseTaskMutations {
-  const { mutate: completeTask } = useCompleteTask();
-  const { mutate: createTask } = useCreateTask();
-  return {
-    complete: (taskId) => completeTask(taskId),
-    create: (title, orgId, dueDate) =>
-      createTask({ title, organization_id: orgId, due_date: dueDate ?? null, status: 'open' }),
-  };
-}
-
-interface TasksTileProps {
-  orgId: number;
-  _useTasks?: (params: { orgId: number; status: string }) => UseTasksResult;
-  _useTaskMutations?: () => UseTaskMutations;
-}
-
-/**
- * Returns true if the task is overdue (due_date is before today, ignoring time).
- * Overdue-text is the only vermilion in this tile — transient signal per Q-1.
- */
-function isOverdue(dueDate: string | null): boolean {
-  if (!dueDate) return false;
+function isOverdue(due: string | null): boolean {
+  if (!due) return false;
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  const due = new Date(dueDate);
-  due.setHours(0, 0, 0, 0);
-  return due < today;
+  const d = new Date(due);
+  d.setHours(0, 0, 0, 0);
+  return d < today;
 }
 
-function formatDue(dueDate: string | null): string {
-  if (!dueDate) return '';
-  const d = new Date(dueDate);
+function formatDue(due: string | null): string {
+  if (!due) return '';
+  const d = new Date(due);
   return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(d);
 }
 
 /**
- * TasksTile — open tasks for the org.
- *
- * Uses real <input type="checkbox">, not a styled div.
- * Overdue due-text is vermilion (transient signal per Q-1).
- * Inline "+ Add task" form at the bottom.
+ * MasterControl-meta backlog tile — features / changes you want to make to
+ * this app itself. Same shape as the Tasks tile (open + snoozed shown,
+ * checkbox completes, click row opens the edit dialog).
  */
-export function TasksTile({ orgId, _useTasks, _useTaskMutations }: TasksTileProps) {
-  const useTasks = _useTasks ?? useTasksForTile;
-  const useTaskMutations = _useTaskMutations ?? useTaskMutationsReal;
+export function BacklogTile() {
+  const { data, isLoading } = useBacklogItems();
+  const create = useCreateBacklogItem();
+  const complete = useCompleteBacklogItem();
 
-  const { data: tasks, isLoading } = useTasks({ orgId, status: 'open' });
-  const { complete, create } = useTaskMutations();
-
-  const [addingTask, setAddingTask] = useState(false);
+  const [adding, setAdding] = useState(false);
   const [newTitle, setNewTitle] = useState('');
   const [newDue, setNewDue] = useState('');
-  const [editingTask, setEditingTask] = useState<Task | null>(null);
+  const [editing, setEditing] = useState<BacklogItem | null>(null);
 
   const formId = useId();
-  const newTaskTitleId = `${formId}-title`;
-  const newTaskDueId = `${formId}-due`;
+  const titleId = `${formId}-title`;
+  const dueId = `${formId}-due`;
 
-  const handleComplete = useCallback(
-    (taskId: number) => {
-      complete(taskId);
-    },
-    [complete],
-  );
+  const items = (data ?? []).filter((i) => i.status === 'open' || i.status === 'snoozed');
 
-  const handleAddTask = useCallback(
+  const handleAdd = useCallback(
     (e: FormEvent) => {
       e.preventDefault();
-      const trimmed = newTitle.trim();
-      if (!trimmed) return;
-      create(trimmed, orgId, newDue || null);
-      setNewTitle('');
-      setNewDue('');
-      setAddingTask(false);
+      const title = newTitle.trim();
+      if (!title) return;
+      create.mutate(
+        { title, due_date: newDue || null },
+        {
+          onSuccess: () => {
+            setNewTitle('');
+            setNewDue('');
+            setAdding(false);
+          },
+        },
+      );
     },
-    [create, newTitle, newDue, orgId],
+    [create, newTitle, newDue],
   );
 
-  const openTasks = tasks ?? [];
-
   return (
-    <Tile title="Tasks" count={isLoading ? '…' : openTasks.length || undefined}>
+    <Tile title="Backlog" count={isLoading ? '…' : items.length || undefined}>
       {isLoading && (
         <p style={{ fontSize: 13, color: 'var(--ink-3)' }}>Loading…</p>
       )}
 
-      {!isLoading && openTasks.length === 0 && !addingTask && (
-        <TileEmptyState
-          copy="Nothing due today."
-          ariaLive
-        />
+      {!isLoading && items.length === 0 && !adding && (
+        <TileEmptyState copy="No backlog items yet." ariaLive />
       )}
 
-      {openTasks.length > 0 && (
+      {items.length > 0 && (
         <ul
           role="list"
           style={{
@@ -125,12 +86,12 @@ export function TasksTile({ orgId, _useTasks, _useTaskMutations }: TasksTileProp
             flexDirection: 'column',
           }}
         >
-          {openTasks.map((task) => {
-            const overdue = isOverdue(task.due_date);
-            const checkId = `task-${task.id}`;
+          {items.map((item) => {
+            const overdue = isOverdue(item.due_date);
+            const checkId = `backlog-${item.id}`;
             return (
               <li
-                key={task.id}
+                key={item.id}
                 style={{
                   display: 'flex',
                   alignItems: 'baseline',
@@ -142,9 +103,9 @@ export function TasksTile({ orgId, _useTasks, _useTaskMutations }: TasksTileProp
                 <input
                   id={checkId}
                   type="checkbox"
-                  aria-label={`Mark complete: ${task.title}`}
+                  aria-label={`Mark complete: ${item.title}`}
                   defaultChecked={false}
-                  onChange={() => handleComplete(task.id)}
+                  onChange={() => complete.mutate(item.id)}
                   onClick={(e) => e.stopPropagation()}
                   style={{
                     width: 14,
@@ -157,8 +118,8 @@ export function TasksTile({ orgId, _useTasks, _useTaskMutations }: TasksTileProp
                 />
                 <button
                   type="button"
-                  onClick={() => setEditingTask(task)}
-                  title={task.title}
+                  onClick={() => setEditing(item)}
+                  title={item.notes ?? item.title}
                   style={{
                     flex: 1,
                     fontSize: 13,
@@ -175,20 +136,19 @@ export function TasksTile({ orgId, _useTasks, _useTaskMutations }: TasksTileProp
                     textAlign: 'left',
                   }}
                 >
-                  {task.title}
+                  {item.title}
                 </button>
-                {task.due_date && (
+                {item.due_date && (
                   <time
-                    dateTime={task.due_date}
+                    dateTime={item.due_date}
                     style={{
                       fontSize: 11,
-                      // Vermilion for overdue — transient signal per Q-1
                       color: overdue ? 'var(--accent)' : 'var(--ink-3)',
                       fontVariantNumeric: 'tabular-nums',
                       flexShrink: 0,
                     }}
                   >
-                    {formatDue(task.due_date)}
+                    {formatDue(item.due_date)}
                   </time>
                 )}
               </li>
@@ -197,19 +157,13 @@ export function TasksTile({ orgId, _useTasks, _useTaskMutations }: TasksTileProp
         </ul>
       )}
 
-      {/* Add task form */}
-      {addingTask ? (
+      {adding ? (
         <form
-          onSubmit={handleAddTask}
-          style={{
-            marginTop: 8,
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 6,
-          }}
+          onSubmit={handleAdd}
+          style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 6 }}
         >
           <label
-            htmlFor={newTaskTitleId}
+            htmlFor={titleId}
             style={{
               position: 'absolute',
               width: 1,
@@ -219,17 +173,16 @@ export function TasksTile({ orgId, _useTasks, _useTaskMutations }: TasksTileProp
               whiteSpace: 'nowrap',
             }}
           >
-            New task title
+            New backlog item title
           </label>
           <input
-            id={newTaskTitleId}
+            id={titleId}
             type="text"
-            name="task-title"
             autoComplete="off"
             autoFocus
             value={newTitle}
             onChange={(e) => setNewTitle(e.target.value)}
-            placeholder="Task title…"
+            placeholder="Feature or change…"
             style={{
               border: '1px solid var(--rule)',
               borderRadius: 4,
@@ -243,7 +196,7 @@ export function TasksTile({ orgId, _useTasks, _useTaskMutations }: TasksTileProp
           />
           <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
             <label
-              htmlFor={newTaskDueId}
+              htmlFor={dueId}
               style={{
                 fontSize: 12,
                 color: 'var(--ink-2)',
@@ -254,9 +207,8 @@ export function TasksTile({ orgId, _useTasks, _useTaskMutations }: TasksTileProp
               Due
             </label>
             <input
-              id={newTaskDueId}
+              id={dueId}
               type="date"
-              name="task-due"
               value={newDue}
               onChange={(e) => setNewDue(e.target.value)}
               style={{
@@ -272,6 +224,7 @@ export function TasksTile({ orgId, _useTasks, _useTaskMutations }: TasksTileProp
             />
             <button
               type="submit"
+              disabled={create.isPending}
               style={{
                 padding: '4px 10px',
                 fontSize: 12,
@@ -279,16 +232,16 @@ export function TasksTile({ orgId, _useTasks, _useTaskMutations }: TasksTileProp
                 borderRadius: 4,
                 background: 'var(--bg-2)',
                 color: 'var(--ink-1)',
-                cursor: 'pointer',
+                cursor: create.isPending ? 'wait' : 'pointer',
                 fontFamily: 'var(--body)',
               }}
             >
-              Add Task
+              Add
             </button>
             <button
               type="button"
               onClick={() => {
-                setAddingTask(false);
+                setAdding(false);
                 setNewTitle('');
                 setNewDue('');
               }}
@@ -310,7 +263,7 @@ export function TasksTile({ orgId, _useTasks, _useTaskMutations }: TasksTileProp
       ) : (
         <button
           type="button"
-          onClick={() => setAddingTask(true)}
+          onClick={() => setAdding(true)}
           style={{
             display: 'flex',
             alignItems: 'center',
@@ -326,13 +279,11 @@ export function TasksTile({ orgId, _useTasks, _useTaskMutations }: TasksTileProp
           }}
         >
           <Plus size={12} strokeWidth={1.5} aria-hidden="true" />
-          Add task
+          Add backlog item
         </button>
       )}
 
-      {editingTask && (
-        <TaskEditDialog task={editingTask} onClose={() => setEditingTask(null)} />
-      )}
+      {editing && <BacklogEditDialog item={editing} onClose={() => setEditing(null)} />}
     </Tile>
   );
 }

@@ -1,0 +1,808 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>MasterControl — theme exploration</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link
+  href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600&family=Inter+Tight:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&family=JetBrains+Mono:wght@400;500&family=Instrument+Serif&family=Manrope:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap"
+  rel="stylesheet"
+/>
+<style>
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+
+  html,
+  body {
+    margin: 0;
+    padding: 0;
+    background: #07090c;
+    color: #e7e3d8;
+    font-family: 'Inter Tight', system-ui, sans-serif;
+  }
+
+  .chrome {
+    max-width: 1380px;
+    margin: 0 auto;
+    padding: 28px 28px 80px;
+  }
+
+  .chrome > header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 16px;
+    margin-bottom: 22px;
+    color: #cdc8b9;
+  }
+
+  .chrome > header h1 {
+    margin: 0;
+    font-family: 'Fraunces', serif;
+    font-weight: 500;
+    font-size: 28px;
+    letter-spacing: -0.01em;
+  }
+
+  .chrome > header p {
+    margin: 0;
+    font-size: 13px;
+    color: #807a6a;
+  }
+
+  /* ── Theme switcher ─────────────────────────────────────────────────── */
+  .switcher {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 22px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid #1f2229;
+  }
+
+  .switcher button {
+    appearance: none;
+    background: #11141a;
+    color: #aea799;
+    border: 1px solid #1f2229;
+    border-radius: 999px;
+    padding: 8px 14px;
+    font-family: inherit;
+    font-size: 12px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: all 160ms ease;
+  }
+  .switcher button:hover {
+    color: #e7e3d8;
+    border-color: #2c303a;
+  }
+  .switcher button[aria-pressed='true'] {
+    background: #e7e3d8;
+    color: #0d0f13;
+    border-color: #e7e3d8;
+  }
+
+  .stage {
+    border-radius: 18px;
+    overflow: hidden;
+    isolation: isolate;
+  }
+
+  /* Hide all theme stages, show the active one */
+  .stage[data-active='false'] {
+    display: none;
+  }
+
+  /* ────────────────────────────────────────────────────────────────────
+     Generic stage layout (each .stage gets its own theme via CSS vars)
+     ──────────────────────────────────────────────────────────────────── */
+  .stage {
+    background: var(--bg);
+    color: var(--ink-1);
+    font-family: var(--body, 'Inter Tight'), sans-serif;
+    padding: 36px 40px 48px;
+    position: relative;
+  }
+
+  .stage::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: var(--bg-overlay, transparent);
+    z-index: 0;
+  }
+
+  .stage > * {
+    position: relative;
+    z-index: 1;
+  }
+
+  .topline {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 18px;
+    margin-bottom: 14px;
+  }
+
+  .breadcrumb {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.16em;
+    color: var(--ink-3);
+  }
+
+  .alert-bell {
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    border: 1px solid var(--rule);
+    display: grid;
+    place-items: center;
+    color: var(--ink-3);
+    background: var(--bg-2);
+    font-size: 13px;
+  }
+
+  .pageTitle {
+    font-family: var(--display, 'Fraunces'), serif;
+    font-weight: 500;
+    font-size: 56px;
+    line-height: 1.02;
+    letter-spacing: -0.02em;
+    margin: 0 0 8px -3px;
+    text-wrap: balance;
+    color: var(--ink-1);
+  }
+
+  .subtitle {
+    color: var(--ink-2);
+    font-size: 14px;
+    margin: 0 0 28px 0;
+  }
+
+  .tabs {
+    display: flex;
+    gap: 0;
+    border-bottom: 1px solid var(--rule);
+    margin-bottom: 24px;
+    flex-wrap: wrap;
+  }
+  .tabs button {
+    appearance: none;
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+    padding: 9px 14px;
+    color: var(--ink-2);
+    font-family: inherit;
+    font-size: 13px;
+    cursor: pointer;
+  }
+  .tabs button.active {
+    color: var(--ink-1);
+    font-weight: 600;
+    border-bottom-color: var(--accent);
+  }
+
+  .grid {
+    display: grid;
+    grid-template-columns: 7fr 5fr;
+    gap: 18px;
+  }
+
+  @media (max-width: 880px) {
+    .grid {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  .tile {
+    border: 1px solid var(--rule);
+    border-radius: 10px;
+    background: var(--bg);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .tile header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 18px 12px;
+    border-bottom: 1px solid var(--rule);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--ink-2);
+  }
+  .tile header .count {
+    color: var(--ink-3);
+    font-weight: 500;
+  }
+
+  .tile .body {
+    padding: 16px 18px 18px;
+  }
+
+  /* Note row */
+  .note {
+    display: grid;
+    grid-template-columns: 56px 1fr;
+    gap: 12px;
+    padding: 12px 0;
+    border-bottom: 1px dotted var(--rule);
+  }
+  .note:last-child {
+    border-bottom: none;
+  }
+  .note time {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    font-size: 11px;
+    color: var(--ink-3);
+    font-variant-numeric: tabular-nums;
+  }
+  .note time span:last-child {
+    opacity: 0.7;
+  }
+  .note .text {
+    font-size: 14px;
+    line-height: 1.5;
+    color: var(--ink-1);
+  }
+  .note .text strong {
+    font-weight: 500;
+  }
+
+  /* Task row */
+  .task {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 0;
+    border-bottom: 1px dotted var(--rule);
+  }
+  .task:last-child {
+    border-bottom: none;
+  }
+  .task input[type='checkbox'] {
+    width: 14px;
+    height: 14px;
+    margin: 0;
+    accent-color: var(--accent);
+  }
+  .task .title {
+    flex: 1;
+    font-size: 13.5px;
+    color: var(--ink-1);
+  }
+  .task .due {
+    font-size: 11px;
+    color: var(--ink-3);
+    font-variant-numeric: tabular-nums;
+  }
+  .task .due.overdue {
+    color: var(--accent);
+    font-weight: 500;
+  }
+
+  /* Status chip */
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    padding: 3px 10px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: capitalize;
+    color: var(--accent);
+    background: var(--accent-soft);
+  }
+
+  /* Action button */
+  .btn {
+    appearance: none;
+    border: 1px solid var(--rule);
+    background: var(--bg-2);
+    color: var(--ink-1);
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 500;
+    padding: 7px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+  }
+  .btn.primary {
+    background: var(--accent);
+    color: var(--accent-on);
+    border-color: var(--accent);
+  }
+
+  .footer-meta {
+    margin-top: 28px;
+    display: flex;
+    gap: 24px;
+    flex-wrap: wrap;
+    color: var(--ink-3);
+    font-size: 12px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+  .footer-meta strong {
+    color: var(--ink-2);
+    font-weight: 500;
+    margin-right: 6px;
+  }
+
+  /* ────────────────────────────────────────────────────────────────────
+     THEME 1 — PINE (dark forest green + cream + terracotta)
+     editorial feel, deep saturated greens like an old library
+     ──────────────────────────────────────────────────────────────────── */
+  .theme-pine {
+    --bg: #0c1813;
+    --bg-2: #122019;
+    --ink-1: #ece7d4;
+    --ink-2: #a3b4a4;
+    --ink-3: #6e7f72;
+    --rule: #1f2e26;
+    --accent: #d97757;
+    --accent-soft: #2a1a14;
+    --accent-on: #14110d;
+    --display: 'Fraunces';
+    --body: 'Inter Tight';
+    --bg-overlay: radial-gradient(
+        circle at 12% 0%,
+        rgba(217, 119, 87, 0.08),
+        transparent 45%
+      ),
+      radial-gradient(circle at 100% 100%, rgba(40, 78, 60, 0.5), transparent 60%);
+  }
+
+  /* ────────────────────────────────────────────────────────────────────
+     THEME 2 — MOSS (light sage on warm linen — the only light theme)
+     herbarium / botanical-journal vibe, refined and quiet
+     ──────────────────────────────────────────────────────────────────── */
+  .theme-moss {
+    --bg: #f3f0e6;
+    --bg-2: #e9e4d4;
+    --ink-1: #1d2820;
+    --ink-2: #5b6a59;
+    --ink-3: #94a08e;
+    --rule: #cdd2bd;
+    --accent: #4a6b3a;
+    --accent-soft: #dde4cf;
+    --accent-on: #ffffff;
+    --display: 'Newsreader';
+    --body: 'Manrope';
+    --bg-overlay: radial-gradient(
+      circle at 90% 0%,
+      rgba(74, 107, 58, 0.08),
+      transparent 55%
+    );
+  }
+
+  /* ────────────────────────────────────────────────────────────────────
+     THEME 3 — CARBON (graphite + electric jade)
+     industrial / utilitarian / data-terminal
+     ──────────────────────────────────────────────────────────────────── */
+  .theme-carbon {
+    --bg: #0a0d10;
+    --bg-2: #11161b;
+    --ink-1: #e6efe8;
+    --ink-2: #8c9c92;
+    --ink-3: #586a60;
+    --rule: #1a2127;
+    --accent: #5af3a4;
+    --accent-soft: #0d2419;
+    --accent-on: #061410;
+    --display: 'IBM Plex Sans';
+    --body: 'IBM Plex Sans';
+    --bg-overlay: linear-gradient(
+        180deg,
+        transparent 60%,
+        rgba(90, 243, 164, 0.04) 100%
+      ),
+      repeating-linear-gradient(
+        0deg,
+        rgba(255, 255, 255, 0.012) 0,
+        rgba(255, 255, 255, 0.012) 1px,
+        transparent 1px,
+        transparent 3px
+      );
+  }
+  .theme-carbon .pageTitle,
+  .theme-carbon .tile header {
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .theme-carbon .pageTitle {
+    font-size: 44px;
+    letter-spacing: -0.01em;
+    text-transform: none;
+  }
+
+  /* ────────────────────────────────────────────────────────────────────
+     THEME 4 — OXBLOOD (deep wine background, brass accent, leather-bound)
+     editorial, somber, lawyer-office gravitas
+     ──────────────────────────────────────────────────────────────────── */
+  .theme-oxblood {
+    --bg: #1a0d0e;
+    --bg-2: #251112;
+    --ink-1: #f1e8d6;
+    --ink-2: #b29c87;
+    --ink-3: #7a685a;
+    --rule: #311a1c;
+    --accent: #c79a4b;
+    --accent-soft: #2b1f0c;
+    --accent-on: #14100a;
+    --display: 'Instrument Serif';
+    --body: 'Inter Tight';
+    --bg-overlay: radial-gradient(
+        circle at 0% 0%,
+        rgba(199, 154, 75, 0.07),
+        transparent 55%
+      ),
+      radial-gradient(
+        circle at 100% 100%,
+        rgba(80, 25, 30, 0.5),
+        transparent 60%
+      );
+  }
+  .theme-oxblood .pageTitle {
+    font-size: 64px;
+    letter-spacing: -0.015em;
+  }
+
+  /* ────────────────────────────────────────────────────────────────────
+     THEME 5 — RIDGE (dark hunter green + amber accent + monospace)
+     topographic-map / field-survey vibe
+     ──────────────────────────────────────────────────────────────────── */
+  .theme-ridge {
+    --bg: #0a1410;
+    --bg-2: #11201a;
+    --ink-1: #e1ddc8;
+    --ink-2: #97a092;
+    --ink-3: #5e6a5f;
+    --rule: #1c2a23;
+    --accent: #e3b341;
+    --accent-soft: #2a1f0a;
+    --accent-on: #131008;
+    --display: 'Fraunces';
+    --body: 'DM Mono';
+    --bg-overlay: repeating-linear-gradient(
+        135deg,
+        rgba(225, 179, 65, 0.025) 0,
+        rgba(225, 179, 65, 0.025) 1px,
+        transparent 1px,
+        transparent 14px
+      ),
+      radial-gradient(
+        circle at 80% 100%,
+        rgba(35, 70, 50, 0.55),
+        transparent 60%
+      );
+  }
+  .theme-ridge .pageTitle {
+    font-family: 'Fraunces';
+    font-size: 50px;
+  }
+  .theme-ridge .breadcrumb,
+  .theme-ridge .footer-meta {
+    font-family: 'DM Mono';
+  }
+</style>
+</head>
+<body>
+<div class="chrome">
+  <header>
+    <div>
+      <h1>MasterControl — theme exploration</h1>
+      <p>Five concepts. Two greens (Pine, Ridge). One light (Moss). One terminal (Carbon). One wine (Oxblood).</p>
+    </div>
+  </header>
+
+  <div class="switcher" role="tablist" aria-label="Theme selector">
+    <button type="button" data-target="pine"    aria-pressed="true">1 · Pine</button>
+    <button type="button" data-target="moss"    aria-pressed="false">2 · Moss (light)</button>
+    <button type="button" data-target="carbon"  aria-pressed="false">3 · Carbon</button>
+    <button type="button" data-target="oxblood" aria-pressed="false">4 · Oxblood</button>
+    <button type="button" data-target="ridge"   aria-pressed="false">5 · Ridge</button>
+  </div>
+
+  <!-- ── STAGE TEMPLATES ─────────────────────────────────────────────── -->
+  <section class="stage theme-pine"    data-name="pine"    data-active="true">
+    <div class="topline">
+      <span class="breadcrumb">Customers / C.H. Robinson</span>
+      <span class="alert-bell">⌥</span>
+    </div>
+    <h2 class="pageTitle">C.H. Robinson</h2>
+    <p class="subtitle">Account · Hopkins, MN · Logistics & supply chain</p>
+    <div class="tabs">
+      <button class="active">Home</button>
+      <button>DC SD-WAN Rollout</button>
+      <button>Eden Prairie HQ Wi-Fi 7</button>
+      <button>AI on prem</button>
+    </div>
+    <div class="grid">
+      <article class="tile">
+        <header>Recent notes <span class="count">12</span></header>
+        <div class="body">
+          <div class="note">
+            <time><span>Wed</span><span>12:07 AM</span></time>
+            <div class="text"><strong>From:</strong> Maya Patel, WWT Security Architect — re: C.H. Robinson AI Groundfall follow-up. Aligning on next round of design questions before Monday's call.</div>
+          </div>
+          <div class="note">
+            <time><span>Tue</span><span>6:55 PM</span></time>
+            <div class="text">New project getting off the ground that came from ideas at the CHR EBC. Next step is to meet with Matt Halcomb. Pat set up a meeting for Monday 5/4 @ 1:30.</div>
+          </div>
+          <div class="note">
+            <time><span>Mon</span><span>2:14 PM</span></time>
+            <div class="text">Bandwidth modeling for Navisphere finished — totals match the AFF sizing pass. Forwarding to NetApp for sanity-check.</div>
+          </div>
+        </div>
+      </article>
+      <article class="tile">
+        <header>Tasks <span class="count">4</span></header>
+        <div class="body">
+          <div class="task">
+            <input type="checkbox" />
+            <div class="title">Send revised BoM to Matt before Monday</div>
+            <div class="due overdue">Apr 28</div>
+          </div>
+          <div class="task">
+            <input type="checkbox" />
+            <div class="title">Review Cisco channel discount on C9300</div>
+            <div class="due">May 1</div>
+          </div>
+          <div class="task">
+            <input type="checkbox" checked />
+            <div class="title" style="text-decoration: line-through; opacity: 0.55">Confirm AHV re-engagement scope</div>
+            <div class="due">Apr 26</div>
+          </div>
+        </div>
+      </article>
+    </div>
+    <div class="footer-meta">
+      <span><strong>Status</strong><span class="chip">qualifying</span></span>
+      <span><strong>Last touched</strong>4 hours ago</span>
+      <span><strong>Project lead</strong>Pat Coughlin</span>
+    </div>
+  </section>
+
+  <section class="stage theme-moss" data-name="moss" data-active="false">
+    <div class="topline">
+      <span class="breadcrumb">Customers / Fairview Health</span>
+      <span class="alert-bell">⌥</span>
+    </div>
+    <h2 class="pageTitle">Fairview Health Services</h2>
+    <p class="subtitle">Account · Minneapolis, MN · Healthcare</p>
+    <div class="tabs">
+      <button class="active">Home</button>
+      <button>Network Refresh — Hospital Campus</button>
+      <button>Epic EHR Bandwidth Upgrade</button>
+      <button>DR Site Refresh</button>
+    </div>
+    <div class="grid">
+      <article class="tile">
+        <header>Recent notes <span class="count">8</span></header>
+        <div class="body">
+          <div class="note">
+            <time><span>Wed</span><span>9:30 AM</span></time>
+            <div class="text">Met with Dr. Chen — radiology refresh is now formally tied to the campus network refresh. Need updated BoM by mid-May.</div>
+          </div>
+          <div class="note">
+            <time><span>Tue</span><span>4:12 PM</span></time>
+            <div class="text">Pulled the Epic bandwidth telemetry from last quarter. Trend is up 14% YoY. Forwarding to Cisco for channel sizing.</div>
+          </div>
+          <div class="note">
+            <time><span>Mon</span><span>11:00 AM</span></time>
+            <div class="text">DR site walk scheduled for May 6. Will need access badges arranged through Fairview security.</div>
+          </div>
+        </div>
+      </article>
+      <article class="tile">
+        <header>Tasks <span class="count">5</span></header>
+        <div class="body">
+          <div class="task">
+            <input type="checkbox" />
+            <div class="title">Confirm DR site access for May 6 walk</div>
+            <div class="due">May 4</div>
+          </div>
+          <div class="task">
+            <input type="checkbox" />
+            <div class="title">Sign off on Epic bandwidth telemetry summary</div>
+            <div class="due overdue">Apr 27</div>
+          </div>
+          <div class="task">
+            <input type="checkbox" checked />
+            <div class="title" style="text-decoration: line-through; opacity: 0.55">Pull last-quarter Epic numbers</div>
+            <div class="due">Apr 28</div>
+          </div>
+        </div>
+      </article>
+    </div>
+    <div class="footer-meta">
+      <span><strong>Status</strong><span class="chip">active</span></span>
+      <span><strong>Last touched</strong>this morning</span>
+      <span><strong>Project lead</strong>Ryan Schmidt</span>
+    </div>
+  </section>
+
+  <section class="stage theme-carbon" data-name="carbon" data-active="false">
+    <div class="topline">
+      <span class="breadcrumb">CUSTOMERS / API GROUP</span>
+      <span class="alert-bell">⌥</span>
+    </div>
+    <h2 class="pageTitle">APi Group</h2>
+    <p class="subtitle">Account · New Brighton, MN · Building services</p>
+    <div class="tabs">
+      <button class="active">Home</button>
+      <button>Edge Network Modernization</button>
+      <button>Field Mobility</button>
+    </div>
+    <div class="grid">
+      <article class="tile">
+        <header>Recent notes <span class="count">6</span></header>
+        <div class="body">
+          <div class="note">
+            <time><span>Wed</span><span>3:14 PM</span></time>
+            <div class="text">Field mobility scope locked in. ~14k devices across 9 regions. Ruckus and Meraki on the shortlist; need pricing comparable by next Friday.</div>
+          </div>
+          <div class="note">
+            <time><span>Tue</span><span>10:22 AM</span></time>
+            <div class="text">Switched from Cradlepoint to Peplink for the truck-mounted SD-WAN. Reasoning: better long-haul throughput on T-Mobile.</div>
+          </div>
+        </div>
+      </article>
+      <article class="tile">
+        <header>Tasks <span class="count">3</span></header>
+        <div class="body">
+          <div class="task">
+            <input type="checkbox" />
+            <div class="title">Comparable pricing: Ruckus vs Meraki</div>
+            <div class="due">May 3</div>
+          </div>
+          <div class="task">
+            <input type="checkbox" />
+            <div class="title">Spec the Peplink SDX configuration</div>
+            <div class="due overdue">Apr 27</div>
+          </div>
+        </div>
+      </article>
+    </div>
+    <div class="footer-meta">
+      <span><strong>Status</strong><span class="chip">active</span></span>
+      <span><strong>Devices</strong>14,200</span>
+      <span><strong>Regions</strong>9</span>
+    </div>
+  </section>
+
+  <section class="stage theme-oxblood" data-name="oxblood" data-active="false">
+    <div class="topline">
+      <span class="breadcrumb">Customers / Entegris</span>
+      <span class="alert-bell">⌥</span>
+    </div>
+    <h2 class="pageTitle">Entegris</h2>
+    <p class="subtitle">Account · Billerica, MA · Semiconductor materials</p>
+    <div class="tabs">
+      <button class="active">Home</button>
+      <button>Cleanroom Network Audit</button>
+      <button>EDA Tooling Refresh</button>
+    </div>
+    <div class="grid">
+      <article class="tile">
+        <header>Recent notes <span class="count">9</span></header>
+        <div class="body">
+          <div class="note">
+            <time><span>Thu</span><span>11:45 AM</span></time>
+            <div class="text">Walked the Billerica cleanroom with Anya. Two switches running 7-year-old IOS-XE — they want to refresh before the December audit.</div>
+          </div>
+          <div class="note">
+            <time><span>Wed</span><span>9:10 AM</span></time>
+            <div class="text">EDA team is leaning toward Synopsys for tape-out tooling. Implication: NFS storage spike around Q3.</div>
+          </div>
+        </div>
+      </article>
+      <article class="tile">
+        <header>Tasks <span class="count">4</span></header>
+        <div class="body">
+          <div class="task">
+            <input type="checkbox" />
+            <div class="title">Quote refresh on cleanroom switches</div>
+            <div class="due">May 7</div>
+          </div>
+          <div class="task">
+            <input type="checkbox" />
+            <div class="title">Loop in NetApp for NFS sizing review</div>
+            <div class="due overdue">Apr 25</div>
+          </div>
+        </div>
+      </article>
+    </div>
+    <div class="footer-meta">
+      <span><strong>Status</strong><span class="chip">qualifying</span></span>
+      <span><strong>Audit</strong>December 2026</span>
+    </div>
+  </section>
+
+  <section class="stage theme-ridge" data-name="ridge" data-active="false">
+    <div class="topline">
+      <span class="breadcrumb">CUSTOMERS / LAND O'LAKES</span>
+      <span class="alert-bell">⌥</span>
+    </div>
+    <h2 class="pageTitle">Land O'Lakes</h2>
+    <p class="subtitle">Account · Arden Hills, MN · Agriculture & food</p>
+    <div class="tabs">
+      <button class="active">Home</button>
+      <button>Plant DC Modernization</button>
+      <button>Cold-storage Networking</button>
+    </div>
+    <div class="grid">
+      <article class="tile">
+        <header>Recent notes <span class="count">7</span></header>
+        <div class="body">
+          <div class="note">
+            <time><span>Wed</span><span>4:55 PM</span></time>
+            <div class="text">DC modernization is ahead of plan. Power and cooling capacity headroom locked in for FY27 growth.</div>
+          </div>
+          <div class="note">
+            <time><span>Tue</span><span>1:20 PM</span></time>
+            <div class="text">Cold-storage networking pilot survived a -25°F overnight. Industrial-grade switches passed; standard-temp PoE injectors did not.</div>
+          </div>
+        </div>
+      </article>
+      <article class="tile">
+        <header>Tasks <span class="count">4</span></header>
+        <div class="body">
+          <div class="task">
+            <input type="checkbox" />
+            <div class="title">Spec ruggedized PoE for cold-storage</div>
+            <div class="due">May 5</div>
+          </div>
+          <div class="task">
+            <input type="checkbox" />
+            <div class="title">Confirm FY27 capacity plan with plant ops</div>
+            <div class="due overdue">Apr 26</div>
+          </div>
+        </div>
+      </article>
+    </div>
+    <div class="footer-meta">
+      <span><strong>Status</strong><span class="chip">active</span></span>
+      <span><strong>Sites</strong>62</span>
+      <span><strong>Pilot</strong>3 of 9 cold-storage</span>
+    </div>
+  </section>
+</div>
+
+<script>
+  const stages = document.querySelectorAll('.stage');
+  const buttons = document.querySelectorAll('.switcher button');
+
+  buttons.forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const target = btn.dataset.target;
+      buttons.forEach((b) => b.setAttribute('aria-pressed', String(b === btn)));
+      stages.forEach((s) =>
+        s.setAttribute('data-active', String(s.dataset.name === target)),
+      );
+    });
+  });
+</script>
+</body>
+</html>

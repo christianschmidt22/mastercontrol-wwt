@@ -19,6 +19,8 @@ import { shellRouter } from './routes/shell.route.js';
 import { calendarRouter } from './routes/calendar.route.js';
 import { alertsRouter } from './routes/alerts.route.js';
 import { projectResourcesRouter } from './routes/projectResources.route.js';
+import { masterNotesRouter } from './routes/masterNotes.route.js';
+import { backlogItemsRouter } from './routes/backlogItems.route.js';
 import { seedDailyTaskReview } from './services/reports.service.js';
 import {
   runMissedJobs,
@@ -89,6 +91,8 @@ app.use('/api/shell', shellRouter);
 app.use('/api/calendar', calendarRouter);
 app.use('/api/alerts', alertsRouter);
 app.use('/api/projects/:projectId/resources', projectResourcesRouter);
+app.use('/api/master-notes', masterNotesRouter);
+app.use('/api/backlog-items', backlogItemsRouter);
 
 app.use(errorHandler);
 

@@ -31,7 +31,8 @@ function makeProposal(overrides: Partial<NoteProposal> = {}): NoteProposal {
     source_note_id: note.id,
     organization_id: org.id,
     project_id: null,
-    type: 'customer_insight',
+    contact_id: null,
+    type: 'customer_ask',
     title: 'Test proposal',
     summary: 'A test summary.',
     evidence_quote: 'Evidence quote.',
@@ -71,7 +72,7 @@ describe('applyApproval: task_follow_up', () => {
     expect(created!.organization_id).toBe(org.id);
   });
 
-  it('creates task without due_date when payload omits it', () => {
+  it('defaults due_date to 1 week out when payload omits it', () => {
     const org = makeOrg();
     const proposal = makeProposal({
       organization_id: org.id,
@@ -85,7 +86,13 @@ describe('applyApproval: task_follow_up', () => {
     const tasks = taskModel.list({ org_id: org.id });
     const created = tasks.find((t) => t.title === 'Follow up on pricing');
     expect(created).toBeDefined();
-    expect(created!.due_date).toBeNull();
+    // Should be 7 days from today in YYYY-MM-DD form.
+    const expected = new Date();
+    expected.setDate(expected.getDate() + 7);
+    const yyyy = expected.getFullYear();
+    const mm = String(expected.getMonth() + 1).padStart(2, '0');
+    const dd = String(expected.getDate()).padStart(2, '0');
+    expect(created!.due_date).toBe(`${yyyy}-${mm}-${dd}`);
   });
 });
 
@@ -94,7 +101,7 @@ describe('applyApproval: task_follow_up', () => {
 // ---------------------------------------------------------------------------
 
 describe('applyApproval: customer_ask', () => {
-  it('creates a user note with Customer Ask prefix', () => {
+  it('creates a customer_ask role note with Customer Ask prefix', () => {
     const org = makeOrg();
     const proposal = makeProposal({
       organization_id: org.id,
@@ -110,7 +117,9 @@ describe('applyApproval: customer_ask', () => {
     expect(created).toBeDefined();
     expect(created!.content).toContain('Need a disaster recovery plan');
     expect(created!.content).toContain('[high urgency]');
-    expect(created!.role).toBe('user');
+    // Saved with the dedicated customer_ask role so feed queries hide it
+    // while the search_notes tool can still surface it on demand.
+    expect(created!.role).toBe('customer_ask');
     expect(created!.confirmed).toBe(true);
   });
 
@@ -131,63 +140,6 @@ describe('applyApproval: customer_ask', () => {
     const created = notes.find((n) => n.content.includes('Escalation to CIO'));
     expect(created).toBeDefined();
     expect(created!.project_id).toBe(project.id);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// project_update
-// ---------------------------------------------------------------------------
-
-describe('applyApproval: project_update', () => {
-  it('creates a user note with Project Update prefix', () => {
-    const org = makeOrg();
-    const project = makeProject(org.id);
-    const proposal = makeProposal({
-      organization_id: org.id,
-      project_id: project.id,
-      type: 'project_update',
-      title: 'Go-live delayed to June',
-      proposed_payload: { content: 'Infrastructure team pushed go-live to June.', new_status: 'on_hold' },
-    });
-
-    applyApproval(proposal);
-
-    const notes = noteModel.listFor(org.id);
-    const created = notes.find((n) => n.content.includes('Project Update:'));
-    expect(created).toBeDefined();
-    expect(created!.content).toContain('Go-live delayed to June');
-    expect(created!.content).toContain('Status: on_hold');
-    expect(created!.project_id).toBe(project.id);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// risk_blocker
-// ---------------------------------------------------------------------------
-
-describe('applyApproval: risk_blocker', () => {
-  it('creates both a note and a task', () => {
-    const org = makeOrg();
-    const proposal = makeProposal({
-      organization_id: org.id,
-      type: 'risk_blocker',
-      title: 'Legal hold on PO',
-      proposed_payload: { description: 'Legal team placed a hold on the PO.', severity: 'high' },
-    });
-
-    const notesBefore = noteModel.listFor(org.id).length;
-    const tasksBefore = taskModel.list({ org_id: org.id }).length;
-
-    applyApproval(proposal);
-
-    expect(noteModel.listFor(org.id).length).toBe(notesBefore + 1);
-    expect(taskModel.list({ org_id: org.id }).length).toBe(tasksBefore + 1);
-
-    const created = noteModel.listFor(org.id).find((n) => n.content.includes('Risk/Blocker:'));
-    expect(created!.content).toContain('[high severity]');
-
-    const task = taskModel.list({ org_id: org.id }).find((t) => t.title.startsWith('[Risk]'));
-    expect(task!.title).toContain('Legal hold on PO');
   });
 });
 
@@ -234,49 +186,6 @@ describe('applyApproval: oem_mention', () => {
     const notes = noteModel.listFor(org.id);
     const created = notes.find((n) => n.content.includes('OEM Mention'));
     expect(created).toBeDefined();
-  });
-});
-
-// ---------------------------------------------------------------------------
-// customer_insight
-// ---------------------------------------------------------------------------
-
-describe('applyApproval: customer_insight', () => {
-  it('creates a confirmed agent_insight note', () => {
-    const org = makeOrg();
-    const proposal = makeProposal({
-      organization_id: org.id,
-      type: 'customer_insight',
-      title: 'Budget cycle is January',
-      proposed_payload: { insight: 'Customer confirmed their budget resets every January.' },
-    });
-
-    applyApproval(proposal);
-
-    const notes = noteModel.listFor(org.id).filter((n) => n.role === 'agent_insight');
-    expect(notes.length).toBeGreaterThanOrEqual(1);
-    const created = notes.find((n) => n.content.includes('Customer Insight:'));
-    expect(created).toBeDefined();
-    expect(created!.confirmed).toBe(true);
-    expect(created!.content).toContain('Budget cycle is January');
-  });
-
-  it('falls back to summary when payload.insight is missing', () => {
-    const org = makeOrg();
-    const proposal = makeProposal({
-      organization_id: org.id,
-      type: 'customer_insight',
-      title: 'Procurement prefers single-vendor',
-      summary: 'Customer procurement prefers single-vendor contracts.',
-      proposed_payload: {},
-    });
-
-    applyApproval(proposal);
-
-    const notes = noteModel.listFor(org.id).filter((n) => n.role === 'agent_insight');
-    const created = notes.find((n) => n.content.includes('Procurement prefers single-vendor'));
-    expect(created).toBeDefined();
-    expect(created!.confirmed).toBe(true);
   });
 });
 

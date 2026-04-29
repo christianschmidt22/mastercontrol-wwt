@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { Folder, LayoutGrid, Settings } from 'lucide-react';
+import { Folder, LayoutGrid, Settings, Users } from 'lucide-react';
 import { useOpenPath } from '../api/useShell';
 import { TileGrid, type TileGridItem } from '../components/tiles/TileGrid';
 import { useTileLayout, type TileLayout } from '../components/tiles/useTileLayout';
@@ -14,6 +14,7 @@ import { DocumentsTile } from '../components/tiles/customer/DocumentsTile';
 import { OrgTimelineTile } from '../components/tiles/customer/OrgTimelineTile';
 import { ProjectNextStepsTile } from '../components/tiles/customer/ProjectNextStepsTile';
 import { ProjectResourcesTile } from '../components/tiles/customer/ProjectResourcesTile';
+import { MasterNotesTile } from '../components/tiles/customer/MasterNotesTile';
 import { useOrganization } from '../api/useOrganizations';
 import { useProjects, useUpdateProject } from '../api/useProjects';
 import { CustomerPageHeader } from '../components/customers/CustomerPageHeader';
@@ -38,11 +39,12 @@ const DEFAULT_CUSTOMER_LAYOUT: TileLayout[] = [
   { id: 'chat',              x: 1,  y: 1,  w: 7,  h: 5 },
   { id: 'priority-projects', x: 8,  y: 1,  w: 5,  h: 3 },
   { id: 'tasks',             x: 8,  y: 4,  w: 5,  h: 2 },
-  { id: 'recent-notes',      x: 1,  y: 6,  w: 7,  h: 3 },
-  { id: 'contacts',          x: 8,  y: 6,  w: 5,  h: 2 },
-  { id: 'reference',         x: 8,  y: 8,  w: 5,  h: 1 },
-  { id: 'documents',         x: 1,  y: 9,  w: 7,  h: 1 },
-  { id: 'org-timeline',      x: 1,  y: 10, w: 12, h: 5 },
+  { id: 'master-notes',      x: 1,  y: 6,  w: 12, h: 4 },
+  { id: 'recent-notes',      x: 1,  y: 10, w: 7,  h: 3 },
+  { id: 'contacts',          x: 8,  y: 10, w: 5,  h: 2 },
+  { id: 'reference',         x: 8,  y: 12, w: 5,  h: 1 },
+  { id: 'documents',         x: 1,  y: 13, w: 7,  h: 1 },
+  { id: 'org-timeline',      x: 1,  y: 14, w: 12, h: 5 },
 ];
 
 const tabStyleBase: CSSProperties = {
@@ -303,6 +305,8 @@ function StatusChip({ status }: { status: ProjectStatus }) {
 function ProjectConfigPanel({ project }: { project: Project }) {
   const updateProject = useUpdateProject();
   const [open, setOpen] = useState(false);
+  const [name, setName] = useState(project.name);
+  const [description, setDescription] = useState(project.description ?? '');
   const [status, setStatus] = useState<ProjectStatus>(project.status);
   const [docUrl, setDocUrl] = useState(project.doc_url ?? '');
   const btnRef = useRef<HTMLButtonElement>(null);
@@ -310,9 +314,11 @@ function ProjectConfigPanel({ project }: { project: Project }) {
 
   // Sync local state when project changes (tab switch)
   useEffect(() => {
+    setName(project.name);
+    setDescription(project.description ?? '');
     setStatus(project.status);
     setDocUrl(project.doc_url ?? '');
-  }, [project.id, project.status, project.doc_url]);
+  }, [project.id, project.name, project.description, project.status, project.doc_url]);
 
   // Close on outside click
   useEffect(() => {
@@ -337,11 +343,20 @@ function ProjectConfigPanel({ project }: { project: Project }) {
     return () => document.removeEventListener('keydown', handler);
   }, [open]);
 
-  const isDirty = status !== project.status || docUrl !== (project.doc_url ?? '');
+  const trimmedName = name.trim();
+  const nameIsValid = trimmedName.length > 0;
+  const isDirty =
+    trimmedName !== project.name ||
+    description !== (project.description ?? '') ||
+    status !== project.status ||
+    docUrl !== (project.doc_url ?? '');
 
   const handleSave = () => {
+    if (!nameIsValid) return;
     updateProject.mutate({
       id: project.id,
+      name: trimmedName,
+      description: normalizeOptional(description),
       status,
       doc_url: normalizeOptional(docUrl),
     }, { onSuccess: () => setOpen(false) });
@@ -394,6 +409,34 @@ function ProjectConfigPanel({ project }: { project: Project }) {
             gap: 14,
           }}
         >
+          {/* Name */}
+          <div>
+            <label style={projectFieldLabelStyle} htmlFor="cfg-name">Project name</label>
+            <input
+              id="cfg-name"
+              value={name}
+              onChange={e => setName(e.target.value)}
+              aria-invalid={!nameIsValid}
+              style={{
+                ...projectFieldStyle,
+                borderColor: nameIsValid ? 'var(--rule)' : 'var(--accent)',
+              }}
+            />
+          </div>
+
+          {/* Description */}
+          <div>
+            <label style={projectFieldLabelStyle} htmlFor="cfg-description">Description</label>
+            <textarea
+              id="cfg-description"
+              value={description}
+              rows={3}
+              placeholder="No description"
+              onChange={e => setDescription(e.target.value)}
+              style={{ ...projectFieldStyle, resize: 'vertical' }}
+            />
+          </div>
+
           {/* Status */}
           <div>
             <label style={projectFieldLabelStyle} htmlFor="cfg-status">Status</label>
@@ -442,13 +485,13 @@ function ProjectConfigPanel({ project }: { project: Project }) {
           {/* Save */}
           <button
             type="button"
-            disabled={!isDirty || updateProject.isPending}
+            disabled={!isDirty || !nameIsValid || updateProject.isPending}
             onClick={handleSave}
             style={{
               ...projectActionStyle,
-              background: isDirty ? 'var(--bg-2)' : 'var(--bg)',
-              color: isDirty ? 'var(--ink-1)' : 'var(--ink-3)',
-              cursor: isDirty && !updateProject.isPending ? 'pointer' : 'not-allowed',
+              background: isDirty && nameIsValid ? 'var(--bg-2)' : 'var(--bg)',
+              color: isDirty && nameIsValid ? 'var(--ink-1)' : 'var(--ink-3)',
+              cursor: isDirty && nameIsValid && !updateProject.isPending ? 'pointer' : 'not-allowed',
               width: '100%',
               justifyContent: 'center',
             }}
@@ -463,34 +506,115 @@ function ProjectConfigPanel({ project }: { project: Project }) {
 
 // ── Project page ──────────────────────────────────────────────────────────────
 
+const DEFAULT_PROJECT_LAYOUT: TileLayout[] = [
+  { id: 'master-notes',       x: 1, y: 1, w: 12, h: 4 },
+  { id: 'recent-notes',       x: 1, y: 5, w: 12, h: 4 },
+  { id: 'project-next-steps', x: 1, y: 9, w: 12, h: 3 },
+];
+
 function ProjectPage({ project }: { project: Project }) {
-  const updateProject = useUpdateProject();
   const { mutate: openPath } = useOpenPath();
-  const [draft, setDraft] = useState({
-    name: project.name,
-    description: project.description ?? '',
-  });
 
+  const { layout, save, reset, revert, isDirty } = useTileLayout(
+    `layout.project.${project.id}`,
+    DEFAULT_PROJECT_LAYOUT,
+  );
+
+  const [editMode, setEditMode] = useState(false);
+  const [resourcesOpen, setResourcesOpen] = useState(false);
+  const resourcesBtnRef = useRef<HTMLButtonElement>(null);
+  const resourcesPanelRef = useRef<HTMLDivElement>(null);
+
+  // Close the WWT Resources popover on outside click / escape.
   useEffect(() => {
-    setDraft({
-      name: project.name,
-      description: project.description ?? '',
-    });
-  }, [project.id, project.name, project.description]);
+    if (!resourcesOpen) return;
+    const onClick = (e: MouseEvent) => {
+      if (
+        resourcesPanelRef.current && !resourcesPanelRef.current.contains(e.target as Node) &&
+        resourcesBtnRef.current && !resourcesBtnRef.current.contains(e.target as Node)
+      ) setResourcesOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setResourcesOpen(false); resourcesBtnRef.current?.focus(); }
+    };
+    document.addEventListener('mousedown', onClick);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onClick);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [resourcesOpen]);
 
-  const isDirty =
-    draft.name !== project.name ||
-    draft.description !== (project.description ?? '');
+  const handleLayoutSave = () => {
+    save(layout, false);
+    setEditMode(false);
+  };
+  const handleLayoutCancel = () => {
+    revert();
+    setEditMode(false);
+  };
+  const handleLayoutReset = async () => {
+    await reset();
+    setEditMode(false);
+  };
 
-  const nameIsValid = draft.name.trim().length > 0;
+  const tiles: TileGridItem[] = [
+    {
+      id: 'master-notes',
+      title: 'Master Notes',
+      node: (
+        <MasterNotesTile
+          orgId={project.organization_id}
+          projectId={project.id}
+        />
+      ),
+    },
+    {
+      id: 'recent-notes',
+      title: 'Recent Notes',
+      node: (
+        <RecentNotesTile
+          orgId={project.organization_id}
+          projectId={project.id}
+          captureSource="mastercontrol_project"
+        />
+      ),
+    },
+    {
+      id: 'project-next-steps',
+      title: 'Next Steps',
+      node: <ProjectNextStepsTile projectId={project.id} orgId={project.organization_id} />,
+    },
+  ];
 
-  const handleSave = () => {
-    if (!isDirty || !nameIsValid) return;
-    updateProject.mutate({
-      id: project.id,
-      name: draft.name.trim(),
-      description: normalizeOptional(draft.description),
-    });
+  const iconBtnStyle: CSSProperties = {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 30,
+    height: 30,
+    border: '1px solid var(--rule)',
+    borderRadius: 6,
+    background: 'var(--bg)',
+    color: 'var(--ink-3)',
+    cursor: 'pointer',
+    padding: 0,
+  };
+
+  const inlineToolbarBtn: CSSProperties = {
+    fontFamily: 'var(--body)',
+    fontSize: 12,
+    fontWeight: 500,
+    padding: '7px 12px',
+    borderRadius: 6,
+    cursor: 'pointer',
+    border: '1px solid var(--rule)',
+    background: 'var(--bg)',
+    color: 'var(--ink-2)',
+    display: 'flex',
+    alignItems: 'center',
+    gap: 6,
+    height: 30,
   };
 
   return (
@@ -511,110 +635,98 @@ function ProjectPage({ project }: { project: Project }) {
         }}
       >
         <StatusChip status={project.status} />
+
+        {/* Customize / edit-mode controls — live inline with the icon row */}
+        {editMode ? (
+          <>
+            <button type="button" onClick={() => void handleLayoutReset()} style={inlineToolbarBtn}>
+              Reset
+            </button>
+            <button type="button" onClick={handleLayoutCancel} style={inlineToolbarBtn}>
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleLayoutSave}
+              disabled={!isDirty}
+              style={{
+                ...inlineToolbarBtn,
+                cursor: isDirty ? 'pointer' : 'default',
+                background: isDirty ? 'var(--bg-2)' : 'var(--bg)',
+                color: isDirty ? 'var(--ink-1)' : 'var(--ink-3)',
+              }}
+            >
+              Save
+            </button>
+          </>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setEditMode(true)}
+            aria-label="Customize tile layout"
+            title="Customize layout"
+            style={iconBtnStyle}
+          >
+            <LayoutGrid size={14} strokeWidth={1.5} aria-hidden="true" />
+          </button>
+        )}
+
         {project.doc_url && (
           <button
             type="button"
             aria-label="Open project folder"
             title={project.doc_url}
             onClick={() => openPath(project.doc_url!)}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              width: 30,
-              height: 30,
-              border: '1px solid var(--rule)',
-              borderRadius: 6,
-              background: 'var(--bg)',
-              color: 'var(--ink-3)',
-              cursor: 'pointer',
-              padding: 0,
-            }}
+            style={iconBtnStyle}
           >
             <Folder size={14} strokeWidth={1.5} aria-hidden="true" />
           </button>
         )}
+
+        {/* WWT Resources — popover trigger between Folder and Settings */}
+        <div style={{ position: 'relative' }}>
+          <button
+            ref={resourcesBtnRef}
+            type="button"
+            aria-label="WWT resources on this project"
+            aria-expanded={resourcesOpen}
+            aria-haspopup="dialog"
+            onClick={() => setResourcesOpen((v) => !v)}
+            style={{
+              ...iconBtnStyle,
+              color: resourcesOpen ? 'var(--ink-1)' : 'var(--ink-3)',
+            }}
+          >
+            <Users size={14} strokeWidth={1.5} aria-hidden="true" />
+          </button>
+          {resourcesOpen && (
+            <div
+              ref={resourcesPanelRef}
+              role="dialog"
+              aria-label="WWT resources"
+              style={{
+                position: 'absolute',
+                top: 36,
+                right: 0,
+                width: 360,
+                background: 'var(--bg)',
+                border: '1px solid var(--rule)',
+                borderRadius: 8,
+                boxShadow: '0 16px 40px rgba(0, 0, 0, 0.28)',
+                padding: 0,
+                zIndex: 200,
+                overflow: 'hidden',
+              }}
+            >
+              <ProjectResourcesTile projectId={project.id} />
+            </div>
+          )}
+        </div>
+
         <ProjectConfigPanel project={project} />
       </div>
 
-      {/* Main editable form — single full-width column */}
-      <form
-        aria-label={`${project.name} project details`}
-        onSubmit={e => { e.preventDefault(); handleSave(); }}
-        style={{
-          border: '1px solid var(--rule)',
-          borderRadius: 8,
-          padding: 22,
-          background: 'var(--bg)',
-        }}
-      >
-        <label style={projectFieldLabelStyle} htmlFor="project-name">Project</label>
-        <input
-          id="project-name"
-          value={draft.name}
-          onChange={e => setDraft(n => ({ ...n, name: e.target.value }))}
-          aria-invalid={!nameIsValid}
-          style={{
-            ...projectFieldStyle,
-            fontFamily: 'var(--display)',
-            fontSize: 34,
-            lineHeight: 1.08,
-            fontWeight: 500,
-            padding: '8px 10px 10px',
-            borderColor: nameIsValid ? 'var(--rule)' : 'var(--accent)',
-          }}
-        />
-        <label style={{ ...projectFieldLabelStyle, marginTop: 18 }} htmlFor="project-description">
-          Description
-        </label>
-        <textarea
-          id="project-description"
-          value={draft.description}
-          rows={5}
-          placeholder="No project description yet."
-          onChange={e => setDraft(n => ({ ...n, description: e.target.value }))}
-          style={{ ...projectFieldStyle, resize: 'vertical' }}
-        />
-        <div style={{ display: 'flex', gap: 8, marginTop: 18, alignItems: 'center' }}>
-          <button
-            type="submit"
-            disabled={!isDirty || !nameIsValid || updateProject.isPending}
-            style={{
-              ...projectActionStyle,
-              background: isDirty && nameIsValid ? 'var(--bg-2)' : 'var(--bg)',
-              color: isDirty && nameIsValid ? 'var(--ink-1)' : 'var(--ink-3)',
-              cursor: isDirty && nameIsValid && !updateProject.isPending ? 'pointer' : 'not-allowed',
-            }}
-          >
-            {updateProject.isPending ? 'Saving...' : 'Save project'}
-          </button>
-          <button
-            type="button"
-            onClick={() => setDraft({ name: project.name, description: project.description ?? '' })}
-            disabled={!isDirty}
-            style={{
-              ...projectActionStyle,
-              color: isDirty ? 'var(--ink-2)' : 'var(--ink-3)',
-              cursor: isDirty ? 'pointer' : 'not-allowed',
-            }}
-          >
-            Reset
-          </button>
-        </div>
-      </form>
-
-      <div style={{ minHeight: 280 }}>
-        <RecentNotesTile
-          orgId={project.organization_id}
-          projectId={project.id}
-          captureSource="mastercontrol_project"
-        />
-      </div>
-
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 18 }}>
-        <ProjectNextStepsTile projectId={project.id} orgId={project.organization_id} />
-        <ProjectResourcesTile projectId={project.id} />
-      </div>
+      <TileGrid items={tiles} layout={layout} editMode={editMode} onLayoutChange={save} />
     </div>
   );
 }
@@ -634,11 +746,11 @@ function LayoutToolbar({
   onCancel: () => void;
   onSave: () => void;
 }) {
-  const buttonStyle: CSSProperties = {
+  const textBtnStyle: CSSProperties = {
     fontFamily: 'var(--body)',
     fontSize: 12,
     fontWeight: 500,
-    padding: '7px 14px',
+    padding: '7px 12px',
     borderRadius: 6,
     cursor: 'pointer',
     border: '1px solid var(--rule)',
@@ -647,17 +759,42 @@ function LayoutToolbar({
     display: 'flex',
     alignItems: 'center',
     gap: 6,
-    transition: 'background-color 150ms var(--ease), color 150ms var(--ease), border-color 150ms var(--ease)',
+    height: 30,
+    transition: 'background-color 150ms var(--ease), color 150ms var(--ease)',
+  };
+
+  const iconBtnStyle: CSSProperties = {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 30,
+    height: 30,
+    border: '1px solid var(--rule)',
+    borderRadius: 6,
+    background: 'var(--bg)',
+    color: 'var(--ink-3)',
+    cursor: 'pointer',
+    padding: 0,
   };
 
   return (
-    <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
+    <div
+      style={{
+        position: 'fixed',
+        top: 10,
+        right: 68,
+        display: 'flex',
+        alignItems: 'center',
+        gap: 6,
+        zIndex: 500,
+      }}
+    >
       {editMode ? (
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <button type="button" onClick={onReset} style={buttonStyle}>
-            Reset to default
+        <>
+          <button type="button" onClick={onReset} style={textBtnStyle}>
+            Reset
           </button>
-          <button type="button" onClick={onCancel} style={buttonStyle}>
+          <button type="button" onClick={onCancel} style={textBtnStyle}>
             Cancel
           </button>
           <button
@@ -665,7 +802,7 @@ function LayoutToolbar({
             onClick={onSave}
             disabled={!isDirty}
             style={{
-              ...buttonStyle,
+              ...textBtnStyle,
               cursor: isDirty ? 'pointer' : 'default',
               background: isDirty ? 'var(--bg-2)' : 'var(--bg)',
               color: isDirty ? 'var(--ink-1)' : 'var(--ink-3)',
@@ -673,16 +810,16 @@ function LayoutToolbar({
           >
             Save
           </button>
-        </div>
+        </>
       ) : (
         <button
           type="button"
           onClick={onStartEdit}
           aria-label="Customize tile layout"
-          style={buttonStyle}
+          title="Customize layout"
+          style={iconBtnStyle}
         >
           <LayoutGrid size={14} strokeWidth={1.5} aria-hidden="true" />
-          Customize layout
         </button>
       )}
     </div>
@@ -756,6 +893,11 @@ export function CustomerPage() {
       id: 'tasks',
       title: 'Tasks',
       node: <TasksTile orgId={orgId} />,
+    },
+    {
+      id: 'master-notes',
+      title: 'Master Notes',
+      node: <MasterNotesTile orgId={orgId} />,
     },
     {
       id: 'recent-notes',

@@ -235,6 +235,47 @@ export function useUpdateNoteProposalStatus(): UseMutationResult<
   });
 }
 
+/**
+ * Re-run extraction on a single proposal using the user's feedback. The
+ * server returns the revised proposal (or null if the model decided no
+ * proposal should remain — in which case the row is deleted server-side).
+ */
+export function useReviseNoteProposal(): UseMutationResult<
+  NoteProposal | null,
+  Error,
+  { id: number; orgId: number; feedback: string }
+> {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, feedback }) => {
+      const res = await fetch(`/api/notes/proposals/${id}/revise`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ feedback }),
+      });
+      if (res.status === 204) return null;
+      if (!res.ok) {
+        let message = res.statusText;
+        try {
+          const json = (await res.json()) as { error?: string };
+          if (json.error) message = json.error;
+        } catch {
+          // ignore
+        }
+        throw new Error(message);
+      }
+      return (await res.json()) as NoteProposal;
+    },
+    onSuccess: (proposal, vars) => {
+      void qc.invalidateQueries({ queryKey: ['note_proposals'] });
+      void qc.invalidateQueries({ queryKey: noteKeys.all(vars.orgId) });
+      if (proposal) {
+        void qc.invalidateQueries({ queryKey: noteKeys.all(proposal.organization_id) });
+      }
+    },
+  });
+}
+
 export function useDeleteNote(): UseMutationResult<
   void,
   Error,

@@ -23,7 +23,7 @@ export function Tile({ title, count, titleAction, children, className }: TilePro
       style={{
         border: '1px solid var(--rule)',
         borderRadius: 8,
-        background: 'var(--bg)',
+        background: 'var(--surface)',
         display: 'flex',
         flexDirection: 'column',
         overflow: 'hidden',

@@ -14,9 +14,14 @@ export interface LayoutPayload {
   tiles: TileLayout[];
 }
 
+export type TileLayoutKey =
+  | 'layout.customer'
+  | 'layout.oem'
+  | `layout.project.${number}`;
+
 /**
  * Fetches and persists tile layout via the settings API.
- * Key: 'layout.customer' or 'layout.oem'.
+ * Key: 'layout.customer', 'layout.oem', or 'layout.project.<id>'.
  *
  * - Returns current layout (or default if the setting row is absent).
  * - `save` is debounced 500 ms to avoid hammering the API on rapid drags.
@@ -24,7 +29,7 @@ export interface LayoutPayload {
  * - `isDirty` is true when local state differs from last-saved server state.
  */
 export function useTileLayout(
-  settingKey: 'layout.customer' | 'layout.oem',
+  settingKey: TileLayoutKey,
   defaultLayout: TileLayout[],
 ) {
   const queryClient = useQueryClient();

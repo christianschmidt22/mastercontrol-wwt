@@ -14,13 +14,12 @@ import { Plus, RefreshCw } from 'lucide-react';
 import {
   useTasks,
   useCreateTask,
-  useUpdateTask,
-  useDeleteTask,
   useCompleteTask,
 } from '../api/useTasks';
 import { useOrganizations } from '../api/useOrganizations';
 import { TileEmptyState } from '../components/tiles/TileEmptyState';
-import type { Task, TaskStatus, TaskUpdate } from '../types';
+import { TaskEditDialog } from '../components/tasks/TaskEditDialog';
+import type { Task, TaskStatus } from '../types';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -258,251 +257,26 @@ function ChipGroup<T extends string>({
 }
 
 // ---------------------------------------------------------------------------
-// Inline editor for a single task row
-// ---------------------------------------------------------------------------
-
-interface TaskRowEditorProps {
-  task: Task;
-  orgOptions: { id: number; name: string }[];
-  onSave: (update: { id: number } & TaskUpdate) => void;
-  onCancel: () => void;
-  isSaving: boolean;
-}
-
-function TaskRowEditor({
-  task,
-  orgOptions,
-  onSave,
-  onCancel,
-  isSaving,
-}: TaskRowEditorProps) {
-  const [title, setTitle] = useState(task.title);
-  const [dueDate, setDueDate] = useState(task.due_date ?? '');
-  const [status, setStatus] = useState<TaskStatus>(task.status);
-  const [orgId, setOrgId] = useState<string>(
-    task.organization_id !== null ? String(task.organization_id) : '',
-  );
-
-  const titleId = useId();
-  const dueId = useId();
-  const statusId = useId();
-  const orgEditorId = useId();
-
-  const handleSubmit = (e: FormEvent) => {
-    e.preventDefault();
-    const trimmed = title.trim();
-    if (!trimmed) return;
-    onSave({
-      id: task.id,
-      title: trimmed,
-      due_date: dueDate || null,
-      status,
-      organization_id: orgId ? parseInt(orgId, 10) : null,
-    });
-  };
-
-  const inputStyle: CSSProperties = {
-    border: '1px solid var(--rule)',
-    borderRadius: 4,
-    padding: '5px 8px',
-    fontSize: 13,
-    background: 'transparent',
-    color: 'var(--ink-1)',
-    fontFamily: 'var(--body)',
-    width: '100%',
-  };
-
-  return (
-    <form
-      onSubmit={handleSubmit}
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 8,
-        padding: '10px 0',
-      }}
-    >
-      <div>
-        <label
-          htmlFor={titleId}
-          style={{
-            fontSize: 11,
-            color: 'var(--ink-3)',
-            fontFamily: 'var(--body)',
-            display: 'block',
-            marginBottom: 3,
-          }}
-        >
-          Title
-        </label>
-        <input
-          id={titleId}
-          type="text"
-          name="edit-title"
-          autoComplete="off"
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          style={inputStyle}
-        />
-      </div>
-
-      <div style={{ display: 'flex', gap: 8 }}>
-        <div style={{ flex: 1 }}>
-          <label
-            htmlFor={dueId}
-            style={{
-              fontSize: 11,
-              color: 'var(--ink-3)',
-              fontFamily: 'var(--body)',
-              display: 'block',
-              marginBottom: 3,
-            }}
-          >
-            Due date
-          </label>
-          <input
-            id={dueId}
-            type="date"
-            name="edit-due"
-            value={dueDate}
-            onChange={(e) => setDueDate(e.target.value)}
-            style={{ ...inputStyle }}
-          />
-        </div>
-
-        <div style={{ flex: 1 }}>
-          <label
-            htmlFor={statusId}
-            style={{
-              fontSize: 11,
-              color: 'var(--ink-3)',
-              fontFamily: 'var(--body)',
-              display: 'block',
-              marginBottom: 3,
-            }}
-          >
-            Status
-          </label>
-          <select
-            id={statusId}
-            name="edit-status"
-            value={status}
-            onChange={(e) => setStatus(e.target.value as TaskStatus)}
-            style={{ ...inputStyle }}
-          >
-            <option value="open">Open</option>
-            <option value="done">Done</option>
-            <option value="snoozed">Snoozed</option>
-          </select>
-        </div>
-
-        <div style={{ flex: 1 }}>
-          <label
-            htmlFor={orgEditorId}
-            style={{
-              fontSize: 11,
-              color: 'var(--ink-3)',
-              fontFamily: 'var(--body)',
-              display: 'block',
-              marginBottom: 3,
-            }}
-          >
-            Organization
-          </label>
-          <select
-            id={orgEditorId}
-            name="edit-org"
-            value={orgId}
-            onChange={(e) => setOrgId(e.target.value)}
-            style={{ ...inputStyle }}
-          >
-            <option value="">None</option>
-            {orgOptions.map((o) => (
-              <option key={o.id} value={String(o.id)}>
-                {o.name}
-              </option>
-            ))}
-          </select>
-        </div>
-      </div>
-
-      <div style={{ display: 'flex', gap: 6 }}>
-        <button
-          type="submit"
-          disabled={isSaving || !title.trim()}
-          style={{
-            fontFamily: 'var(--body)',
-            fontSize: 12,
-            padding: '5px 12px',
-            borderRadius: 4,
-            cursor: isSaving || !title.trim() ? 'default' : 'pointer',
-            border: '1px solid var(--rule)',
-            background: 'var(--bg-2)',
-            color: 'var(--ink-1)',
-          }}
-        >
-          {isSaving ? 'Saving…' : 'Save task'}
-        </button>
-        <button
-          type="button"
-          onClick={onCancel}
-          style={{
-            fontFamily: 'var(--body)',
-            fontSize: 12,
-            padding: '5px 12px',
-            borderRadius: 4,
-            cursor: 'pointer',
-            border: '1px solid var(--rule)',
-            background: 'transparent',
-            color: 'var(--ink-2)',
-          }}
-        >
-          Cancel
-        </button>
-      </div>
-    </form>
-  );
-}
-
-// ---------------------------------------------------------------------------
 // Task row (collapsed + expanded)
 // ---------------------------------------------------------------------------
 
 interface TaskRowProps {
   task: Task;
   orgName: string | undefined;
-  orgOptions: { id: number; name: string }[];
   onComplete: (id: number) => void;
-  onDelete: (id: number) => void;
-  onSave: (update: { id: number } & TaskUpdate) => void;
-  isUpdating: boolean;
   completing: boolean;
 }
 
 function TaskRow({
   task,
   orgName,
-  orgOptions,
   onComplete,
-  onDelete,
-  onSave,
-  isUpdating,
   completing,
 }: TaskRowProps) {
-  const [expanded, setExpanded] = useState(false);
   const [editing, setEditing] = useState(false);
   const checkId = `task-check-${task.id}`;
   const overdue = isOverdue(task.due_date);
   const prefersReducedMotion = useReducedMotion();
-
-  const handleSave = useCallback(
-    (update: { id: number } & TaskUpdate) => {
-      onSave(update);
-      setEditing(false);
-      setExpanded(false);
-    },
-    [onSave],
-  );
 
   return (
     <li
@@ -519,86 +293,72 @@ function TaskRow({
         pointerEvents: completing ? 'none' : 'auto',
       }}
     >
-      {/* Main row */}
       <div
         style={{
           display: 'flex',
           alignItems: 'baseline',
           gap: 10,
           padding: '8px 0',
-          cursor: 'pointer',
         }}
       >
-        <label
-          htmlFor={checkId}
-          style={{
-            display: 'flex',
-            alignItems: 'baseline',
-            gap: 10,
-            flex: 1,
-            cursor: 'pointer',
-            minWidth: 0,
-          }}
+        <input
+          id={checkId}
+          type="checkbox"
+          aria-label={`Mark complete: ${task.title}`}
+          checked={task.status === 'done'}
+          onChange={() => onComplete(task.id)}
           onClick={(e) => e.stopPropagation()}
+          style={{
+            width: 14,
+            height: 14,
+            flexShrink: 0,
+            cursor: 'pointer',
+            accentColor: 'var(--ink-3)',
+            transform: 'translateY(2px)',
+          }}
+        />
+        <button
+          type="button"
+          onClick={() => setEditing(true)}
+          style={{
+            flex: 1,
+            minWidth: 0,
+            background: 'transparent',
+            border: 'none',
+            padding: 0,
+            margin: 0,
+            cursor: 'pointer',
+            textAlign: 'left',
+            fontFamily: 'var(--body)',
+          }}
         >
-          <input
-            id={checkId}
-            type="checkbox"
-            checked={task.status === 'done'}
-            onChange={() => onComplete(task.id)}
+          <span
             style={{
-              width: 14,
-              height: 14,
-              flexShrink: 0,
-              cursor: 'pointer',
-              accentColor: 'var(--ink-3)',
-              transform: 'translateY(2px)',
-            }}
-          />
-          <div
-            style={{ flex: 1, minWidth: 0 }}
-            role="button"
-            tabIndex={0}
-            aria-expanded={expanded}
-            onClick={() => setExpanded((x) => !x)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault();
-                setExpanded((x) => !x);
-              }
+              fontSize: 16,
+              color: 'var(--ink-1)',
+              display: 'block',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+              textDecoration: task.status === 'done' ? 'line-through' : 'none',
+              opacity: task.status === 'done' ? 0.5 : 1,
             }}
           >
+            {task.title}
+          </span>
+          {orgName && (
             <span
               style={{
-                fontSize: 16,
-                color: 'var(--ink-1)',
-                fontFamily: 'var(--body)',
+                fontSize: 12,
+                color: 'var(--ink-3)',
                 display: 'block',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
-                textDecoration:
-                  task.status === 'done' ? 'line-through' : 'none',
-                opacity: task.status === 'done' ? 0.5 : 1,
+                marginTop: 1,
               }}
             >
-              {task.title}
+              {orgName}
             </span>
-            {orgName && (
-              <span
-                style={{
-                  fontSize: 12,
-                  color: 'var(--ink-3)',
-                  fontFamily: 'var(--body)',
-                  display: 'block',
-                  marginTop: 1,
-                }}
-              >
-                {orgName}
-              </span>
-            )}
-          </div>
-        </label>
+          )}
+        </button>
 
         {task.due_date && (
           <time
@@ -615,119 +375,8 @@ function TaskRow({
         )}
       </div>
 
-      {/* Expanded detail */}
-      {expanded && !editing && (
-        <div style={{ padding: '0 0 12px 24px' }}>
-          {task.due_date && (
-            <p
-              style={{
-                fontSize: 13,
-                color: 'var(--ink-2)',
-                fontFamily: 'var(--body)',
-                margin: '0 0 6px',
-              }}
-            >
-              Due{' '}
-              <time
-                dateTime={task.due_date}
-                style={{
-                  fontVariantNumeric: 'tabular-nums',
-                  color: overdue ? 'var(--accent)' : 'inherit',
-                }}
-              >
-                {new Intl.DateTimeFormat('en-US', {
-                  weekday: 'long',
-                  month: 'long',
-                  day: 'numeric',
-                }).format(new Date(task.due_date + 'T00:00:00'))}
-              </time>
-            </p>
-          )}
-          <p
-            style={{
-              fontSize: 12,
-              color: 'var(--ink-3)',
-              fontFamily: 'var(--body)',
-              margin: '0 0 8px',
-            }}
-          >
-            Created{' '}
-            {new Intl.DateTimeFormat('en-US', {
-              month: 'short',
-              day: 'numeric',
-              year: 'numeric',
-            }).format(new Date(task.created_at))}
-            {task.completed_at && (
-              <>
-                {' · Completed '}
-                {new Intl.DateTimeFormat('en-US', {
-                  month: 'short',
-                  day: 'numeric',
-                  year: 'numeric',
-                }).format(new Date(task.completed_at))}
-              </>
-            )}
-          </p>
-          {orgName && (
-            <p
-              style={{
-                fontSize: 12,
-                color: 'var(--ink-3)',
-                fontFamily: 'var(--body)',
-                margin: '0 0 8px',
-              }}
-            >
-              Organization: {orgName}
-            </p>
-          )}
-          <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
-            <button
-              type="button"
-              onClick={() => setEditing(true)}
-              style={{
-                fontFamily: 'var(--body)',
-                fontSize: 12,
-                padding: '4px 10px',
-                borderRadius: 4,
-                cursor: 'pointer',
-                border: '1px solid var(--rule)',
-                background: 'transparent',
-                color: 'var(--ink-2)',
-              }}
-            >
-              Edit
-            </button>
-            <button
-              type="button"
-              onClick={() => onDelete(task.id)}
-              style={{
-                fontFamily: 'var(--body)',
-                fontSize: 12,
-                padding: '4px 10px',
-                borderRadius: 4,
-                cursor: 'pointer',
-                border: '1px solid var(--rule)',
-                background: 'transparent',
-                color: 'var(--ink-2)',
-              }}
-            >
-              Delete
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Inline editor */}
       {editing && (
-        <div style={{ padding: '0 0 8px 24px' }}>
-          <TaskRowEditor
-            task={task}
-            orgOptions={orgOptions}
-            onSave={handleSave}
-            onCancel={() => setEditing(false)}
-            isSaving={isUpdating}
-          />
-        </div>
+        <TaskEditDialog task={task} onClose={() => setEditing(false)} />
       )}
     </li>
   );
@@ -997,8 +646,6 @@ export function TasksPage() {
   const orgMap = new Map(allOrgs.map((o) => [o.id, o.name]));
 
   const { mutate: createTask, isPending: isCreating } = useCreateTask();
-  const { mutate: updateTask, isPending: isUpdating } = useUpdateTask();
-  const { mutate: deleteTask } = useDeleteTask();
   const { mutate: completeTask } = useCompleteTask();
 
   const [showAddForm, setShowAddForm] = useState(false);
@@ -1068,13 +715,6 @@ export function TasksPage() {
     setShowAddForm(false);
   };
 
-  const handleUpdate = useCallback(
-    (update: { id: number } & TaskUpdate) => {
-      updateTask(update);
-    },
-    [updateTask],
-  );
-
   const handleComplete = useCallback(
     (id: number) => {
       setCompletingIds((prev) => new Set([...prev, id]));
@@ -1089,13 +729,6 @@ export function TasksPage() {
       });
     },
     [completeTask],
-  );
-
-  const handleDelete = useCallback(
-    (id: number) => {
-      deleteTask(id);
-    },
-    [deleteTask],
   );
 
   return (
@@ -1342,11 +975,7 @@ export function TasksPage() {
                     ? orgMap.get(task.organization_id)
                     : undefined
                 }
-                orgOptions={allOrgs}
                 onComplete={handleComplete}
-                onDelete={handleDelete}
-                onSave={handleUpdate}
-                isUpdating={isUpdating}
                 completing={completingIds.has(task.id)}
               />
             ))}

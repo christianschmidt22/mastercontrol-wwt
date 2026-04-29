@@ -100,8 +100,9 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
   // Toggle-theme action cycles system → dark → light → system
   const handleToggleTheme = useCallback(() => {
     const cycle: Array<'system' | 'dark' | 'light'> = ['system', 'dark', 'light'];
-    const idx = cycle.indexOf(theme);
-    const next = cycle[(idx + 1) % cycle.length] ?? 'system';
+    // If theme is one of the named variants, idx is -1 → start at system.
+    const idx = cycle.indexOf(theme as 'system' | 'dark' | 'light');
+    const next = idx === -1 ? 'system' : cycle[(idx + 1) % cycle.length] ?? 'system';
     setTheme(next);
     onClose();
   }, [theme, setTheme, onClose]);

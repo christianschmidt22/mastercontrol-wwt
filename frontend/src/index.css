@@ -60,6 +60,10 @@
 
   --bg:          #0E1116;
   --bg-2:        #161A21;
+  /* --surface: tile / sidebar background. Defaults to page --bg so themes
+     that don't differentiate stay flat. Themes can override to a darker
+     (or lighter) shade so tiles and the sidebar lift off the page. */
+  --surface:     var(--bg);
   --ink-1:       #EDE7DA;
   --ink-2:       #9A958A;
   --ink-3:       #5C564E;
@@ -90,7 +94,7 @@
 
 /* Light palette — system preference, no manual override */
 @media (prefers-color-scheme: light) {
-  :root:not(.dark):not(.light) {
+  :root:not(.dark):not(.light):not(.theme-pine):not(.theme-moss):not(.theme-carbon):not(.theme-oxblood):not(.theme-ridge):not(.theme-verdant) {
     color-scheme: light;
 
     --bg:          #FAF7F2;
@@ -102,6 +106,142 @@
     --accent:      #C8482E;
     --accent-soft: #FCE8DF;
   }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Optional named themes — selectable from Settings → Theme.
+   Each variant overrides the base palette and (where useful) the body font
+   stack. Typography fallbacks stay system to honor R-017 (no third-party
+   font CDN). Backgrounds keep solid surfaces; subtle atmosphere is layered
+   via body::before in the rule below.
+───────────────────────────────────────────────────────────────────────────── */
+
+:root.theme-pine {
+  color-scheme: dark;
+  --bg:          #0c1813;
+  --bg-2:        #122019;
+  --ink-1:       #ECE7D4;
+  --ink-2:       #A3B4A4;
+  --ink-3:       #6E7F72;
+  --rule:        #1F2E26;
+  --accent:      #D97757;
+  --accent-soft: #2A1A14;
+}
+
+:root.theme-moss {
+  color-scheme: light;
+  --bg:          #F3F0E6;
+  --bg-2:        #E9E4D4;
+  --ink-1:       #1D2820;
+  --ink-2:       #5B6A59;
+  --ink-3:       #94A08E;
+  --rule:        #CDD2BD;
+  --accent:      #4A6B3A;
+  --accent-soft: #DDE4CF;
+}
+
+:root.theme-carbon {
+  color-scheme: dark;
+  --bg:          #0A0D10;
+  --bg-2:        #11161B;
+  --ink-1:       #E6EFE8;
+  --ink-2:       #8C9C92;
+  --ink-3:       #586A60;
+  --rule:        #1A2127;
+  --accent:      #5AF3A4;
+  --accent-soft: #0D2419;
+}
+
+:root.theme-oxblood {
+  color-scheme: dark;
+  --bg:          #1A0D0E;
+  --bg-2:        #251112;
+  --ink-1:       #F1E8D6;
+  --ink-2:       #B29C87;
+  --ink-3:       #7A685A;
+  --rule:        #311A1C;
+  --accent:      #C79A4B;
+  --accent-soft: #2B1F0C;
+}
+
+:root.theme-ridge {
+  color-scheme: dark;
+  --bg:          #0A1410;
+  --bg-2:        #11201A;
+  --ink-1:       #E1DDC8;
+  --ink-2:       #97A092;
+  --ink-3:       #5E6A5F;
+  --rule:        #1C2A23;
+  --accent:      #E3B341;
+  --accent-soft: #2A1F0A;
+}
+
+:root.theme-verdant {
+  color-scheme: dark;
+  --bg:          #1F4135;
+  --bg-2:        #264C3F;
+  --surface:     #183029;
+  --ink-1:       #ECEAD8;
+  --ink-2:       #9DAB9C;
+  --ink-3:       #61736C;
+  --rule:        #305749;
+  --accent:      #E69587;
+  --accent-soft: #4D2D2A;
+}
+
+/* Atmospheric overlays — fixed background tint applied per named theme.
+   Pointer-events:none + z-index:-1 keeps it behind app content. */
+.theme-pine body::before,
+.theme-carbon body::before,
+.theme-oxblood body::before,
+.theme-ridge body::before,
+.theme-verdant body::before,
+.theme-moss body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+}
+.theme-pine body::before {
+  background:
+    radial-gradient(circle at 12% 0%, rgba(217, 119, 87, 0.07), transparent 45%),
+    radial-gradient(circle at 100% 100%, rgba(40, 78, 60, 0.45), transparent 60%);
+}
+.theme-moss body::before {
+  background: radial-gradient(circle at 90% 0%, rgba(74, 107, 58, 0.08), transparent 55%);
+}
+.theme-carbon body::before {
+  background:
+    linear-gradient(180deg, transparent 60%, rgba(90, 243, 164, 0.04) 100%),
+    repeating-linear-gradient(
+      0deg,
+      rgba(255, 255, 255, 0.012) 0,
+      rgba(255, 255, 255, 0.012) 1px,
+      transparent 1px,
+      transparent 3px
+    );
+}
+.theme-oxblood body::before {
+  background:
+    radial-gradient(circle at 0% 0%, rgba(199, 154, 75, 0.07), transparent 55%),
+    radial-gradient(circle at 100% 100%, rgba(80, 25, 30, 0.45), transparent 60%);
+}
+.theme-ridge body::before {
+  background:
+    repeating-linear-gradient(
+      135deg,
+      rgba(225, 179, 65, 0.025) 0,
+      rgba(225, 179, 65, 0.025) 1px,
+      transparent 1px,
+      transparent 14px
+    ),
+    radial-gradient(circle at 80% 100%, rgba(35, 70, 50, 0.5), transparent 60%);
+}
+.theme-verdant body::before {
+  background:
+    radial-gradient(circle at 0% 0%, rgba(230, 149, 135, 0.08), transparent 50%),
+    radial-gradient(circle at 100% 100%, rgba(20, 60, 45, 0.4), transparent 60%);
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────

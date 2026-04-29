@@ -75,7 +75,7 @@ CREATE TABLE IF NOT EXISTS notes (
   file_mtime DATETIME,
   project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL,
   capture_source TEXT,
-  role TEXT NOT NULL DEFAULT 'user' CHECK(role IN ('user', 'assistant', 'agent_insight', 'imported')),
+  role TEXT NOT NULL DEFAULT 'user' CHECK(role IN ('user', 'assistant', 'agent_insight', 'imported', 'customer_ask')),
   thread_id INTEGER,
   -- R-002: provenance + confirmation gate for agent-authored content.
   -- provenance is JSON like {"tool":"record_insight","source_thread_id":7,
@@ -93,11 +93,49 @@ CREATE INDEX IF NOT EXISTS idx_notes_unconfirmed ON notes(organization_id, creat
 CREATE INDEX IF NOT EXISTS idx_notes_project_created ON notes(project_id, created_at DESC)
   WHERE project_id IS NOT NULL;
 
+-- MasterControl-meta backlog (features / changes for this app itself).
+-- See migration 023_backlog_items.sql.
+CREATE TABLE IF NOT EXISTS backlog_items (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  title TEXT NOT NULL,
+  notes TEXT,
+  due_date DATETIME,
+  status TEXT NOT NULL DEFAULT 'open' CHECK(status IN ('open', 'done', 'snoozed')),
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  completed_at DATETIME
+);
+CREATE INDEX IF NOT EXISTS idx_backlog_items_status_due
+  ON backlog_items(status, due_date);
+
+-- Master notes: one free-form markdown blob per (org, optional project),
+-- autosaved from the UI and mirrored to a vault file. See migration
+-- 022_master_notes.sql for column-level rationale.
+CREATE TABLE IF NOT EXISTS master_notes (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  organization_id INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  project_id INTEGER REFERENCES projects(id) ON DELETE CASCADE,
+  content TEXT NOT NULL DEFAULT '',
+  content_sha256 TEXT NOT NULL DEFAULT '',
+  file_path TEXT,
+  file_mtime DATETIME,
+  last_ingested_sha256 TEXT,
+  last_ingested_at DATETIME,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_master_notes_org
+  ON master_notes(organization_id) WHERE project_id IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_master_notes_org_project
+  ON master_notes(organization_id, project_id) WHERE project_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_master_notes_project
+  ON master_notes(project_id) WHERE project_id IS NOT NULL;
+
 CREATE TABLE IF NOT EXISTS note_proposals (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   source_note_id INTEGER NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
   organization_id INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
   project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL,
+  contact_id INTEGER REFERENCES contacts(id) ON DELETE SET NULL,
   type TEXT NOT NULL CHECK(type IN (
     'customer_ask',
     'task_follow_up',
@@ -124,6 +162,8 @@ CREATE INDEX IF NOT EXISTS idx_note_proposals_org_status
   ON note_proposals(organization_id, status);
 CREATE INDEX IF NOT EXISTS idx_note_proposals_note
   ON note_proposals(source_note_id);
+CREATE INDEX IF NOT EXISTS idx_note_proposals_contact
+  ON note_proposals(contact_id);
 
 CREATE TABLE IF NOT EXISTS note_mentions (
   note_id INTEGER NOT NULL REFERENCES notes(id) ON DELETE CASCADE,

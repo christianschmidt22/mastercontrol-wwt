@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import type { CSSProperties } from 'react';
-import { Check, MessageSquare, X } from 'lucide-react';
+import { Check, MessageSquare, RefreshCw, X } from 'lucide-react';
 import { Tile } from '../tiles/Tile';
 import {
   useNoteProposals,
+  useReviseNoteProposal,
   useUpdateNoteProposalStatus,
 } from '../../api/useNotes';
 import type { NoteProposal } from '../../types';
@@ -31,46 +32,31 @@ function formatType(type: NoteProposal['type']): string {
 
 function describeOutcome(proposal: NoteProposal): React.ReactNode {
   const p = proposal.proposed_payload;
-  const isTriage = p['extraction_stage'] === 'initial_capture_triage';
-
-  if (isTriage) {
-    const target = typeof p['target'] === 'string' ? p['target'] : 'this account';
-    return (
-      <>
-        <span style={{ color: 'var(--ink-3)', fontSize: 12 }}>
-          ⚠ Preliminary — the AI hasn't extracted specifics yet.
-        </span>
-        <br />
-        Approving logs the note content as a project update on <strong>{target}</strong>.
-      </>
-    );
-  }
 
   switch (proposal.type) {
     case 'task_follow_up': {
-      const due = typeof p['due_date'] === 'string' && p['due_date'] ? ` — due ${p['due_date']}` : '';
+      const due = typeof p['due_date'] === 'string' && p['due_date']
+        ? ` — due ${p['due_date']}`
+        : ' — due 1 week from now (no date in note)';
       return <>Creates a <strong>task</strong>: "{proposal.title}"{due}</>;
     }
     case 'customer_ask': {
       const urgency = typeof p['urgency'] === 'string' ? ` (${p['urgency']} urgency)` : '';
-      const by = typeof p['requested_by'] === 'string' ? ` — requested by ${p['requested_by']}` : '';
-      return <>Logs a <strong>customer ask</strong>: "{proposal.title}"{urgency}{by}</>;
-    }
-    case 'project_update': {
-      const status = typeof p['new_status'] === 'string' ? ` with status → ${p['new_status']}` : '';
-      return <>Logs a <strong>project update</strong>{status} in the notes for this account/project.</>;
-    }
-    case 'risk_blocker': {
-      const severity = typeof p['severity'] === 'string' ? ` (${p['severity']} severity)` : '';
-      return <>Logs a <strong>risk/blocker</strong>{severity} and creates a follow-up task.</>;
+      const by = typeof p['requested_by'] === 'string' ? ` — from ${p['requested_by']}` : '';
+      return (
+        <>
+          Records a <strong>customer ask</strong>: "{proposal.title}"{urgency}{by}.
+          <br />
+          <span style={{ color: 'var(--ink-3)', fontSize: 12 }}>
+            Saved as queryable internal memory for the agents — does not appear on dashboards or in Recent Notes.
+          </span>
+        </>
+      );
     }
     case 'oem_mention': {
       const oem = typeof p['oem_name'] === 'string' ? p['oem_name'] : 'an OEM partner';
       const sentiment = typeof p['sentiment'] === 'string' ? ` — ${p['sentiment']}` : '';
       return <>Logs a mention on <strong>{oem}</strong>{sentiment}.</>;
-    }
-    case 'customer_insight': {
-      return <>Records a <strong>customer insight</strong> — saved to this account and visible to the agent in future conversations.</>;
     }
     case 'internal_resource': {
       const name = typeof p['name'] === 'string' ? p['name'] : 'Unknown';
@@ -92,7 +78,9 @@ function NoteApprovalModal({
   onClose: () => void;
 }) {
   const updateStatus = useUpdateNoteProposalStatus();
+  const reviseProposal = useReviseNoteProposal();
   const [discussion, setDiscussion] = useState('');
+  const [reviseError, setReviseError] = useState<string | null>(null);
 
   const finish = (status: 'approved' | 'denied' | 'discussing') => {
     updateStatus.mutate(
@@ -104,6 +92,35 @@ function NoteApprovalModal({
       { onSuccess: onClose },
     );
   };
+
+  const redo = () => {
+    const feedback = discussion.trim();
+    if (feedback.length < 3) {
+      setReviseError('Add a sentence or two of feedback before retrying.');
+      return;
+    }
+    setReviseError(null);
+    reviseProposal.mutate(
+      { id: proposal.id, orgId: proposal.organization_id, feedback },
+      {
+        onSuccess: (revised) => {
+          // Server returns null when the model decides nothing should be
+          // proposed — close the modal in that case. Otherwise stay open
+          // with the freshly-revised proposal pre-loaded.
+          if (revised === null) {
+            onClose();
+          } else {
+            setDiscussion('');
+          }
+        },
+        onError: (err) => {
+          setReviseError(err instanceof Error ? err.message : 'Redo failed');
+        },
+      },
+    );
+  };
+
+  const isBusy = updateStatus.isPending || reviseProposal.isPending;
 
   const outcome = describeOutcome(proposal);
 
@@ -248,10 +265,10 @@ function NoteApprovalModal({
           </label>
           <textarea
             id="approval-discussion"
-            rows={2}
+            rows={3}
             value={discussion}
             onChange={(event) => setDiscussion(event.target.value)}
-            placeholder="Any context or corrections before approving or denying…"
+            placeholder="Tell the agent what was wrong, then click Redo. e.g. &quot;this should be a task, not an insight — the customer literally asked for X by Friday&quot;"
             style={{
               width: '100%',
               boxSizing: 'border-box',
@@ -265,26 +282,56 @@ function NoteApprovalModal({
               resize: 'vertical',
             }}
           />
+          {reviseError && (
+            <p
+              role="alert"
+              style={{
+                margin: '6px 0 0',
+                color: 'var(--accent)',
+                fontSize: 12,
+                fontFamily: 'var(--body)',
+              }}
+            >
+              {reviseError}
+            </p>
+          )}
         </div>
 
         {/* Actions */}
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-          <button type="button" onClick={() => finish('denied')} style={buttonStyle}>
-            <X size={12} aria-hidden="true" />
-            Deny
-          </button>
-          <button type="button" onClick={() => finish('discussing')} style={buttonStyle}>
-            <MessageSquare size={12} aria-hidden="true" />
-            Discuss
-          </button>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center' }}>
           <button
             type="button"
-            onClick={() => finish('approved')}
-            style={{ ...buttonStyle, borderColor: 'var(--accent)', color: 'var(--accent)' }}
+            onClick={redo}
+            disabled={isBusy}
+            title="Apply the feedback above and regenerate this proposal"
+            style={{
+              ...buttonStyle,
+              opacity: isBusy ? 0.6 : 1,
+              cursor: isBusy ? 'wait' : 'pointer',
+            }}
           >
-            <Check size={12} aria-hidden="true" />
-            Approve
+            <RefreshCw size={12} aria-hidden="true" />
+            {reviseProposal.isPending ? 'Thinking…' : 'Redo with feedback'}
           </button>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button type="button" onClick={() => finish('denied')} style={buttonStyle} disabled={isBusy}>
+              <X size={12} aria-hidden="true" />
+              Deny
+            </button>
+            <button type="button" onClick={() => finish('discussing')} style={buttonStyle} disabled={isBusy}>
+              <MessageSquare size={12} aria-hidden="true" />
+              Save note
+            </button>
+            <button
+              type="button"
+              onClick={() => finish('approved')}
+              disabled={isBusy}
+              style={{ ...buttonStyle, borderColor: 'var(--accent)', color: 'var(--accent)' }}
+            >
+              <Check size={12} aria-hidden="true" />
+              Approve
+            </button>
+          </div>
         </div>
       </section>
     </div>

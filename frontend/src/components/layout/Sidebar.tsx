@@ -3,7 +3,6 @@ import { useCallback, useRef } from 'react';
 import { NavLink } from 'react-router-dom';
 import { Home, CheckSquare, BarChart2, Bot, Settings, Package } from 'lucide-react';
 import { clsx } from 'clsx';
-import { ThemeToggle } from './ThemeToggle';
 import { useOrganizations, useOrgLastTouched } from '../../api/useOrganizations';
 
 // ---------------------------------------------------------------------------
@@ -325,36 +324,54 @@ export function Sidebar() {
       style={{
         padding: '20px 14px',
         borderRight: '1px solid var(--rule)',
+        background: 'var(--surface)',
       }}
       onKeyDown={handleNavKeyDown}
     >
       {/* Brand */}
       <div
         style={{
-          fontFamily: 'var(--display)',
-          fontWeight: 600,
-          fontSize: 18,
-          letterSpacing: '-0.01em',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 10,
           padding: '4px 8px 12px',
           borderBottom: '1px solid var(--rule)',
           color: 'var(--ink-1)',
         }}
       >
-        MasterControl
-        <span
+        <img
+          src="/brand/sidebar-mcp.png"
+          alt=""
+          aria-hidden="true"
+          width={32}
+          height={32}
+          style={{ flexShrink: 0, display: 'block' }}
+        />
+        <div
           style={{
-            display: 'block',
-            fontFamily: 'var(--body)',
-            fontWeight: 500,
-            fontSize: 10,
-            letterSpacing: '0.12em',
-            textTransform: 'uppercase',
-            color: 'var(--ink-3)',
-            marginTop: 2,
+            fontFamily: 'var(--display)',
+            fontWeight: 600,
+            fontSize: 18,
+            letterSpacing: '-0.01em',
+            lineHeight: 1.1,
           }}
         >
-          Mark 0.1
-        </span>
+          MasterControl
+          <span
+            style={{
+              display: 'block',
+              fontFamily: 'var(--body)',
+              fontWeight: 500,
+              fontSize: 10,
+              letterSpacing: '0.12em',
+              textTransform: 'uppercase',
+              color: 'var(--ink-3)',
+              marginTop: 2,
+            }}
+          >
+            Mark 0.1
+          </span>
+        </div>
       </div>
 
       {/* Top nav */}
@@ -441,17 +458,8 @@ export function Sidebar() {
 
       <Divider />
 
-      {/* Bottom: Settings + ThemeToggle */}
+      {/* Bottom: Settings */}
       <div className="mt-auto flex flex-col gap-0.5">
-        <div className="flex items-center justify-between px-2 pb-1">
-          <span
-            className="text-[11px] font-semibold uppercase tracking-[0.08em]"
-            style={{ color: 'var(--ink-3)' }}
-          >
-            Theme
-          </span>
-          <ThemeToggle />
-        </div>
         <NavItem
           to="/settings"
           icon={<Settings size={16} strokeWidth={1.5} />}

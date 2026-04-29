@@ -1,7 +1,18 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
-export type Theme = 'light' | 'dark' | 'system';
+export type Theme =
+  | 'light'
+  | 'dark'
+  | 'system'
+  | 'pine'
+  | 'moss'
+  | 'carbon'
+  | 'oxblood'
+  | 'ridge'
+  | 'verdant';
+
+export const NAMED_THEMES = ['pine', 'moss', 'carbon', 'oxblood', 'ridge', 'verdant'] as const;
 
 interface UiState {
   sidebarCollapsed: boolean;

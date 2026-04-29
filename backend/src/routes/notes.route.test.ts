@@ -213,17 +213,17 @@ describe('note proposals approval queue', () => {
     expect(created!.due_date).toBe('2026-05-15');
   });
 
-  it('approve customer_insight creates a confirmed agent_insight note', async () => {
+  it('approve customer_ask creates a customer_ask role note (hidden from feeds)', async () => {
     const org = makeOrg();
-    const note = makeNote(org.id, { content: 'Budget resets every January.' });
+    const note = makeNote(org.id, { content: 'They want a DR plan before Q3.' });
     const proposal = noteProposalModel.create({
       source_note_id: note.id,
       organization_id: org.id,
-      type: 'customer_insight',
-      title: 'Budget cycle is January',
-      summary: 'Budget resets every January.',
-      evidence_quote: 'Budget resets every January.',
-      proposed_payload: { insight: 'Customer budget cycle resets in January.' },
+      type: 'customer_ask',
+      title: 'Need DR plan before Q3',
+      summary: 'Customer wants a DR plan before Q3.',
+      evidence_quote: 'They want a DR plan before Q3.',
+      proposed_payload: { description: 'Customer wants a DR plan before Q3.' },
     });
 
     const res = await request(app)
@@ -231,10 +231,8 @@ describe('note proposals approval queue', () => {
       .send({ status: 'approved' });
 
     expect(res.status).toBe(200);
-    const insightNotes = noteModel.listFor(org.id).filter(
-      (n) => n.role === 'agent_insight' && n.confirmed,
-    );
-    expect(insightNotes.some((n) => n.content.includes('Budget cycle is January'))).toBe(true);
+    const askNotes = noteModel.listFor(org.id).filter((n) => n.role === 'customer_ask');
+    expect(askNotes.some((n) => n.content.includes('Need DR plan before Q3'))).toBe(true);
   });
 
   it('returns 404 for a non-existent proposal', async () => {

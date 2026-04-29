@@ -21,54 +21,25 @@ import { projectResourceModel } from '../models/projectResource.model.js';
 import { organizationModel } from '../models/organization.model.js';
 import type { Organization } from '../models/organization.model.js';
 import type { Project } from '../models/project.model.js';
+import { projectModel } from '../models/project.model.js';
+import { contactModel } from '../models/contact.model.js';
 import { noteProposalModel, type NoteProposal } from '../models/noteProposal.model.js';
 import type { NoteProposalType } from '../models/noteProposal.model.js';
 import { extractNoteProposals } from './claude.service.js';
+import { HttpError } from '../middleware/errorHandler.js';
 
-function compact(value: string, max = 220): string {
-  const oneLine = value.replace(/\s+/g, ' ').trim();
-  return oneLine.length <= max ? oneLine : `${oneLine.slice(0, max - 1)}…`;
-}
-
-function initialProposalType(
-  org: Organization,
-  project: Project | null,
-): NoteProposalType {
-  if (project) return 'project_update';
-  if (org.type === 'oem') return 'oem_mention';
-  return 'customer_insight';
-}
-
-export function createInitialNoteProposal(
-  note: Note,
-  org: Organization,
-  project: Project | null,
-): NoteProposal {
-  const type = initialProposalType(org, project);
-  const target = project ? `${org.name} / ${project.name}` : org.name;
-  const title =
-    type === 'project_update'
-      ? `Review project update for ${project!.name}`
-      : type === 'oem_mention'
-        ? `Review OEM note for ${org.name}`
-        : `Review customer insight for ${org.name}`;
-
-  return noteProposalModel.create({
-    source_note_id: note.id,
-    organization_id: org.id,
-    project_id: project?.id ?? null,
-    type,
-    title,
-    summary: compact(note.content),
-    evidence_quote: compact(note.content, 500),
-    confidence: 0.45,
-    proposed_payload: {
-      target,
-      source_path: note.source_path,
-      source_note_id: note.id,
-      extraction_stage: 'initial_capture_triage',
-    },
-  });
+/**
+ * Default due-date applied to task_follow_up proposals when the LLM didn't
+ * pull a specific date out of the note: today + 7 days, ISO YYYY-MM-DD.
+ * Local-date math (not UTC) so the date matches the user's calendar.
+ */
+function defaultDueDateOneWeekOut(): string {
+  const d = new Date();
+  d.setDate(d.getDate() + 7);
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
 }
 
 /**
@@ -91,44 +62,160 @@ export async function runLlmExtraction(
   const oemOrgs = organizationModel.listByType('oem');
   const oemNames = oemOrgs.map((o) => o.name);
 
+  // Provide known contacts on this org so the model can resolve names → ids.
+  const knownContacts = contactModel.listFor(org.id).map((c) => ({
+    id: c.id,
+    name: c.name,
+    role: c.role,
+  }));
+
   const raw = await extractNoteProposals({
     noteContent: note.content,
     orgName: org.name,
     orgType: org.type,
     projectName: project?.name ?? null,
     oemNames,
+    knownContacts,
   });
 
   if (raw.length === 0) return;
 
-  // Resolve oem_mention oem_name → org id so applyApproval can create the
-  // note on the correct org without a second lookup.
-  const resolvedProposals = raw.map((p) => {
-    if (p.type !== 'oem_mention') return p;
-    const oemName = typeof p.payload['oem_name'] === 'string' ? p.payload['oem_name'] : '';
-    const targetOrg = oemOrgs.find((o) => o.name.toLowerCase() === oemName.toLowerCase());
-    return {
-      ...p,
-      payload: { ...p.payload, target_org_id: targetOrg?.id ?? null },
-    };
-  });
-
   // Remove any legacy triage placeholder for this note before inserting real proposals.
   noteProposalModel.deleteBySourceNoteIfPending(note.id);
 
-  for (const p of resolvedProposals) {
+  for (const p of raw) {
+    const resolved = resolveProposalPayload(p, oemOrgs, knownContacts);
     noteProposalModel.create({
       source_note_id: note.id,
       organization_id: org.id,
       project_id: project?.id ?? null,
+      contact_id: resolved.contactId,
       type: p.type as NoteProposalType,
       title: p.title,
       summary: p.summary,
       evidence_quote: p.evidence_quote,
       confidence: p.confidence,
-      proposed_payload: p.payload,
+      proposed_payload: resolved.payload,
     });
   }
+}
+
+/**
+ * Re-run extraction on a single existing proposal using user feedback. The
+ * proposal is overwritten in place: same row id, new fields, status reset to
+ * 'pending'. Returns the revised proposal, or null if the model concluded
+ * (based on the feedback) that no proposal should be generated — in which
+ * case the proposal is deleted.
+ */
+export async function reviseNoteProposal(
+  proposal: NoteProposal,
+  feedback: string,
+): Promise<NoteProposal | null> {
+  const note = noteModel.get(proposal.source_note_id);
+  if (!note) throw new HttpError(404, 'Source note not found');
+
+  const org = organizationModel.get(proposal.organization_id);
+  if (!org) throw new HttpError(404, 'Organization not found');
+
+  const project = proposal.project_id ? projectModel.get(proposal.project_id) ?? null : null;
+
+  const oemOrgs = organizationModel.listByType('oem');
+  const oemNames = oemOrgs.map((o) => o.name);
+
+  const knownContacts = contactModel.listFor(org.id).map((c) => ({
+    id: c.id,
+    name: c.name,
+    role: c.role,
+  }));
+
+  const raw = await extractNoteProposals({
+    noteContent: note.content,
+    orgName: org.name,
+    orgType: org.type,
+    projectName: project?.name ?? null,
+    oemNames,
+    knownContacts,
+    revise: {
+      originalProposal: {
+        type: proposal.type,
+        title: proposal.title,
+        summary: proposal.summary,
+        payload: proposal.proposed_payload,
+      },
+      feedback,
+    },
+  });
+
+  // The user said "this should not be a proposal" → delete it.
+  if (raw.length === 0) {
+    noteProposalModel.deleteById(proposal.id);
+    return null;
+  }
+
+  // The revise contract is "produce ONE revised proposal" — take the first.
+  const top = raw[0];
+  if (!top) return null;
+  const resolved = resolveProposalPayload(top, oemOrgs, knownContacts);
+
+  return (
+    noteProposalModel.replace(proposal.id, {
+      type: top.type as NoteProposalType,
+      title: top.title,
+      summary: top.summary,
+      evidence_quote: top.evidence_quote,
+      proposed_payload: resolved.payload,
+      confidence: top.confidence,
+      contact_id: resolved.contactId,
+    }) ?? null
+  );
+}
+
+/**
+ * Resolve OEM names and contact ids against the live data — extraction can
+ * include "contact_id" in the payload directly (when the prompt's contact
+ * list helped it match), or we infer it from common payload keys like
+ * requested_by / name.
+ */
+function resolveProposalPayload(
+  raw: { type: string; payload: Record<string, unknown> },
+  oemOrgs: Organization[],
+  knownContacts: Array<{ id: number; name: string }>,
+): { payload: Record<string, unknown>; contactId: number | null } {
+  const payload = { ...raw.payload };
+
+  // OEM mention: resolve oem_name → target_org_id
+  if (raw.type === 'oem_mention') {
+    const oemName = typeof payload['oem_name'] === 'string' ? payload['oem_name'] : '';
+    const targetOrg = oemOrgs.find((o) => o.name.toLowerCase() === oemName.toLowerCase());
+    payload['target_org_id'] = targetOrg?.id ?? null;
+  }
+
+  // Resolve contact_id. The model may have already filled it; otherwise
+  // try to infer it from common name-bearing payload fields.
+  let contactId: number | null = null;
+  const direct = payload['contact_id'];
+  if (typeof direct === 'number' && direct > 0) {
+    contactId = knownContacts.some((c) => c.id === direct) ? direct : null;
+  } else {
+    const candidateNames = ['requested_by', 'name', 'person', 'requester']
+      .map((k) => {
+        const v = payload[k];
+        return typeof v === 'string' ? v.trim() : '';
+      })
+      .filter(Boolean);
+    for (const candidate of candidateNames) {
+      const match = knownContacts.find(
+        (c) => c.name.toLowerCase() === candidate.toLowerCase(),
+      );
+      if (match) {
+        contactId = match.id;
+        break;
+      }
+    }
+  }
+  if (contactId !== null) payload['contact_id'] = contactId;
+
+  return { payload, contactId };
 }
 
 /**
@@ -149,7 +236,13 @@ export function applyApproval(proposal: NoteProposal): void {
 
   switch (type) {
     case 'task_follow_up': {
-      const dueDate = typeof payload['due_date'] === 'string' ? payload['due_date'] : null;
+      // Default to one week out when the model didn't pull a date from the
+      // note. Stored as YYYY-MM-DD to match the user-entered task format.
+      const explicitDate =
+        typeof payload['due_date'] === 'string' && payload['due_date'].trim() !== ''
+          ? payload['due_date']
+          : null;
+      const dueDate = explicitDate ?? defaultDueDateOneWeekOut();
       taskModel.create({
         title,
         organization_id,
@@ -160,6 +253,9 @@ export function applyApproval(proposal: NoteProposal): void {
     }
 
     case 'customer_ask': {
+      // Saved as a `customer_ask` role note: queryable internal memory for
+      // the agents (search_notes still finds it), but filtered out of every
+      // dashboard / Recent Notes feed.
       const description = typeof payload['description'] === 'string' ? payload['description'] : summary;
       const urgency = typeof payload['urgency'] === 'string' ? ` [${payload['urgency']} urgency]` : '';
       const requestedBy = typeof payload['requested_by'] === 'string' ? `\nRequested by: ${payload['requested_by']}` : '';
@@ -167,38 +263,7 @@ export function applyApproval(proposal: NoteProposal): void {
         organization_id,
         project_id: project_id ?? null,
         content: `## Customer Ask: ${title}${urgency}\n\n${description}${requestedBy}`,
-        role: 'user',
-      });
-      break;
-    }
-
-    case 'project_update': {
-      const content = typeof payload['content'] === 'string' ? payload['content'] : summary;
-      const statusNote = typeof payload['new_status'] === 'string'
-        ? `\nStatus: ${payload['new_status']}`
-        : '';
-      noteModel.create({
-        organization_id,
-        project_id: project_id ?? null,
-        content: `## Project Update: ${title}${statusNote}\n\n${content}`,
-        role: 'user',
-      });
-      break;
-    }
-
-    case 'risk_blocker': {
-      const description = typeof payload['description'] === 'string' ? payload['description'] : summary;
-      const severity = typeof payload['severity'] === 'string' ? ` [${payload['severity']} severity]` : '';
-      noteModel.create({
-        organization_id,
-        project_id: project_id ?? null,
-        content: `## Risk/Blocker: ${title}${severity}\n\n${description}`,
-        role: 'user',
-      });
-      // Also create a task so it surfaces in the task list.
-      taskModel.create({
-        title: `[Risk] ${title}`,
-        organization_id,
+        role: 'customer_ask',
       });
       break;
     }
@@ -216,18 +281,6 @@ export function applyApproval(proposal: NoteProposal): void {
         content: `## OEM Mention${sentiment}: ${title}\n\n${context}`,
         role: 'user',
       });
-      break;
-    }
-
-    case 'customer_insight': {
-      const insight = typeof payload['insight'] === 'string' ? payload['insight'] : summary;
-      // createInsight inserts with confirmed=0; we immediately confirm since the
-      // user just approved this from the proposal queue.
-      const created = noteModel.createInsight(organization_id, `## Customer Insight: ${title}\n\n${insight}`, {
-        tool: 'note_proposal_approval',
-        source_org_id: organization_id,
-      });
-      noteModel.confirm(created.id);
       break;
     }
 

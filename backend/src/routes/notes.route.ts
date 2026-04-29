@@ -5,6 +5,7 @@ import {
   NoteCreateSchema,
   NoteProposalParamsSchema,
   NoteProposalQuerySchema,
+  NoteProposalReviseSchema,
   NoteProposalStatusUpdateSchema,
   RecentNotesQuerySchema,
   UnconfirmedInsightsQuerySchema,
@@ -12,7 +13,7 @@ import {
 } from '../schemas/note.schema.js';
 import { noteProposalModel } from '../models/noteProposal.model.js';
 import { captureMarkdownNote } from '../services/noteCapture.service.js';
-import { applyApproval, runLlmExtraction } from '../services/noteProposal.service.js';
+import { applyApproval, reviseNoteProposal, runLlmExtraction } from '../services/noteProposal.service.js';
 import { validateBody, validateParams, validateQuery } from '../lib/validate.js';
 import { bumpOrgVersion } from '../services/claude.service.js';
 import { extractMentions } from '../services/mention.service.js';
@@ -104,6 +105,40 @@ notesRouter.post(
     if (!proposal) return next(new HttpError(404, 'Note proposal not found'));
     bumpOrgVersion(proposal.organization_id);
     res.json(proposal);
+  },
+);
+
+// POST /proposals/:id/revise - regenerate a single proposal with user feedback.
+// Tries to apply the feedback (e.g. "this should be a task, not an insight"
+// or "use the customer's wording"). Returns the revised proposal in-place,
+// or 204 if the model decided no proposal should remain.
+notesRouter.post(
+  '/proposals/:id/revise',
+  validateParams(NoteProposalParamsSchema),
+  validateBody(NoteProposalReviseSchema),
+  async (req, res, next) => {
+    const { id } = req.validatedParams as { id: number };
+    const { feedback } = req.validatedBody as { feedback: string };
+
+    const existing = noteProposalModel.get(id);
+    if (!existing) return next(new HttpError(404, 'Note proposal not found'));
+
+    try {
+      const revised = await reviseNoteProposal(existing, feedback);
+      bumpOrgVersion(existing.organization_id);
+      if (revised === null) {
+        // Model concluded the feedback meant "this should not be a proposal".
+        res.status(204).end();
+        return;
+      }
+      res.json(revised);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      logAlert('warn', 'noteExtraction', `Proposal revise failed: ${message}`, {
+        proposal_id: id,
+      });
+      next(err);
+    }
   },
 );
 

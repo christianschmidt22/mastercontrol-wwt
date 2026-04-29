@@ -5,6 +5,7 @@ export const NoteRoleSchema = z.enum([
   'assistant',
   'agent_insight',
   'imported',
+  'customer_ask',
 ]);
 
 // Provenance JSON shape — captured as a typed object then stored as JSON in the DB
@@ -62,6 +63,12 @@ export const NoteProposalQuerySchema = z.object({
 export const NoteProposalStatusUpdateSchema = z.object({
   status: z.enum(['approved', 'denied', 'discussing']),
   discussion: z.string().max(2000).optional().nullable(),
+});
+
+/** POST /api/notes/proposals/:id/revise — rerun extraction on a single
+ *  proposal using the user's feedback. */
+export const NoteProposalReviseSchema = z.object({
+  feedback: z.string().trim().min(3).max(2000),
 });
 
 export const NoteProposalParamsSchema = z.object({

@@ -3,10 +3,7 @@ import { db } from '../db/database.js';
 export type NoteProposalType =
   | 'customer_ask'
   | 'task_follow_up'
-  | 'project_update'
-  | 'risk_blocker'
   | 'oem_mention'
-  | 'customer_insight'
   | 'internal_resource';
 
 export type NoteProposalStatus = 'pending' | 'approved' | 'denied' | 'discussing';
@@ -16,6 +13,7 @@ interface NoteProposalRow {
   source_note_id: number;
   organization_id: number;
   project_id: number | null;
+  contact_id: number | null;
   type: NoteProposalType;
   title: string;
   summary: string;
@@ -33,6 +31,7 @@ export interface NoteProposal {
   source_note_id: number;
   organization_id: number;
   project_id: number | null;
+  contact_id: number | null;
   type: NoteProposalType;
   title: string;
   summary: string;
@@ -49,12 +48,27 @@ export interface NoteProposalInput {
   source_note_id: number;
   organization_id: number;
   project_id?: number | null;
+  contact_id?: number | null;
   type: NoteProposalType;
   title: string;
   summary: string;
   evidence_quote: string;
   proposed_payload?: Record<string, unknown>;
   confidence?: number;
+}
+
+/** Patch shape for {@link noteProposalModel.replace}. Used by the
+ *  "redo with feedback" flow to overwrite the LLM-extracted fields of an
+ *  existing proposal without changing its id (and any audit ties). */
+export interface NoteProposalReplaceInput {
+  type: NoteProposalType;
+  title: string;
+  summary: string;
+  evidence_quote: string;
+  proposed_payload: Record<string, unknown>;
+  confidence: number;
+  contact_id?: number | null;
+  project_id?: number | null;
 }
 
 function hydrate(row: NoteProposalRow): NoteProposal {
@@ -76,11 +90,29 @@ const getStmt = db.prepare<[number], NoteProposalRow>(
 );
 
 const insertStmt = db.prepare<
-  [number, number, number | null, NoteProposalType, string, string, string, string, number]
+  [number, number, number | null, number | null, NoteProposalType, string, string, string, string, number]
 >(
   `INSERT INTO note_proposals
-     (source_note_id, organization_id, project_id, type, title, summary, evidence_quote, proposed_payload, confidence)
-   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     (source_note_id, organization_id, project_id, contact_id, type, title, summary, evidence_quote, proposed_payload, confidence)
+   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+);
+
+const replaceStmt = db.prepare<
+  [NoteProposalType, string, string, string, string, number, number | null, number | null, number]
+>(
+  `UPDATE note_proposals
+     SET type = ?,
+         title = ?,
+         summary = ?,
+         evidence_quote = ?,
+         proposed_payload = ?,
+         confidence = ?,
+         contact_id = ?,
+         project_id = COALESCE(?, project_id),
+         status = 'pending',
+         discussion = NULL,
+         updated_at = datetime('now')
+   WHERE id = ?`,
 );
 
 const updateStatusStmt = db.prepare<[NoteProposalStatus, string | null, number]>(
@@ -110,6 +142,7 @@ export const noteProposalModel = {
       input.source_note_id,
       input.organization_id,
       input.project_id ?? null,
+      input.contact_id ?? null,
       input.type,
       input.title,
       input.summary,
@@ -118,6 +151,25 @@ export const noteProposalModel = {
       input.confidence ?? 0.5,
     );
     return hydrate(getStmt.get(Number(result.lastInsertRowid))!);
+  },
+
+  /** Overwrite an existing proposal's LLM-extracted fields. Resets the
+   *  proposal to status='pending' and clears any prior discussion text so
+   *  the user reviews the revised version fresh. Used by the "redo with
+   *  feedback" flow. */
+  replace(id: number, input: NoteProposalReplaceInput): NoteProposal | undefined {
+    replaceStmt.run(
+      input.type,
+      input.title,
+      input.summary,
+      input.evidence_quote,
+      JSON.stringify(input.proposed_payload),
+      input.confidence,
+      input.contact_id ?? null,
+      input.project_id ?? null,
+      id,
+    );
+    return this.get(id);
   },
 
   setStatus(

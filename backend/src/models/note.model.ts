@@ -1,6 +1,6 @@
 import { db } from '../db/database.js';
 
-export type NoteRole = 'user' | 'assistant' | 'agent_insight' | 'imported';
+export type NoteRole = 'user' | 'assistant' | 'agent_insight' | 'imported' | 'customer_ask';
 
 export interface NoteProvenance {
   tool: string;
@@ -117,11 +117,19 @@ export interface NoteListOpts {
   confirmedOnly?: boolean;
 }
 
+// `customer_ask` rows are queryable internal memory for the agents but
+// must NOT surface in the recent-notes feed (or in the per-thread volatile
+// context block that gets built from listRecent). Search stays unfiltered
+// so the search_notes tool can still find them on demand.
 const listRecentStmt = db.prepare<[number, number], NoteRow>(
-  'SELECT * FROM notes WHERE organization_id = ? ORDER BY created_at DESC LIMIT ?'
+  `SELECT * FROM notes
+   WHERE organization_id = ? AND role <> 'customer_ask'
+   ORDER BY created_at DESC LIMIT ?`,
 );
 const listRecentConfirmedStmt = db.prepare<[number, number], NoteRow>(
-  'SELECT * FROM notes WHERE organization_id = ? AND confirmed = 1 ORDER BY created_at DESC LIMIT ?'
+  `SELECT * FROM notes
+   WHERE organization_id = ? AND confirmed = 1 AND role <> 'customer_ask'
+   ORDER BY created_at DESC LIMIT ?`,
 );
 
 // ---------------------------------------------------------------------------
@@ -388,16 +396,25 @@ export interface UnifiedNoteRow {
   source_table: 'note' | 'agent_message';
 }
 
+// The notes feed only surfaces real notes — assistant chat lives in the
+// Agent panel and shouldn't leak into "Recent notes". The notes_unified VIEW
+// still mirrors agent_messages for any future cross-cut consumer; this model
+// path filters them out.
 const listUnifiedAllStmt = db.prepare<[number, number], UnifiedNoteRow>(
   `SELECT * FROM notes_unified
    WHERE organization_id = ?
+     AND source_table = 'note'
+     AND role <> 'customer_ask'
    ORDER BY created_at DESC
    LIMIT ?`,
 );
 
 const listUnifiedConfirmedStmt = db.prepare<[number, number], UnifiedNoteRow>(
   `SELECT * FROM notes_unified
-   WHERE organization_id = ? AND confirmed = 1
+   WHERE organization_id = ?
+     AND confirmed = 1
+     AND source_table = 'note'
+     AND role <> 'customer_ask'
    ORDER BY created_at DESC
    LIMIT ?`,
 );

@@ -1,0 +1,691 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>MasterControl — green theme studies (round 2)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link
+  href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600&family=Inter+Tight:wght@400;500;600&family=Manrope:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,500&display=swap"
+  rel="stylesheet"
+/>
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: #0e1212;
+    color: #d6d3c8;
+    font-family: 'Inter Tight', system-ui, sans-serif;
+  }
+
+  .chrome {
+    max-width: 1380px;
+    margin: 0 auto;
+    padding: 28px 28px 80px;
+  }
+
+  .chrome > header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 16px;
+    margin-bottom: 22px;
+    color: #b9b6ab;
+  }
+  .chrome > header h1 {
+    margin: 0;
+    font-family: 'Fraunces', serif;
+    font-weight: 500;
+    font-size: 28px;
+    letter-spacing: -0.01em;
+  }
+  .chrome > header p {
+    margin: 0;
+    font-size: 13px;
+    color: #6f7269;
+  }
+
+  .switcher {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 22px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid #1f2725;
+  }
+  .switcher button {
+    appearance: none;
+    background: #11181a;
+    color: #99a09a;
+    border: 1px solid #1f2725;
+    border-radius: 999px;
+    padding: 8px 14px;
+    font-family: inherit;
+    font-size: 12px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: all 160ms ease;
+  }
+  .switcher button:hover {
+    color: #d6d3c8;
+    border-color: #2c3431;
+  }
+  .switcher button[aria-pressed='true'] {
+    background: #d6d3c8;
+    color: #11181a;
+    border-color: #d6d3c8;
+  }
+
+  .stage[data-active='false'] { display: none; }
+
+  /* Generic stage */
+  .stage {
+    border-radius: 18px;
+    overflow: hidden;
+    isolation: isolate;
+    background: var(--bg);
+    color: var(--ink-1);
+    font-family: var(--body, 'Inter Tight'), sans-serif;
+    padding: 36px 40px 48px;
+    position: relative;
+  }
+  .stage::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: var(--bg-overlay, transparent);
+    z-index: 0;
+  }
+  .stage > * { position: relative; z-index: 1; }
+
+  .topline {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 18px;
+    margin-bottom: 14px;
+  }
+  .breadcrumb {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.16em;
+    color: var(--ink-3);
+  }
+  .alert-bell {
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    border: 1px solid var(--rule);
+    display: grid;
+    place-items: center;
+    color: var(--ink-3);
+    background: transparent;
+    font-size: 13px;
+  }
+
+  .pageTitle {
+    font-family: var(--display, 'Fraunces'), serif;
+    font-weight: 400;
+    font-size: 52px;
+    line-height: 1.04;
+    letter-spacing: -0.02em;
+    margin: 0 0 8px -2px;
+    text-wrap: balance;
+    color: var(--ink-1);
+  }
+  .subtitle {
+    color: var(--ink-2);
+    font-size: 14px;
+    margin: 0 0 28px 0;
+    max-width: 60ch;
+  }
+
+  .tabs {
+    display: flex;
+    gap: 0;
+    border-bottom: 1px solid var(--rule);
+    margin-bottom: 26px;
+    flex-wrap: wrap;
+  }
+  .tabs button {
+    appearance: none;
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+    padding: 9px 14px;
+    color: var(--ink-2);
+    font-family: inherit;
+    font-size: 13px;
+    cursor: pointer;
+  }
+  .tabs button.active {
+    color: var(--ink-1);
+    font-weight: 600;
+    border-bottom-color: var(--accent);
+  }
+
+  .grid {
+    display: grid;
+    grid-template-columns: 7fr 5fr;
+    gap: 18px;
+  }
+  @media (max-width: 880px) { .grid { grid-template-columns: 1fr; } }
+
+  .tile {
+    border: 1px solid var(--rule);
+    border-radius: 10px;
+    background: var(--tile-bg, transparent);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+  .tile header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 18px 12px;
+    border-bottom: 1px solid var(--rule);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-2);
+  }
+  .tile header .count {
+    color: var(--ink-3);
+    font-weight: 500;
+    letter-spacing: 0;
+  }
+  .tile .body { padding: 16px 20px 20px; }
+
+  .note {
+    display: grid;
+    grid-template-columns: 56px 1fr;
+    gap: 14px;
+    padding: 12px 0;
+    border-bottom: 1px dotted var(--rule);
+  }
+  .note:last-child { border-bottom: none; }
+  .note time {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    font-size: 11px;
+    color: var(--ink-3);
+    font-variant-numeric: tabular-nums;
+  }
+  .note time span:last-child { opacity: 0.7; }
+  .note .text {
+    font-size: 14px;
+    line-height: 1.55;
+    color: var(--ink-1);
+  }
+  .note .text strong { font-weight: 500; }
+
+  .task {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 0;
+    border-bottom: 1px dotted var(--rule);
+  }
+  .task:last-child { border-bottom: none; }
+  .task input[type='checkbox'] {
+    width: 14px;
+    height: 14px;
+    margin: 0;
+    accent-color: var(--accent);
+  }
+  .task .title {
+    flex: 1;
+    font-size: 13.5px;
+    color: var(--ink-1);
+  }
+  .task .due {
+    font-size: 11px;
+    color: var(--ink-3);
+    font-variant-numeric: tabular-nums;
+  }
+  .task .due.overdue {
+    color: var(--accent);
+    font-weight: 500;
+  }
+
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    padding: 3px 10px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.04em;
+    text-transform: capitalize;
+    color: var(--accent);
+    background: var(--accent-soft);
+  }
+
+  .footer-meta {
+    margin-top: 28px;
+    display: flex;
+    gap: 24px;
+    flex-wrap: wrap;
+    color: var(--ink-3);
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+  .footer-meta strong {
+    color: var(--ink-2);
+    font-weight: 500;
+    margin-right: 6px;
+  }
+
+  /* ────────────────────────────────────────────────────────────────────
+     A · LINEN SAGE  — light · warm linen, deep moss ink, sage accent
+     Quiet, papery, very low contrast. Field-Notes meets ceramic studio.
+     ──────────────────────────────────────────────────────────────────── */
+  .theme-linen {
+    --bg: #F4F2EA;
+    --bg-2: #ECE7D7;
+    --ink-1: #2A3329;
+    --ink-2: #6F7A6B;
+    --ink-3: #A2A89B;
+    --rule: #D8D5C4;
+    --accent: #5C7A47;
+    --accent-soft: #E2E8D6;
+    --display: 'Fraunces';
+    --body: 'Inter Tight';
+    --tile-bg: #FBFAF4;
+  }
+
+  /* ────────────────────────────────────────────────────────────────────
+     B · MINT PAPER  — light · cool paper, deeper mint accent
+     Slightly cooler than Linen Sage, Newsreader display gives editorial
+     calm. Modern bookshop / herbarium notebook.
+     ──────────────────────────────────────────────────────────────────── */
+  .theme-mint {
+    --bg: #F5F8F2;
+    --bg-2: #E8EFE2;
+    --ink-1: #1F2925;
+    --ink-2: #5D6B61;
+    --ink-3: #8E9C8F;
+    --rule: #D2DCCB;
+    --accent: #2E6B49;
+    --accent-soft: #DCE8DC;
+    --display: 'Newsreader';
+    --body: 'Manrope';
+    --tile-bg: #FBFCF8;
+  }
+
+  /* ────────────────────────────────────────────────────────────────────
+     C · EUCALYPTUS  — light · silvery green-grey, dusty teal accent
+     Spa / pharmacy-modern. Soft enough that the accent reads gently.
+     ──────────────────────────────────────────────────────────────────── */
+  .theme-eucalyptus {
+    --bg: #ECEEE8;
+    --bg-2: #DFE5DB;
+    --ink-1: #29302B;
+    --ink-2: #67706A;
+    --ink-3: #99A19B;
+    --rule: #CDD2C7;
+    --accent: #4D766E;
+    --accent-soft: #DAE3DD;
+    --display: 'Source Serif 4';
+    --body: 'Inter Tight';
+    --tile-bg: #F5F6F1;
+  }
+
+  /* ────────────────────────────────────────────────────────────────────
+     D · FERN  — dark · muted forest, soft mint accent
+     Modern dark with low-contrast cream ink. No pure black.
+     ──────────────────────────────────────────────────────────────────── */
+  .theme-fern {
+    --bg: #131915;
+    --bg-2: #1B231D;
+    --ink-1: #D9DCC9;
+    --ink-2: #8A8F7C;
+    --ink-3: #5A6056;
+    --rule: #232C25;
+    --accent: #7FB388;
+    --accent-soft: #1F2C24;
+    --display: 'Fraunces';
+    --body: 'Inter Tight';
+    --tile-bg: #161E18;
+  }
+
+  /* ────────────────────────────────────────────────────────────────────
+     E · LICHEN  — dark · cool blue-green, mint highlight
+     Spa-cool dark. Slightly bluer than Fern. Display in Source Serif.
+     ──────────────────────────────────────────────────────────────────── */
+  .theme-lichen {
+    --bg: #101513;
+    --bg-2: #161D1A;
+    --ink-1: #DEDFD5;
+    --ink-2: #8A9088;
+    --ink-3: #5C645F;
+    --rule: #1F2724;
+    --accent: #6FA88A;
+    --accent-soft: #182521;
+    --display: 'Source Serif 4';
+    --body: 'Manrope';
+    --tile-bg: #131B17;
+  }
+</style>
+</head>
+<body>
+<div class="chrome">
+  <header>
+    <div>
+      <h1>MasterControl — greens, round 2</h1>
+      <p>Five quieter green options. Modern, lower contrast, less saturated than the first round.</p>
+    </div>
+  </header>
+
+  <div class="switcher" role="tablist" aria-label="Theme selector">
+    <button type="button" data-target="linen"      aria-pressed="true">A · Linen Sage (light)</button>
+    <button type="button" data-target="mint"       aria-pressed="false">B · Mint Paper (light)</button>
+    <button type="button" data-target="eucalyptus" aria-pressed="false">C · Eucalyptus (light)</button>
+    <button type="button" data-target="fern"       aria-pressed="false">D · Fern (dark)</button>
+    <button type="button" data-target="lichen"     aria-pressed="false">E · Lichen (dark)</button>
+  </div>
+
+  <!-- Stage template — A · LINEN SAGE -->
+  <section class="stage theme-linen" data-name="linen" data-active="true">
+    <div class="topline">
+      <span class="breadcrumb">Customers / C.H. Robinson</span>
+      <span class="alert-bell">⌥</span>
+    </div>
+    <h2 class="pageTitle">C.H. Robinson</h2>
+    <p class="subtitle">Account · Eden Prairie, MN · Logistics &amp; supply chain</p>
+    <div class="tabs">
+      <button class="active">Home</button>
+      <button>DC SD-WAN Rollout</button>
+      <button>Eden Prairie HQ Wi-Fi 7</button>
+      <button>AI on prem</button>
+    </div>
+    <div class="grid">
+      <article class="tile">
+        <header>Recent notes <span class="count">12</span></header>
+        <div class="body">
+          <div class="note">
+            <time><span>Wed</span><span>12:07 AM</span></time>
+            <div class="text"><strong>From:</strong> Maya Patel, WWT Security Architect — re: C.H. Robinson AI Groundfall follow-up. Aligning on next round of design questions before Monday.</div>
+          </div>
+          <div class="note">
+            <time><span>Tue</span><span>6:55 PM</span></time>
+            <div class="text">New project getting off the ground from the CHR EBC. Next step is to meet with Matt Halcomb. Pat set up Monday 5/4 @ 1:30.</div>
+          </div>
+          <div class="note">
+            <time><span>Mon</span><span>2:14 PM</span></time>
+            <div class="text">Bandwidth modeling for Navisphere finished — totals match the AFF sizing pass. Forwarding to NetApp for sanity-check.</div>
+          </div>
+        </div>
+      </article>
+      <article class="tile">
+        <header>Tasks <span class="count">4</span></header>
+        <div class="body">
+          <div class="task">
+            <input type="checkbox" />
+            <div class="title">Send revised BoM to Matt before Monday</div>
+            <div class="due overdue">Apr 28</div>
+          </div>
+          <div class="task">
+            <input type="checkbox" />
+            <div class="title">Review Cisco channel discount on C9300</div>
+            <div class="due">May 1</div>
+          </div>
+          <div class="task">
+            <input type="checkbox" checked />
+            <div class="title" style="text-decoration: line-through; opacity: 0.55">Confirm AHV re-engagement scope</div>
+            <div class="due">Apr 26</div>
+          </div>
+        </div>
+      </article>
+    </div>
+    <div class="footer-meta">
+      <span><strong>Status</strong><span class="chip">qualifying</span></span>
+      <span><strong>Last touched</strong>4 hours ago</span>
+      <span><strong>Project lead</strong>Pat Coughlin</span>
+    </div>
+  </section>
+
+  <!-- Stage template — B · MINT PAPER -->
+  <section class="stage theme-mint" data-name="mint" data-active="false">
+    <div class="topline">
+      <span class="breadcrumb">Customers / Fairview Health</span>
+      <span class="alert-bell">⌥</span>
+    </div>
+    <h2 class="pageTitle">Fairview Health Services</h2>
+    <p class="subtitle">Account · Minneapolis, MN · Healthcare</p>
+    <div class="tabs">
+      <button class="active">Home</button>
+      <button>Network Refresh — Hospital Campus</button>
+      <button>Epic EHR Bandwidth Upgrade</button>
+      <button>DR Site Refresh</button>
+    </div>
+    <div class="grid">
+      <article class="tile">
+        <header>Recent notes <span class="count">8</span></header>
+        <div class="body">
+          <div class="note">
+            <time><span>Wed</span><span>9:30 AM</span></time>
+            <div class="text">Met with Dr. Chen — radiology refresh is now formally tied to the campus network refresh. Need updated BoM by mid-May.</div>
+          </div>
+          <div class="note">
+            <time><span>Tue</span><span>4:12 PM</span></time>
+            <div class="text">Pulled the Epic bandwidth telemetry from last quarter. Trend is up 14% YoY. Forwarding to Cisco for channel sizing.</div>
+          </div>
+          <div class="note">
+            <time><span>Mon</span><span>11:00 AM</span></time>
+            <div class="text">DR site walk scheduled for May 6. Will need access badges arranged through Fairview security.</div>
+          </div>
+        </div>
+      </article>
+      <article class="tile">
+        <header>Tasks <span class="count">5</span></header>
+        <div class="body">
+          <div class="task">
+            <input type="checkbox" />
+            <div class="title">Confirm DR site access for May 6 walk</div>
+            <div class="due">May 4</div>
+          </div>
+          <div class="task">
+            <input type="checkbox" />
+            <div class="title">Sign off on Epic bandwidth telemetry summary</div>
+            <div class="due overdue">Apr 27</div>
+          </div>
+          <div class="task">
+            <input type="checkbox" checked />
+            <div class="title" style="text-decoration: line-through; opacity: 0.55">Pull last-quarter Epic numbers</div>
+            <div class="due">Apr 28</div>
+          </div>
+        </div>
+      </article>
+    </div>
+    <div class="footer-meta">
+      <span><strong>Status</strong><span class="chip">active</span></span>
+      <span><strong>Last touched</strong>this morning</span>
+      <span><strong>Project lead</strong>Ryan Schmidt</span>
+    </div>
+  </section>
+
+  <!-- Stage template — C · EUCALYPTUS -->
+  <section class="stage theme-eucalyptus" data-name="eucalyptus" data-active="false">
+    <div class="topline">
+      <span class="breadcrumb">Customers / Land O'Lakes</span>
+      <span class="alert-bell">⌥</span>
+    </div>
+    <h2 class="pageTitle">Land O'Lakes</h2>
+    <p class="subtitle">Account · Arden Hills, MN · Agriculture &amp; food</p>
+    <div class="tabs">
+      <button class="active">Home</button>
+      <button>Plant DC Modernization</button>
+      <button>Cold-storage Networking</button>
+    </div>
+    <div class="grid">
+      <article class="tile">
+        <header>Recent notes <span class="count">7</span></header>
+        <div class="body">
+          <div class="note">
+            <time><span>Wed</span><span>4:55 PM</span></time>
+            <div class="text">DC modernization is ahead of plan. Power and cooling capacity headroom locked in for FY27 growth.</div>
+          </div>
+          <div class="note">
+            <time><span>Tue</span><span>1:20 PM</span></time>
+            <div class="text">Cold-storage networking pilot survived a -25°F overnight. Industrial-grade switches passed; standard PoE injectors did not.</div>
+          </div>
+          <div class="note">
+            <time><span>Mon</span><span>8:14 AM</span></time>
+            <div class="text">Plant ops asked for a baseline OT-segmentation diagram. Pulling the existing template from the Fairview engagement.</div>
+          </div>
+        </div>
+      </article>
+      <article class="tile">
+        <header>Tasks <span class="count">4</span></header>
+        <div class="body">
+          <div class="task">
+            <input type="checkbox" />
+            <div class="title">Spec ruggedized PoE for cold-storage</div>
+            <div class="due">May 5</div>
+          </div>
+          <div class="task">
+            <input type="checkbox" />
+            <div class="title">Confirm FY27 capacity plan with plant ops</div>
+            <div class="due overdue">Apr 26</div>
+          </div>
+        </div>
+      </article>
+    </div>
+    <div class="footer-meta">
+      <span><strong>Status</strong><span class="chip">active</span></span>
+      <span><strong>Sites</strong>62</span>
+      <span><strong>Pilot</strong>3 of 9 cold-storage</span>
+    </div>
+  </section>
+
+  <!-- Stage template — D · FERN -->
+  <section class="stage theme-fern" data-name="fern" data-active="false">
+    <div class="topline">
+      <span class="breadcrumb">Customers / APi Group</span>
+      <span class="alert-bell">⌥</span>
+    </div>
+    <h2 class="pageTitle">APi Group</h2>
+    <p class="subtitle">Account · New Brighton, MN · Building services &amp; safety</p>
+    <div class="tabs">
+      <button class="active">Home</button>
+      <button>Edge Network Modernization</button>
+      <button>Field Mobility</button>
+    </div>
+    <div class="grid">
+      <article class="tile">
+        <header>Recent notes <span class="count">6</span></header>
+        <div class="body">
+          <div class="note">
+            <time><span>Wed</span><span>3:14 PM</span></time>
+            <div class="text">Field mobility scope locked in. ~14k devices across 9 regions. Ruckus and Meraki on the shortlist; comparable pricing by next Friday.</div>
+          </div>
+          <div class="note">
+            <time><span>Tue</span><span>10:22 AM</span></time>
+            <div class="text">Switched from Cradlepoint to Peplink for the truck-mounted SD-WAN — better long-haul throughput on T-Mobile.</div>
+          </div>
+          <div class="note">
+            <time><span>Mon</span><span>4:40 PM</span></time>
+            <div class="text">APi security team flagged the existing SCADA segmentation. Need to bring Cisco IE switches into the BoM for plant cells.</div>
+          </div>
+        </div>
+      </article>
+      <article class="tile">
+        <header>Tasks <span class="count">3</span></header>
+        <div class="body">
+          <div class="task">
+            <input type="checkbox" />
+            <div class="title">Comparable pricing: Ruckus vs Meraki</div>
+            <div class="due">May 3</div>
+          </div>
+          <div class="task">
+            <input type="checkbox" />
+            <div class="title">Spec the Peplink SDX configuration</div>
+            <div class="due overdue">Apr 27</div>
+          </div>
+        </div>
+      </article>
+    </div>
+    <div class="footer-meta">
+      <span><strong>Status</strong><span class="chip">active</span></span>
+      <span><strong>Devices</strong>14,200</span>
+      <span><strong>Regions</strong>9</span>
+    </div>
+  </section>
+
+  <!-- Stage template — E · LICHEN -->
+  <section class="stage theme-lichen" data-name="lichen" data-active="false">
+    <div class="topline">
+      <span class="breadcrumb">Customers / Entegris</span>
+      <span class="alert-bell">⌥</span>
+    </div>
+    <h2 class="pageTitle">Entegris</h2>
+    <p class="subtitle">Account · Billerica, MA · Semiconductor materials</p>
+    <div class="tabs">
+      <button class="active">Home</button>
+      <button>Cleanroom Network Audit</button>
+      <button>EDA Tooling Refresh</button>
+    </div>
+    <div class="grid">
+      <article class="tile">
+        <header>Recent notes <span class="count">9</span></header>
+        <div class="body">
+          <div class="note">
+            <time><span>Thu</span><span>11:45 AM</span></time>
+            <div class="text">Walked the Billerica cleanroom with Anya. Two switches running 7-year-old IOS-XE — they want to refresh before the December audit.</div>
+          </div>
+          <div class="note">
+            <time><span>Wed</span><span>9:10 AM</span></time>
+            <div class="text">EDA team is leaning toward Synopsys for tape-out tooling. Implication: NFS storage spike around Q3.</div>
+          </div>
+        </div>
+      </article>
+      <article class="tile">
+        <header>Tasks <span class="count">4</span></header>
+        <div class="body">
+          <div class="task">
+            <input type="checkbox" />
+            <div class="title">Quote refresh on cleanroom switches</div>
+            <div class="due">May 7</div>
+          </div>
+          <div class="task">
+            <input type="checkbox" />
+            <div class="title">Loop in NetApp for NFS sizing review</div>
+            <div class="due overdue">Apr 25</div>
+          </div>
+        </div>
+      </article>
+    </div>
+    <div class="footer-meta">
+      <span><strong>Status</strong><span class="chip">qualifying</span></span>
+      <span><strong>Audit</strong>December 2026</span>
+    </div>
+  </section>
+</div>
+
+<script>
+  const stages = document.querySelectorAll('.stage');
+  const buttons = document.querySelectorAll('.switcher button');
+  buttons.forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const target = btn.dataset.target;
+      buttons.forEach((b) => b.setAttribute('aria-pressed', String(b === btn)));
+      stages.forEach((s) =>
+        s.setAttribute('data-active', String(s.dataset.name === target)),
+      );
+    });
+  });
+</script>
+</body>
+</html>

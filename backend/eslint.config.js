@@ -6,7 +6,7 @@ import tseslint from 'typescript-eslint';
 export default tseslint.config(
   // --- Ignore compiled output and test setup that uses special patterns ---
   {
-    ignores: ['dist/**', 'node_modules/**'],
+    ignores: ['dist/**', 'node_modules/**', '**/*.cjs'],
   },
 
   // --- Base TypeScript-checked rules for all src files ---
