@@ -4,6 +4,7 @@ import { Shell } from './components/layout/Shell';
 import { CommandPalette } from './components/overlays/CommandPalette';
 import { HomePage } from './pages/HomePage';
 import { TasksPage } from './pages/TasksPage';
+import { AlertsPage } from './pages/AlertsPage';
 import { ReportsPage } from './pages/ReportsPage';
 import { CustomerPage } from './pages/CustomerPage';
 import { OemPage } from './pages/OemPage';
@@ -54,6 +55,7 @@ export function App() {
         <Routes>
           <Route path="/" element={<HomePage />} />
           <Route path="/tasks" element={<TasksPage />} />
+          <Route path="/alerts" element={<AlertsPage />} />
           <Route path="/reports" element={<ReportsPage />} />
           <Route path="/customers/:id" element={<CustomerPage />} />
           <Route path="/customers/:id/projects/:projectId" element={<CustomerPage />} />

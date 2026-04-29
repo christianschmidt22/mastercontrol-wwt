@@ -1,30 +1,62 @@
 import { Router } from 'express';
-import { systemAlertModel } from '../models/systemAlert.model.js';
+import { systemAlertModel, type AlertSeverity } from '../models/systemAlert.model.js';
 import { HttpError } from '../middleware/errorHandler.js';
-import { z } from 'zod';
+import { validateParams, validateQuery } from '../lib/validate.js';
+import { AlertListQuerySchema, AlertParamsSchema } from '../schemas/alert.schema.js';
+import type { AlertStatusFilter } from '../schemas/alert.schema.js';
 
 export const alertsRouter = Router();
 
-// GET /api/alerts?unread_only=true&limit=50
-alertsRouter.get('/', (req, res) => {
-  const unreadOnly = req.query['unread_only'] === 'true';
-  const limit = Math.min(Number(req.query['limit'] ?? 50), 200);
-  const alerts = unreadOnly
-    ? systemAlertModel.listUnread()
-    : systemAlertModel.listRecent(limit);
-  res.json({ alerts, unread_count: systemAlertModel.unreadCount() });
+// GET /api/alerts?status=active&severity=warn&source=calendarSync&limit=50
+alertsRouter.get('/', validateQuery(AlertListQuerySchema), (req, res) => {
+  const query = req.validatedQuery as {
+    unread_only?: 'true' | 'false';
+    status?: AlertStatusFilter;
+    severity?: AlertSeverity | 'all';
+    source?: string;
+    limit?: number;
+  };
+  const status = query.unread_only === 'true' ? 'active' : query.status;
+  const activeCount = systemAlertModel.unreadCount();
+
+  res.json({
+    alerts: systemAlertModel.listFiltered({
+      status,
+      severity: query.severity,
+      source: query.source,
+      limit: query.limit ?? 50,
+    }),
+    unread_count: activeCount,
+    active_count: activeCount,
+  });
 });
 
-// GET /api/alerts/count — lightweight poll for the bell badge
+// GET /api/alerts/count - lightweight poll for the bell badge
 alertsRouter.get('/count', (_req, res) => {
-  res.json({ unread_count: systemAlertModel.unreadCount() });
+  const activeCount = systemAlertModel.unreadCount();
+  res.json({ unread_count: activeCount, active_count: activeCount });
 });
 
 // POST /api/alerts/:id/read
-alertsRouter.post('/:id/read', (req, res, next) => {
-  const id = Number(req.params['id']);
-  if (!Number.isInteger(id) || id <= 0) return next(new HttpError(400, 'Invalid id'));
+alertsRouter.post('/:id/read', validateParams(AlertParamsSchema), (req, res, next) => {
+  const { id } = req.validatedParams as { id: number };
   const ok = systemAlertModel.markRead(id);
+  if (!ok) return next(new HttpError(404, 'Alert not found'));
+  res.json({ ok: true });
+});
+
+// POST /api/alerts/:id/resolve
+alertsRouter.post('/:id/resolve', validateParams(AlertParamsSchema), (req, res, next) => {
+  const { id } = req.validatedParams as { id: number };
+  const ok = systemAlertModel.resolve(id);
+  if (!ok) return next(new HttpError(404, 'Alert not found'));
+  res.json({ ok: true });
+});
+
+// POST /api/alerts/:id/unresolve
+alertsRouter.post('/:id/unresolve', validateParams(AlertParamsSchema), (req, res, next) => {
+  const { id } = req.validatedParams as { id: number };
+  const ok = systemAlertModel.unresolve(id);
   if (!ok) return next(new HttpError(404, 'Alert not found'));
   res.json({ ok: true });
 });
@@ -34,5 +66,3 @@ alertsRouter.post('/read-all', (_req, res) => {
   const changed = systemAlertModel.markAllRead();
   res.json({ ok: true, marked: changed });
 });
-
-export { z };

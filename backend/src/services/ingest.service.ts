@@ -174,10 +174,7 @@ function walkDir(rootPath: string): string[] {
  */
 export async function scanWorkvault(opts: ScanOptions): Promise<ScanResult> {
   const { sourceId, rootPath } = opts;
-
-  // Record scan start time before touching any files so post-scan tombstoning
-  // can use it as the boundary.
-  const scanStartIso = new Date().toISOString();
+  const seenFileIds = new Set<string>();
 
   // Clear the per-scan org name cache so any orgs added since the last scan
   // are reflected in mention extraction.
@@ -265,6 +262,7 @@ export async function scanWorkvault(opts: ScanOptions): Promise<ScanResult> {
         continue;
       }
     }
+    seenFileIds.add(fileId);
 
     const contentSha256 = sha256(body);
     const fileMtimeIso = mtime.toISOString();
@@ -376,10 +374,11 @@ export async function scanWorkvault(opts: ScanOptions): Promise<ScanResult> {
   }
 
   // -------------------------------------------------------------------------
-  // Post-scan tombstoning: any file-sourced note not seen since scan start.
+  // Post-scan tombstoning: any file-sourced note under this root not seen in
+  // the current directory walk.
   // -------------------------------------------------------------------------
   try {
-    const tombstoned = noteModel.tombstoneStaleSince(scanStartIso);
+    const tombstoned = noteModel.tombstoneMissingFromRoot(rootPath, [...seenFileIds]);
     result.tombstoned = tombstoned;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

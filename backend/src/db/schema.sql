@@ -107,6 +107,21 @@ CREATE TABLE IF NOT EXISTS backlog_items (
 CREATE INDEX IF NOT EXISTS idx_backlog_items_status_due
   ON backlog_items(status, due_date);
 
+CREATE TABLE IF NOT EXISTS system_alerts (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  severity TEXT NOT NULL DEFAULT 'error' CHECK(severity IN ('error', 'warn', 'info')),
+  source TEXT NOT NULL,
+  message TEXT NOT NULL,
+  detail TEXT,
+  read_at TEXT,
+  resolved_at TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_system_alerts_read ON system_alerts(read_at);
+CREATE INDEX IF NOT EXISTS idx_system_alerts_created ON system_alerts(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_system_alerts_unresolved
+  ON system_alerts(resolved_at, read_at, created_at DESC);
+
 -- Master notes: one free-form markdown blob per (org, optional project),
 -- autosaved from the UI and mirrored to a vault file. See migration
 -- 022_master_notes.sql for column-level rationale.

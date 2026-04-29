@@ -9,6 +9,7 @@ export interface SystemAlert {
   message: string;
   detail: string | null;
   read_at: string | null;
+  resolved_at: string | null;
   created_at: string;
 }
 
@@ -19,6 +20,7 @@ interface AlertRow {
   message: string;
   detail: string | null;
   read_at: string | null;
+  resolved_at: string | null;
   created_at: string;
 }
 
@@ -33,7 +35,10 @@ const createStmt = db.prepare<{
 `);
 
 const listUnreadStmt = db.prepare<[], AlertRow>(`
-  SELECT * FROM system_alerts WHERE read_at IS NULL ORDER BY created_at DESC LIMIT 100
+  SELECT * FROM system_alerts
+  WHERE read_at IS NULL AND resolved_at IS NULL
+  ORDER BY created_at DESC
+  LIMIT 100
 `);
 
 const listRecentStmt = db.prepare<[number], AlertRow>(`
@@ -41,15 +46,28 @@ const listRecentStmt = db.prepare<[number], AlertRow>(`
 `);
 
 const markReadStmt = db.prepare<[number]>(`
-  UPDATE system_alerts SET read_at = datetime('now') WHERE id = ?
+  UPDATE system_alerts SET read_at = COALESCE(read_at, datetime('now')) WHERE id = ?
 `);
 
 const markAllReadStmt = db.prepare<[]>(`
-  UPDATE system_alerts SET read_at = datetime('now') WHERE read_at IS NULL
+  UPDATE system_alerts
+  SET read_at = COALESCE(read_at, datetime('now'))
+  WHERE read_at IS NULL AND resolved_at IS NULL
 `);
 
 const unreadCountStmt = db.prepare<[], { cnt: number }>(`
-  SELECT COUNT(*) as cnt FROM system_alerts WHERE read_at IS NULL
+  SELECT COUNT(*) as cnt FROM system_alerts WHERE read_at IS NULL AND resolved_at IS NULL
+`);
+
+const resolveStmt = db.prepare<[number]>(`
+  UPDATE system_alerts
+  SET resolved_at = COALESCE(resolved_at, datetime('now')),
+      read_at = COALESCE(read_at, datetime('now'))
+  WHERE id = ?
+`);
+
+const unresolveStmt = db.prepare<[number]>(`
+  UPDATE system_alerts SET resolved_at = NULL WHERE id = ?
 `);
 
 export const systemAlertModel = {
@@ -62,6 +80,7 @@ export const systemAlertModel = {
       message,
       detail: detail ?? null,
       read_at: null,
+      resolved_at: null,
       created_at: new Date().toISOString(),
     };
   },
@@ -74,6 +93,36 @@ export const systemAlertModel = {
     return listRecentStmt.all(limit);
   },
 
+  listFiltered(input: {
+    status?: 'active' | 'unread' | 'unresolved' | 'resolved' | 'all';
+    severity?: AlertSeverity | 'all';
+    source?: string | null;
+    limit?: number;
+  } = {}): SystemAlert[] {
+    const clauses: string[] = [];
+    const params: unknown[] = [];
+    const status = input.status ?? 'active';
+
+    if (status === 'active') clauses.push('read_at IS NULL AND resolved_at IS NULL');
+    if (status === 'unread') clauses.push('read_at IS NULL');
+    if (status === 'unresolved') clauses.push('resolved_at IS NULL');
+    if (status === 'resolved') clauses.push('resolved_at IS NOT NULL');
+    if (input.severity && input.severity !== 'all') {
+      clauses.push('severity = ?');
+      params.push(input.severity);
+    }
+    if (input.source) {
+      clauses.push('source = ?');
+      params.push(input.source);
+    }
+
+    const where = clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : '';
+    params.push(input.limit ?? 100);
+    return db
+      .prepare<unknown[], AlertRow>(`SELECT * FROM system_alerts ${where} ORDER BY created_at DESC LIMIT ?`)
+      .all(...params);
+  },
+
   markRead(id: number): boolean {
     return markReadStmt.run(id).changes > 0;
   },
@@ -84,6 +133,14 @@ export const systemAlertModel = {
 
   unreadCount(): number {
     return unreadCountStmt.get()?.cnt ?? 0;
+  },
+
+  resolve(id: number): boolean {
+    return resolveStmt.run(id).changes > 0;
+  },
+
+  unresolve(id: number): boolean {
+    return unresolveStmt.run(id).changes > 0;
   },
 };
 

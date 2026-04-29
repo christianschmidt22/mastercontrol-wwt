@@ -59,10 +59,10 @@ describe('ProjectNextStepsTile', () => {
     expect(screen.getByText('Schedule pricing and design review')).toBeInTheDocument();
     expect(screen.getByText('Send prep notes to Maya')).toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: /mark complete/i }));
+    await user.click(screen.getByRole('checkbox', { name: /mark complete/i }));
     expect(mutations.complete).toHaveBeenCalledWith(7);
 
-    await user.click(screen.getByRole('button', { name: /reopen: send prep notes/i }));
+    await user.click(screen.getByRole('checkbox', { name: /reopen: send prep notes/i }));
     expect(mutations.reopen).toHaveBeenCalledWith(8);
   });
 });

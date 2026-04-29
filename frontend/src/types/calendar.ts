@@ -23,10 +23,12 @@ export interface SystemAlert {
   message: string;
   detail: string | null;
   read_at: string | null;
+  resolved_at: string | null;
   created_at: string;
 }
 
 export interface AlertsResponse {
   alerts: SystemAlert[];
   unread_count: number;
+  active_count?: number;
 }

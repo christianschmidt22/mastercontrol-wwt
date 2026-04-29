@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { Bell, X, AlertTriangle, Info, CheckCircle } from 'lucide-react';
 import {
   useAlertCount,
@@ -72,7 +73,7 @@ export function AlertBell() {
   const buttonRef = useRef<HTMLButtonElement>(null);
 
   const { data: countData } = useAlertCount();
-  const { data: alertsData } = useAlerts(false);
+  const { data: alertsData } = useAlerts(true);
   const { mutate: markRead } = useMarkAlertRead();
   const { mutate: markAllRead } = useMarkAllAlertsRead();
 
@@ -175,6 +176,20 @@ export function AlertBell() {
               )}
             </span>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <Link
+                to="/alerts"
+                onClick={() => setOpen(false)}
+                style={{
+                  fontSize: 11,
+                  color: 'var(--ink-3)',
+                  fontFamily: 'var(--body)',
+                  padding: '2px 4px',
+                  textDecoration: 'underline',
+                  textUnderlineOffset: 3,
+                }}
+              >
+                View all
+              </Link>
               {unreadCount > 0 && (
                 <button
                   type="button"

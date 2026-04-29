@@ -1,5 +1,5 @@
 import { useState, useCallback, type FormEvent, type CSSProperties } from 'react';
-import { Check, Plus, RotateCcw } from 'lucide-react';
+import { Plus } from 'lucide-react';
 import { Tile } from '../Tile';
 import { TileEmptyState } from '../TileEmptyState';
 import {
@@ -234,28 +234,22 @@ export function ProjectNextStepsTile({
                 borderBottom: '1px solid var(--rule)',
               }}
             >
-              <button
-                type="button"
+              <input
+                type="checkbox"
                 aria-label={`Mark complete: ${task.title}`}
-                onClick={() => taskMutations.complete(task.id)}
+                checked={false}
+                onChange={(e) => {
+                  if (e.currentTarget.checked) taskMutations.complete(task.id);
+                }}
                 style={{
                   flexShrink: 0,
                   marginTop: 2,
                   width: 16,
                   height: 16,
-                  borderRadius: 3,
-                  border: '1px solid var(--rule)',
-                  background: 'transparent',
                   cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  padding: 0,
-                  color: 'var(--ink-3)',
+                  accentColor: 'var(--ink-3)',
                 }}
-              >
-                <Check size={10} strokeWidth={2} aria-hidden="true" />
-              </button>
+              />
               <button
                 type="button"
                 onClick={() => setEditingTask(task)}
@@ -362,28 +356,22 @@ export function ProjectNextStepsTile({
                     {formatCompletedAt(task.completed_at)}
                   </div>
                 </button>
-                <button
-                  type="button"
+                <input
+                  type="checkbox"
                   aria-label={`Reopen: ${task.title}`}
-                  onClick={() => taskMutations.reopen(task.id)}
+                  checked
+                  onChange={(e) => {
+                    if (!e.currentTarget.checked) taskMutations.reopen(task.id);
+                  }}
                   style={{
                     flexShrink: 0,
-                    width: 24,
-                    height: 24,
-                    borderRadius: 4,
-                    border: '1px solid var(--rule)',
-                    background: 'transparent',
-                    color: 'var(--ink-3)',
+                    width: 16,
+                    height: 16,
                     cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    padding: 0,
+                    accentColor: 'var(--ink-3)',
                   }}
                   title="Reopen"
-                >
-                  <RotateCcw size={12} strokeWidth={1.7} aria-hidden="true" />
-                </button>
+                />
               </li>
             ))}
           </ul>

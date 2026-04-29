@@ -1,7 +1,7 @@
 import type { ReactNode, KeyboardEvent } from 'react';
 import { useCallback, useRef } from 'react';
 import { NavLink } from 'react-router-dom';
-import { Home, CheckSquare, BarChart2, Bot, Settings, Package } from 'lucide-react';
+import { Home, CheckSquare, BarChart2, Bot, Settings, Package, Bell } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useOrganizations, useOrgLastTouched } from '../../api/useOrganizations';
 
@@ -381,6 +381,11 @@ export function Sidebar() {
           to="/tasks"
           icon={<CheckSquare size={16} strokeWidth={1.5} />}
           label="Tasks"
+        />
+        <NavItem
+          to="/alerts"
+          icon={<Bell size={16} strokeWidth={1.5} />}
+          label="Alerts"
         />
         <NavItem
           to="/reports"

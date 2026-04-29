@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Tasks page now uses a column table with header sorting and per-column filters;
+  checking an open task completes it, while unchecking a done task reopens it.
+- Alerts now have a resolved state, a full Alerts page with table
+  sorting/filtering/actions, and the bell only lists unread unresolved alerts.
+- WorkVault ingest tombstoning now uses the files seen in the current scan
+  under the scanned root instead of relying on millisecond timestamp ordering.
+
 - Project next steps now keep completed tasks visible in the tile with a reopen
   action, and reopening a task clears its completion timestamp.
 

@@ -1,3 +1,4 @@
+import * as path from 'node:path';
 import { db } from '../db/database.js';
 
 export type NoteRole = 'user' | 'assistant' | 'agent_insight' | 'imported' | 'customer_ask';
@@ -213,6 +214,11 @@ const tombstoneStaleSinceStmt = db.prepare<[string]>(
      AND deleted_at IS NULL
      AND (last_seen_at IS NULL OR last_seen_at < ?)`,
 );
+
+function rootPrefix(rootPath: string): string {
+  const resolved = path.resolve(rootPath);
+  return resolved.endsWith(path.sep) ? resolved : `${resolved}${path.sep}`;
+}
 
 // Parameters: org_id, content, source_path, file_mtime, file_id, content_sha256, conflict_of_note_id
 const insertConflictStmt = db.prepare<
@@ -615,6 +621,31 @@ export const noteModel = {
    */
   tombstoneStaleSince(scanStartIso: string): number {
     return tombstoneStaleSinceStmt.run(scanStartIso).changes;
+  },
+
+  /**
+   * Tombstone file-sourced notes under a scanned root that were not present in
+   * the current walk. This avoids relying on millisecond timestamp ordering
+   * between back-to-back scans.
+   */
+  tombstoneMissingFromRoot(rootPath: string, seenFileIds: string[]): number {
+    const prefix = rootPrefix(rootPath);
+    const clauses = [
+      'file_id IS NOT NULL',
+      'deleted_at IS NULL',
+      'source_path IS NOT NULL',
+      '(source_path = ? OR substr(source_path, 1, ?) = ?)',
+    ];
+    const params: unknown[] = [path.resolve(rootPath), prefix.length, prefix];
+
+    if (seenFileIds.length > 0) {
+      clauses.push(`file_id NOT IN (${seenFileIds.map(() => '?').join(', ')})`);
+      params.push(...seenFileIds);
+    }
+
+    return db
+      .prepare<unknown[]>(`UPDATE notes SET deleted_at = datetime('now') WHERE ${clauses.join(' AND ')}`)
+      .run(...params).changes;
   },
 
   /**
