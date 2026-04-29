@@ -28,6 +28,8 @@ import type { ScheduledTask } from 'node-cron';
 import { reportScheduleModel } from '../models/reportSchedule.model.js';
 import { runReport } from './reports.service.js';
 import { getMostRecentCronTime } from '../lib/cronUtils.js';
+import { scanExternalMasterNoteEdits } from './masterNote.service.js';
+import { logAlert } from '../models/systemAlert.model.js';
 
 interface RegisteredSchedule {
   cronExpr: string;
@@ -36,6 +38,10 @@ interface RegisteredSchedule {
 
 let schedulerStarted = false;
 const registered = new Map<number, RegisteredSchedule>();
+let masterNoteScanTask: ScheduledTask | null = null;
+
+/** Hourly cron expression: top of every hour. */
+const MASTER_NOTE_SCAN_CRON = '0 * * * *';
 
 /**
  * Replay any cron fires whose nominal fire-time is later than the schedule's
@@ -80,6 +86,27 @@ export async function runMissedJobs(): Promise<void> {
 export function startInProcessScheduler(): void {
   schedulerStarted = true;
   refreshInProcessScheduler();
+  registerMasterNoteScanJob();
+}
+
+/**
+ * Hourly job: re-scan master_notes.md files for external edits (e.g. from
+ * VS Code or OneDrive sync) and feed any changes through the LLM extraction
+ * pipeline. Idempotent w.r.t. content sha — `processMasterNote` short-
+ * circuits when nothing has changed since the last ingest.
+ */
+function registerMasterNoteScanJob(): void {
+  if (masterNoteScanTask) return;
+  masterNoteScanTask = cron.schedule(MASTER_NOTE_SCAN_CRON, () => {
+    scanExternalMasterNoteEdits().catch((err) => {
+      const message = err instanceof Error ? err.message : String(err);
+      logAlert(
+        'warn',
+        'masterNoteScan',
+        `External master-note scan job failed: ${message}`,
+      );
+    });
+  });
 }
 
 export function notifySchedulesChanged(): void {
@@ -92,6 +119,10 @@ export function stopInProcessScheduler(): void {
     task.stop();
   }
   registered.clear();
+  if (masterNoteScanTask) {
+    masterNoteScanTask.stop();
+    masterNoteScanTask = null;
+  }
   schedulerStarted = false;
 }
 
