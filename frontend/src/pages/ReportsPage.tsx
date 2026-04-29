@@ -875,14 +875,22 @@ function HistoryRow({ run, reportId }: HistoryRowProps) {
       )}
       {run.error && (
         <p
+          // Failed runs surface the error inline beneath the timestamp, capped
+          // at ~120 chars with the full text in the title tooltip so users get
+          // a glanceable signal without the row growing unbounded.
+          title={run.error}
           style={{
             fontSize: 12,
-            color: 'var(--ink-2)',
+            color: run.status === 'failed' ? 'var(--accent)' : 'var(--ink-2)',
             fontFamily: 'var(--body)',
             margin: 0,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+            maxWidth: '100%',
           }}
         >
-          {run.error}
+          {run.error.length > 120 ? `${run.error.slice(0, 120)}…` : run.error}
         </p>
       )}
       {expanded && canPreview && (
@@ -906,6 +914,11 @@ function StatusBadge({ status }: { status: ReportRun['status'] }) {
     done: 'done',
     failed: 'failed',
   };
+  // Failed pills get the accent treatment so a bad run is glanceable in the
+  // history list (R-008 normally reserves vermilion for focus rings, but a
+  // failed scheduled run is exactly the "deserves attention" signal the
+  // accent is reserved for).
+  const isFailed = status === 'failed';
   return (
     <span
       style={{
@@ -914,8 +927,9 @@ function StatusBadge({ status }: { status: ReportRun['status'] }) {
         fontWeight: 500,
         letterSpacing: '0.04em',
         textTransform: 'uppercase',
-        color: status === 'failed' ? 'var(--ink-1)' : 'var(--ink-2)',
-        border: '1px solid var(--rule)',
+        color: isFailed ? 'var(--accent)' : 'var(--ink-2)',
+        border: `1px solid ${isFailed ? 'var(--accent)' : 'var(--rule)'}`,
+        background: isFailed ? 'var(--accent-soft)' : 'transparent',
         borderRadius: 3,
         padding: '1px 6px',
       }}

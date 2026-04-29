@@ -74,6 +74,7 @@ import {
 import { reportModel } from '../models/report.model.js';
 import { reportScheduleModel } from '../models/reportSchedule.model.js';
 import { reportRunModel } from '../models/reportRun.model.js';
+import { db } from '../db/database.js';
 
 // ---------------------------------------------------------------------------
 // Per-test working directory — runReport writes under
@@ -232,6 +233,55 @@ describe('runReport — Anthropic failure', () => {
     expect(runs[0].status).toBe('failed');
     expect(runs[0].error).toBe('upstream blew up');
     expect(runs[0].finished_at).not.toBeNull();
+  });
+
+  it('writes a system_alerts row tagged source=reportRun on failure', async () => {
+    const { reportId, scheduleId } = makeReportAndSchedule({ name: 'Alerting' });
+    mockMessagesCreate.mockRejectedValueOnce(new Error('upstream blew up'));
+
+    const fireTime = 1700_040_000;
+    await expect(runReport(scheduleId, fireTime)).rejects.toThrow('upstream blew up');
+
+    const alerts = db
+      .prepare<[], { severity: string; source: string; message: string; detail: string | null }>(
+        `SELECT severity, source, message, detail FROM system_alerts WHERE source = 'reportRun' ORDER BY id DESC LIMIT 1`,
+      )
+      .all();
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0].severity).toBe('warn');
+    expect(alerts[0].source).toBe('reportRun');
+    expect(alerts[0].message).toContain(`#${scheduleId}`);
+    expect(alerts[0].detail).not.toBeNull();
+    const detail = JSON.parse(alerts[0].detail!) as {
+      schedule_id: number;
+      report_id: number;
+      fire_time: number;
+      error: string;
+    };
+    expect(detail.schedule_id).toBe(scheduleId);
+    expect(detail.report_id).toBe(reportId);
+    expect(detail.fire_time).toBe(fireTime);
+    expect(detail.error).toBe('upstream blew up');
+  });
+
+  it('suppresses the historical "API key not configured" failure from the alert feed', async () => {
+    const { scheduleId } = makeReportAndSchedule({ name: 'API key noise' });
+    mockMessagesCreate.mockRejectedValueOnce(new Error('API key not configured'));
+
+    await expect(runReport(scheduleId, 1700_050_000)).rejects.toThrow(
+      'API key not configured',
+    );
+
+    const alerts = db
+      .prepare<[], { id: number }>(
+        `SELECT id FROM system_alerts WHERE source = 'reportRun'`,
+      )
+      .all();
+    expect(alerts).toHaveLength(0);
+
+    // The run row itself is still marked failed — only the alert is skipped.
+    const runs = reportRunModel.listBySchedule(scheduleId);
+    expect(runs[0].status).toBe('failed');
   });
 });
 

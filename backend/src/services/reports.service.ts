@@ -35,6 +35,7 @@ import { generateReport } from './claude.service.js';
 import { taskModel, type Task } from '../models/task.model.js';
 import { noteModel } from '../models/note.model.js';
 import { organizationModel } from '../models/organization.model.js';
+import { logAlert } from '../models/systemAlert.model.js';
 
 // ---------------------------------------------------------------------------
 // DAILY_TASK_REVIEW_TEMPLATE — the seed report's prompt template (Step 5c).
@@ -312,6 +313,28 @@ export async function runReport(
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     reportRunModel.updateStatus(run.id, 'failed', { error: message });
+
+    // Surface to the bell-icon notifications. severity='warn' because the
+    // schedule will retry on the next cron tick — this is recoverable noise,
+    // not an outage.
+    //
+    // Skip the historical "API key not configured" message: pre-subscription-
+    // auth runs raised it on every fire and would flood the alert feed for
+    // anyone upgrading from that era. See claude.service.ts auth-mode wiring.
+    if (!/API key not configured/i.test(message)) {
+      const truncated = message.length > 500 ? `${message.slice(0, 500)}…` : message;
+      logAlert(
+        'warn',
+        'reportRun',
+        `Scheduled report run failed (schedule #${scheduleId})`,
+        {
+          schedule_id: scheduleId,
+          report_id: report.id,
+          fire_time: fireTime,
+          error: truncated,
+        },
+      );
+    }
     throw err;
   }
 }
