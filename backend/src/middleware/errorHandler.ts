@@ -89,5 +89,15 @@ export class HttpError extends Error {
   }
 }
 
+/**
+ * Public R-013 redactor for use by model/service-layer code that needs to
+ * log an error value without piping it through Express. Returns a
+ * structurally-cloned shape with secret-shaped keys replaced by
+ * `***redacted***`. Non-object inputs are returned as-is.
+ */
+export function redactError(input: unknown): unknown {
+  return redact(input);
+}
+
 // Exported for tests (R-013 acceptance: PUT /api/settings 400 must not echo `value`).
 export const __testing = { redact, REDACT_KEYS };

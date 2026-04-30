@@ -1,4 +1,5 @@
 import { db } from '../db/database.js';
+import { redactError } from '../middleware/errorHandler.js';
 
 export type AlertSeverity = 'error' | 'warn' | 'info';
 
@@ -161,6 +162,8 @@ export function logAlert(
     systemAlertModel.create(severity, source, message, detail);
   } catch (dbErr) {
     // Don't let a broken alerts table crash the job that's already failing.
-    console.error('[systemAlert] failed to write alert', dbErr);
+    // R-013: route through the redactor before logging — `dbErr` may include
+    // sensitive payloads (settings values, Anthropic auth headers, etc.).
+    console.error('[systemAlert] failed to write alert', redactError(dbErr));
   }
 }
