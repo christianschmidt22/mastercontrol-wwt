@@ -1,4 +1,4 @@
--- 026_outlook_messages
+-- 028_outlook_messages
 --
 -- Stores synced Outlook messages and their org associations.
 --

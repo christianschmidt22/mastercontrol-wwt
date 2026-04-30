@@ -2,7 +2,7 @@
  * outlookMessage.model.ts
  *
  * Prepared-statement model for the outlook_messages and outlook_message_orgs
- * tables (created by 026_outlook_messages.sql).
+ * tables (created by 028_outlook_messages.sql).
  *
  * Layer rules: all SQL lives here. No SQL in service or route files.
  */

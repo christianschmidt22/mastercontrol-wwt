@@ -5,7 +5,7 @@
  * by the vitest setup file (backend/src/test/setup.ts).
  *
  * Pattern: same as note.model.test.ts — the setup file runs runMigrations()
- * so the schema (including 026_outlook_messages.sql) is in place before any
+ * so the schema (including 028_outlook_messages.sql) is in place before any
  * model code runs its db.prepare() calls.
  */
 

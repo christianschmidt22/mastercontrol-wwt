@@ -1,4 +1,4 @@
--- 025_outlook_auth
+-- 027_outlook_auth
 --
 -- Reserve settings keys for Microsoft Graph / Outlook integration (Phase 3).
 --
