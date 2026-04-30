@@ -177,6 +177,7 @@ vi.mock('../models/task.model.js', () => ({
 import Anthropic from '@anthropic-ai/sdk';
 import { streamChat } from './claude.service.js';
 import { openSse } from '../lib/sse.js';
+import { db } from '../db/database.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -322,33 +323,30 @@ function sseToolResults(sse: SseCapture): Array<Record<string, unknown>> {
 // ===========================================================================
 
 describe('agent tool: search_notes', () => {
-  it('happy path — calls noteModel.search, returns results, logs audit row', async () => {
-    mockNoteSearch.mockReturnValueOnce([
-      {
-        id: 42,
-        organization_id: 1,
-        content: 'meeting with cisco about the renewal next quarter',
-        role: 'user',
-        thread_id: null,
-        confirmed: 1,
-        provenance: null,
-        created_at: '2026-04-20T10:00:00.000Z',
-      },
-    ]);
+  it('happy path — FTS5 search returns results and logs audit row', async () => {
+    // Insert a real org and note so the FTS5 query can find it.
+    // We use raw SQL rather than model factories since note model is mocked.
+    const orgRow = db.prepare<[string, string], { id: number }>(
+      `INSERT INTO organizations (type, name) VALUES (?, ?) RETURNING id`,
+    ).get('customer', 'Cisco FTS Test Org');
+    const orgId = orgRow!.id;
+
+    const noteRow = db.prepare<[number, string, string], { id: number }>(
+      `INSERT INTO notes (organization_id, content, role) VALUES (?, ?, ?) RETURNING id`,
+    ).get(orgId, 'meeting with cisco about the renewal next quarter', 'user');
+    const noteId = noteRow!.id;
 
     wireStream(
       makeFakeStream({
         type: 'tool_use',
         id: 'tu_search',
         name: 'search_notes',
-        input: { query: 'cisco', org_id: 1 },
+        input: { query: 'cisco', org_id: orgId },
       }),
     );
     const { req, res, sse } = makeMockReqRes();
 
-    await streamChat({ orgId: 1, threadId: 700, content: 'find cisco notes', req, res });
-
-    expect(mockNoteSearch).toHaveBeenCalledWith('cisco', 1);
+    await streamChat({ orgId, threadId: 700, content: 'find cisco notes', req, res });
 
     const audits = auditCallsFor('search_notes');
     expect(audits.length).toBe(1);
@@ -362,7 +360,7 @@ describe('agent tool: search_notes', () => {
       results: Array<{ note_id: number; org_id: number; snippet: string }>;
     };
     expect(decoded.results).toHaveLength(1);
-    expect(decoded.results[0]?.note_id).toBe(42);
+    expect(decoded.results[0]?.note_id).toBe(noteId);
     expect(decoded.results[0]?.snippet.length).toBeLessThanOrEqual(300);
   });
 

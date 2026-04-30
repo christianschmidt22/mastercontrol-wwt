@@ -17,6 +17,7 @@
 import { useCallback, useRef, useState } from 'react';
 import { useAgentConfigs } from '../api/useAgentConfigs';
 import { useOrganizations } from '../api/useOrganizations';
+import { useSetting, useSetSetting } from '../api/useSettings';
 import { TabStrip, type AgentsTab } from '../components/agents/TabStrip';
 import { AgentSectionEditor } from '../components/agents/AgentSectionEditor';
 import { AgentOverridesPanel } from '../components/agents/AgentOverridesPanel';
@@ -33,6 +34,150 @@ const SECTION_LABELS: Record<AgentSection, string> = {
   customer: 'Customer agent',
   oem: 'OEM agent',
 };
+
+// ─── Mention extraction settings ─────────────────────────────────────────────
+
+const EXTRACTION_MODELS = [
+  { value: 'claude-haiku-4-5', label: 'Claude Haiku 4.5 (fast, cost-efficient)' },
+  { value: 'claude-sonnet-4-5', label: 'Claude Sonnet 4.5 (balanced)' },
+  { value: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6 (latest)' },
+];
+
+function MentionExtractionSection() {
+  const { data: modelSetting } = useSetting('mention_extraction_model');
+  const { data: thresholdSetting } = useSetting('mention_extraction_threshold');
+  const setSettingMutation = useSetSetting();
+
+  const currentModel = modelSetting?.value ?? 'claude-haiku-4-5';
+  const currentThreshold = parseFloat(thresholdSetting?.value ?? '0.5');
+  const displayThreshold = Number.isFinite(currentThreshold) ? currentThreshold : 0.5;
+
+  const labelStyle = {
+    fontFamily: 'var(--body)',
+    fontSize: 11,
+    fontWeight: 600 as const,
+    textTransform: 'uppercase' as const,
+    letterSpacing: '0.06em',
+    color: 'var(--ink-3)',
+    display: 'block',
+    marginBottom: 6,
+  };
+
+  const fieldStyle = {
+    fontFamily: 'var(--body)',
+    fontSize: 13,
+    color: 'var(--ink-1)',
+    background: 'var(--bg)',
+    border: '1px solid var(--rule)',
+    borderRadius: 4,
+    padding: '6px 8px',
+    width: '100%',
+    boxSizing: 'border-box' as const,
+    outline: 'none',
+  };
+
+  return (
+    <section aria-labelledby="mention-extraction-heading" style={{ marginTop: 40 }}>
+      <div aria-hidden="true" style={{ height: 1, background: 'var(--rule)', marginBottom: 24 }} />
+      <h2
+        id="mention-extraction-heading"
+        style={{
+          fontFamily: 'var(--body)',
+          fontSize: 13,
+          fontWeight: 600,
+          color: 'var(--ink-1)',
+          margin: '0 0 20px',
+        }}
+      >
+        Mention Extraction
+      </h2>
+      <p
+        style={{
+          fontFamily: 'var(--body)',
+          fontSize: 13,
+          color: 'var(--ink-2)',
+          margin: '0 0 20px',
+          maxWidth: '60ch',
+        }}
+      >
+        Controls the model and confidence threshold used when scanning imported
+        notes for cross-org references.
+      </p>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 20, maxWidth: 480 }}>
+        {/* Model dropdown */}
+        <div>
+          <label style={labelStyle} htmlFor="mention-model-select">
+            Extraction Model
+          </label>
+          <select
+            id="mention-model-select"
+            value={currentModel}
+            onChange={(e) => {
+              setSettingMutation.mutate({ key: 'mention_extraction_model', value: e.target.value });
+            }}
+            style={fieldStyle}
+          >
+            {EXTRACTION_MODELS.map((m) => (
+              <option key={m.value} value={m.value} style={{ background: 'var(--bg)', color: 'var(--ink-1)' }}>
+                {m.label}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Confidence threshold slider */}
+        <div>
+          <label style={labelStyle} htmlFor="mention-threshold-slider">
+            Confidence Threshold
+            <span
+              aria-live="polite"
+              style={{
+                fontFamily: 'var(--mono, monospace)',
+                fontSize: 12,
+                fontWeight: 400,
+                color: 'var(--ink-2)',
+                marginLeft: 8,
+                letterSpacing: 0,
+                textTransform: 'none',
+              }}
+            >
+              {displayThreshold.toFixed(2)}
+            </span>
+          </label>
+          <input
+            id="mention-threshold-slider"
+            type="range"
+            min={0}
+            max={1}
+            step={0.05}
+            value={displayThreshold}
+            onChange={(e) => {
+              setSettingMutation.mutate({
+                key: 'mention_extraction_threshold',
+                value: parseFloat(e.target.value).toFixed(2),
+              });
+            }}
+            style={{ width: '100%', accentColor: 'var(--accent)' }}
+          />
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              fontFamily: 'var(--body)',
+              fontSize: 11,
+              color: 'var(--ink-3)',
+              marginTop: 4,
+            }}
+          >
+            <span>0.00 — include all</span>
+            <span>1.00 — exact only</span>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
 
 // ─── Templates panel ──────────────────────────────────────────────────────────
 
@@ -179,6 +324,8 @@ function TemplatesPanel() {
                     orgs={orgs ?? []}
                     sectionDefault={activeConfig}
                   />
+
+                  <MentionExtractionSection />
                 </>
               )}
             </>

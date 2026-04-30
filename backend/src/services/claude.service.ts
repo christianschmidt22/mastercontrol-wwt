@@ -39,6 +39,7 @@ import {
 import type { Request, Response } from 'express';
 import * as fs from 'node:fs';
 import { z } from 'zod/v4';
+import { db } from '../db/database.js';
 import { settingsModel } from '../models/settings.model.js';
 import { agentToolAuditModel } from '../models/agentToolAudit.model.js';
 import { openSse } from '../lib/sse.js';
@@ -593,12 +594,6 @@ async function resolveAllowlist(
   if (currentOrg) {
     allowlist.set(currentOrg.name.toLowerCase(), currentOrg.id);
   }
-
-  // Dynamically import db for the note_mentions query — this is a direct DB
-  // query that doesn't fit neatly into the model API assumed above.
-  // We keep it here (service layer) rather than adding a model method that
-  // would create a circular dep during parallel development.
-  const { db } = await import('../db/database.js');
 
   // Orgs whose names appear in the user message.
   // We query all org names and test them against the message content.
@@ -1541,7 +1536,7 @@ function handleSearchNotes({
   toolUseId,
   input,
   threadId,
-  m,
+  m: _m,
   sse,
 }: HandleSearchNotesArgs): ToolResultPayload {
   const query = typeof input.query === 'string' ? input.query.trim() : '';
@@ -1562,9 +1557,27 @@ function handleSearchNotes({
     return result;
   }
 
+  // FTS5 MATCH throws on malformed queries — guard and return empty results.
+  let rows: NoteRow[];
   try {
-    const rows = m.noteModel.search(query, orgId);
-    const results = rows.slice(0, 10).map((n) => ({
+    const baseRows = db.prepare<[string], NoteRow>(
+      `SELECT n.*
+       FROM notes_fts f
+       JOIN notes n ON n.id = f.rowid
+       WHERE notes_fts MATCH ?
+       ORDER BY rank
+       LIMIT 10`,
+    ).all(query);
+    // Apply optional org filter in memory — FTS5 JOIN makes column-level WHERE
+    // filtering simpler here than inline SQL with optional parameters.
+    rows = orgId !== null ? baseRows.filter((r) => r.organization_id === orgId) : baseRows;
+  } catch {
+    // Syntactically invalid FTS5 query — return empty results gracefully.
+    rows = [];
+  }
+
+  try {
+    const results = rows.map((n) => ({
       note_id: n.id,
       org_id: n.organization_id,
       snippet: n.content.length > 300 ? n.content.slice(0, 300) : n.content,
@@ -2166,12 +2179,13 @@ export interface OrgPrimaryAndMentions {
 export async function extractOrgMentions(
   noteContent: string,
   candidateNames: string[],
+  model = 'claude-haiku-4-5',
 ): Promise<OrgMention[]> {
   if (candidateNames.length === 0) return [];
 
   const nameList = candidateNames.join(', ');
 
-  const ingestModel = 'claude-haiku-4-5';
+  const ingestModel = model;
   if (resolveClaudeAuthMode() === 'subscription') {
     const result = await runClaudeCodePrompt({
       prompt: `<untrusted_document src="note">\n${noteContent}\n</untrusted_document>`,
@@ -2266,6 +2280,7 @@ export async function extractOrgMentions(
 export async function extractPrimaryOrgAndMentions(
   noteContent: string,
   candidateNames: string[],
+  model = 'claude-haiku-4-5',
 ): Promise<OrgPrimaryAndMentions> {
   if (candidateNames.length === 0) {
     return { primary_org_name: null, primary_confidence: null, mentions: [] };
@@ -2273,7 +2288,7 @@ export async function extractPrimaryOrgAndMentions(
 
   const nameList = candidateNames.join(', ');
 
-  const ingestModel = 'claude-haiku-4-5';
+  const ingestModel = model;
   if (resolveClaudeAuthMode() === 'subscription') {
     const result = await runClaudeCodePrompt({
       prompt: `<untrusted_document src="note">\n${noteContent}\n</untrusted_document>`,
