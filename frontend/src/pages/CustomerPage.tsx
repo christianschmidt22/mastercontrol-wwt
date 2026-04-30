@@ -19,6 +19,7 @@ import { useOrganization } from '../api/useOrganizations';
 import { useProjects, useUpdateProject } from '../api/useProjects';
 import { CustomerPageHeader } from '../components/customers/CustomerPageHeader';
 import { CrossOrgInsightsPanel } from '../components/customers/CrossOrgInsightsPanel';
+import { StatusPill } from '../components/shared/StatusPill';
 import type { Project, ProjectStatus } from '../types';
 
 /**
@@ -262,41 +263,6 @@ function ProjectHeaderNote({ project }: { project: Project }) {
         </div>
       )}
     </form>
-  );
-}
-
-// ── Status chip colors ────────────────────────────────────────────────────────
-
-const STATUS_CHIP: Record<ProjectStatus, { color: string; bg: string }> = {
-  active:     { color: '#16a34a',          bg: 'rgba(22,163,74,0.10)'   },
-  qualifying: { color: '#2563eb',          bg: 'rgba(37,99,235,0.09)'   },
-  paused:     { color: '#c2710c',          bg: 'rgba(194,113,12,0.12)'  },
-  won:        { color: '#16a34a',          bg: 'rgba(22,163,74,0.10)'   },
-  lost:       { color: 'var(--accent)',    bg: 'rgba(180,40,30,0.09)'   },
-  closed:     { color: 'var(--ink-3)',     bg: 'var(--bg-2)'            },
-};
-
-function StatusChip({ status }: { status: ProjectStatus }) {
-  const { color, bg } = STATUS_CHIP[status] ?? STATUS_CHIP.closed;
-  return (
-    <span
-      style={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        padding: '3px 10px',
-        borderRadius: 99,
-        fontSize: 11,
-        fontWeight: 600,
-        fontFamily: 'var(--body)',
-        letterSpacing: '0.04em',
-        textTransform: 'capitalize',
-        color,
-        background: bg,
-        userSelect: 'none',
-      }}
-    >
-      {status}
-    </span>
   );
 }
 
@@ -634,7 +600,7 @@ function ProjectPage({ project }: { project: Project }) {
           zIndex: 500,
         }}
       >
-        <StatusChip status={project.status} />
+        <StatusPill status={project.status} />
 
         {/* Customize / edit-mode controls — live inline with the icon row */}
         {editMode ? (

@@ -18,6 +18,7 @@ import {
 } from '../api/useReports';
 import { useReportRuns } from '../api/useReportRuns';
 import { ReportPreview } from '../components/overlays/ReportPreview';
+import { StatusPill } from '../components/shared/StatusPill';
 import { useOrganizations } from '../api/useOrganizations';
 import type {
   Report,
@@ -828,7 +829,7 @@ function HistoryRow({ run, reportId }: HistoryRowProps) {
           {formatRelative(run.started_at)}
         </time>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <StatusBadge status={run.status} />
+          <StatusPill status={run.status} size="sm" />
           {canPreview && (
             <button
               type="button"
@@ -902,40 +903,6 @@ function HistoryRow({ run, reportId }: HistoryRowProps) {
         />
       )}
     </li>
-  );
-}
-
-// Status badge — neutral by default, vermilion only via focus rings
-// (R-008): we use ink-3 / ink-2 / ink-1 here for at-rest status colors.
-function StatusBadge({ status }: { status: ReportRun['status'] }) {
-  const labels: Record<ReportRun['status'], string> = {
-    queued: 'queued',
-    running: 'running',
-    done: 'done',
-    failed: 'failed',
-  };
-  // Failed pills get the accent treatment so a bad run is glanceable in the
-  // history list (R-008 normally reserves vermilion for focus rings, but a
-  // failed scheduled run is exactly the "deserves attention" signal the
-  // accent is reserved for).
-  const isFailed = status === 'failed';
-  return (
-    <span
-      style={{
-        fontSize: 11,
-        fontFamily: 'var(--body)',
-        fontWeight: 500,
-        letterSpacing: '0.04em',
-        textTransform: 'uppercase',
-        color: isFailed ? 'var(--accent)' : 'var(--ink-2)',
-        border: `1px solid ${isFailed ? 'var(--accent)' : 'var(--rule)'}`,
-        background: isFailed ? 'var(--accent-soft)' : 'transparent',
-        borderRadius: 3,
-        padding: '1px 6px',
-      }}
-    >
-      {labels[status]}
-    </span>
   );
 }
 
