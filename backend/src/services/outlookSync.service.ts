@@ -4,91 +4,24 @@
  * Called every 15 minutes from scheduler.service.ts.
  *
  * Steps:
- *   1. Check connected (refresh token present); skip if not.
- *   2. Ensure access token is fresh via refreshIfNeeded().
- *   3. Fetch the 50 most recent messages from inbox + sentItems.
- *   4. Upsert each into outlook_messages.
- *   5. Run simple org name matching on subject + bodyPreview.
- *   6. Upsert matches into outlook_message_orgs.
- *   7. Update last_outlook_sync_at in settings.
+ *   1. Fetch messages via the PowerShell COM script (outlook.service.ts).
+ *   2. Upsert each into outlook_messages.
+ *   3. Run simple org name matching on subject + bodyPreview.
+ *   4. Upsert matches into outlook_message_orgs.
+ *   5. Update last_outlook_sync_at in settings.
  *
- * R-013: Raw Graph responses must not be logged (may contain email body content).
- *        Log metadata only (message ids, counts, status codes).
+ * R-013: Raw message content must not be logged (may contain sensitive email
+ *        body content). Log metadata only (message ids, counts, status).
  */
 
-import { getOutlookStatus, graphFetch, refreshIfNeeded } from './outlook.service.js';
+import { fetchOutlookMessages } from './outlook.service.js';
 import { outlookMessageModel } from '../models/outlookMessage.model.js';
 import { organizationModel } from '../models/organization.model.js';
 import { settingsModel } from '../models/settings.model.js';
 
 // ---------------------------------------------------------------------------
-// Graph response shapes (minimal — only fields we select)
-// ---------------------------------------------------------------------------
-
-interface GraphEmailAddress {
-  name?: string;
-  address?: string;
-}
-
-interface GraphRecipient {
-  emailAddress?: GraphEmailAddress;
-}
-
-interface GraphMessage {
-  id: string;
-  internetMessageId?: string;
-  conversationId?: string;
-  subject?: string;
-  from?: GraphRecipient;
-  toRecipients?: GraphRecipient[];
-  ccRecipients?: GraphRecipient[];
-  sentDateTime?: string;
-  hasAttachments?: boolean;
-  bodyPreview?: string;
-}
-
-interface GraphMessagesResponse {
-  value?: GraphMessage[];
-}
-
-// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-const SELECT_FIELDS = [
-  'id',
-  'internetMessageId',
-  'conversationId',
-  'subject',
-  'from',
-  'toRecipients',
-  'ccRecipients',
-  'sentDateTime',
-  'hasAttachments',
-  'bodyPreview',
-].join(',');
-
-const FETCH_PARAMS = `$select=${SELECT_FIELDS}&$top=50&$orderby=sentDateTime desc`;
-
-async function fetchFolder(folderPath: string): Promise<GraphMessage[]> {
-  const res = await graphFetch(`${folderPath}/messages?${FETCH_PARAMS}`);
-  if (!res.ok) {
-    console.warn('[outlookSync] folder fetch failed', {
-      folder: folderPath,
-      status: res.status,
-    });
-    return [];
-  }
-  const data = (await res.json()) as GraphMessagesResponse;
-  return data.value ?? [];
-}
-
-function extractEmails(recipients: GraphRecipient[] | undefined): string[] {
-  if (!recipients) return [];
-  return recipients
-    .map((r) => r.emailAddress?.address ?? '')
-    .filter((e) => e.length > 0);
-}
 
 /**
  * Simple substring-based org name matching against subject + bodyPreview.
@@ -127,60 +60,48 @@ function matchOrgs(
 // ---------------------------------------------------------------------------
 
 export async function syncOutlook(): Promise<void> {
-  const status = await getOutlookStatus();
-  if (!status.connected) {
-    // Not authenticated — skip silently.
-    return;
-  }
-
-  await refreshIfNeeded();
-
   // Load all org names once for mention matching.
   const customers = organizationModel.listByType('customer');
   const oems = organizationModel.listByType('oem');
   const allOrgs = [...customers, ...oems].map((o) => ({ id: o.id, name: o.name }));
 
-  // Fetch inbox + sentItems in parallel.
-  const [inboxMessages, sentMessages] = await Promise.all([
-    fetchFolder('/me/mailFolders/inbox'),
-    fetchFolder('/me/mailFolders/sentItems'),
-  ]);
+  // Fetch messages via COM — returns [] if Outlook is not running.
+  const rawMessages = await fetchOutlookMessages(50);
 
-  const allMessages = [...inboxMessages, ...sentMessages];
-
-  // De-duplicate by internetMessageId (may appear in both folders for self-emails)
-  const seen = new Set<string>();
-  const uniqueMessages: GraphMessage[] = [];
-  for (const m of allMessages) {
-    const key = m.internetMessageId ?? m.id;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    uniqueMessages.push(m);
+  if (rawMessages.length === 0) {
+    // Outlook not running or no messages — skip silently, don't update sync time.
+    console.log('[outlookSync] no messages returned (Outlook may not be running)');
+    return;
   }
+
+  // De-duplicate by internet_message_id (may appear in both inbox + sent for self-emails)
+  const seen = new Set<string>();
+  const unique = rawMessages.filter((m) => {
+    if (!m.internet_message_id || seen.has(m.internet_message_id)) return false;
+    seen.add(m.internet_message_id);
+    return true;
+  });
 
   let upsertCount = 0;
   let linkCount = 0;
 
-  for (const gm of uniqueMessages) {
-    const internetMessageId = gm.internetMessageId ?? gm.id;
-    if (!internetMessageId) continue;
-
+  for (const rm of unique) {
     const persisted = outlookMessageModel.upsert({
-      internet_message_id: internetMessageId,
-      thread_id: gm.conversationId ?? null,
-      subject: gm.subject ?? null,
-      from_email: gm.from?.emailAddress?.address ?? null,
-      from_name: gm.from?.emailAddress?.name ?? null,
-      to_emails: extractEmails(gm.toRecipients),
-      cc_emails: extractEmails(gm.ccRecipients),
-      sent_at: gm.sentDateTime ?? null,
-      has_attachments: gm.hasAttachments ?? false,
-      body_preview: gm.bodyPreview ?? null,
+      internet_message_id: rm.internet_message_id,
+      thread_id: null,
+      subject: rm.subject ?? null,
+      from_email: rm.from_email ?? null,
+      from_name: rm.from_name ?? null,
+      to_emails: Array.isArray(rm.to_emails) ? rm.to_emails : [],
+      cc_emails: Array.isArray(rm.cc_emails) ? rm.cc_emails : [],
+      sent_at: rm.sent_at ?? null,
+      has_attachments: Boolean(rm.has_attachments),
+      body_preview: rm.body_preview ?? null,
     });
     upsertCount++;
 
-    // Run org mention matching on subject + bodyPreview.
-    const textToMatch = [gm.subject ?? '', gm.bodyPreview ?? ''].join(' ');
+    // Run org mention matching on subject + body_preview.
+    const textToMatch = [rm.subject ?? '', rm.body_preview ?? ''].join(' ');
     if (textToMatch.trim().length > 0 && allOrgs.length > 0) {
       const matches = matchOrgs(textToMatch, allOrgs);
       for (const { orgId, confidence } of matches) {

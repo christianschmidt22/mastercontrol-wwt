@@ -1,96 +1,108 @@
-# ADR 0009 — Outlook Delegated Auth via Device-Code Flow
+# ADR 0009 — Outlook Integration via Windows COM Automation
 
-**Status:** Accepted  
+**Status:** Superseded (original device-code plan) → Accepted (COM approach)  
 **Date:** 2026-04-29  
 **Scope:** Phase 3 Outlook integration
 
 ## Context
 
 MasterControl needs read access to the user's Microsoft 365 mailbox so it can
-surface relevant emails alongside org notes. Obtaining this access requires an
-OAuth 2.0 delegated-permission flow against Microsoft's identity platform
-(Microsoft Entra ID).
+surface relevant emails alongside org notes.
 
-The app runs locally at `http://localhost:5173` on Windows. The backend binds
-to `127.0.0.1` only (R-001). This means:
+The original design (Phase 3 Agent A) used the **OAuth 2.0 device-code flow**
+(RFC 8628) against Microsoft Graph to obtain a delegated `Mail.Read` token.
+This required an **Azure app registration** approved by the enterprise IT
+organization.
 
-- A traditional **authorization-code (PKCE) redirect flow** would require
-  registering a localhost redirect URI and binding a local HTTP listener to
-  receive the callback. Windows Defender and enterprise security policies
-  regularly block ad-hoc port bindings, especially on WWT-managed laptops.
-- We do not control Azure AD tenant policy; the app may be multi-tenant
-  (different customers' M365 tenants) even though only one user ever runs it.
+**The corporate IT team at WWT does not allow custom Azure app registrations
+for user-installed tools.** Without an approved registration, there is no
+`client_id`, and the device-code flow cannot be initiated.
 
 ## Decision
 
-Use the **OAuth 2.0 device-code flow** (RFC 8628) for the initial delegated
-authorization.
+Use **Windows COM automation** to read directly from the locally running
+Outlook desktop application — no Azure registration, no OAuth tokens, no
+network auth.
 
-Key flow:
+### How it works
 
-1. The backend calls the `/oauth2/v2.0/devicecode` endpoint with
-   `scope = offline_access Mail.Read`.
-2. The backend receives a `device_code` (opaque, kept server-side) and a
-   human-readable `user_code` + `verification_uri`.
-3. The frontend displays `user_code` in large monospace type with the
-   `verification_uri` as a clickable link (via `OutlookSetup.tsx`).
-4. The backend polls the token endpoint every ≥ 5 s on the server side until
-   the user completes the browser sign-in or the code expires.
-5. On success the backend stores the access token in memory and persists the
-   refresh token in the `settings` table as a DPAPI-wrapped secret under the
-   key `outlook_refresh_token`.
-6. The `device_code` is never sent to the browser — only the display
-   `user_code` and `verification_uri` reach the client.
+1. A PowerShell script (`backend/src/scripts/outlook-fetch.ps1`) connects to
+   the running Outlook process via COM:
+   ```powershell
+   $outlook = [System.Runtime.InteropServices.Marshal]::GetActiveObject('Outlook.Application')
+   ```
+2. The script reads the 50 most recent messages from Inbox and Sent Items
+   using the Outlook object model (`GetDefaultFolder`), then writes a JSON
+   array to stdout.
+3. The Node.js backend spawns `powershell.exe` with the script as a child
+   process, collects stdout, and parses the JSON.
+4. The parsed messages are upserted into `outlook_messages` via the existing
+   `outlookMessage.model.ts` — **no changes to the data model**.
+5. Org-mention matching runs as before in `outlookSync.service.ts`.
 
-The `user_code` is good for `expires_in` seconds (typically 15 minutes),
-which is ample for a user to complete sign-in.
+### Connection status
+
+`GET /api/outlook/status` now returns `connected: true` when the COM probe
+succeeds (i.e., Outlook is running and responds to `GetActiveObject`), and
+`connected: false` when Outlook is not running.
 
 ## Consequences
 
 ### Positive
 
-- **No localhost HTTP server required.** No port binding, no Windows Firewall
-  prompts, no redirect-URI registration pointing to `http://127.0.0.1:NNNN`.
-- **No PKCE complexity.** The device-code flow is simpler to implement and
-  audit than authorization-code + PKCE.
-- **Works on corporate / WWT-managed machines.** Device-code flow is supported
-  by all M365 tenant configurations that allow public-client apps.
-- **Single-user app.** The single refresh token lives in the user-scoped
-  DPAPI store — no multi-user token management needed.
-- **Refresh token encrypted at rest.** DPAPI (ADR 0008) wraps the token so it
-  is opaque to any process that does not run as the same Windows user.
-- **Access token never persisted.** The in-process `_accessToken` variable is
-  memory-only; it disappears on backend restart. The next GraphFetch call
-  silently refreshes from the stored refresh token.
+- **No Azure app registration required.** Zero corporate IT approval needed.
+- **No tokens, no secrets.** Nothing to store, rotate, or DPAPI-encrypt for
+  auth. (`outlook_refresh_token` removed from `SECRET_KEYS`.)
+- **No OAuth complexity.** No device-code UI, no polling loop, no token
+  refresh logic.
+- **Works on WWT-managed machines.** PowerShell and Outlook COM are standard
+  on any Windows device with Office installed.
+- **Simpler codebase.** Removes ~300 lines of OAuth service + auth routes +
+  OutlookSetup modal.
 
 ### Negative / Trade-offs
 
-- **User must visit an external URI.** Unlike PKCE, the user opens
-  `https://microsoft.com/devicelogin` in a separate browser tab. This is a
-  minor UX friction for a one-time setup.
-- **Polling overhead.** The backend polls the token endpoint every 5 s during
-  auth. This is acceptable because it only runs during the setup modal (brief,
-  one-time).
-- **No SDK.** We use plain `fetch()` against `graph.microsoft.com`. This means
-  we own retry logic and token refresh. The trade-off is no extra dependency
-  and transparent control over what is sent over the wire.
+- **Outlook must be running.** The COM object is only available when the
+  Outlook desktop app is open. If Outlook is closed, sync returns an empty
+  result (no error, just a no-op).
+- **Windows-only.** COM automation is a Windows-only technology. This is
+  acceptable — MasterControl is already a Windows-only app (SQLite path,
+  DPAPI for API key encryption, OneDrive vault).
+- **No email address in status.** The COM object does not trivially expose
+  the current user's SMTP address in the same call used for the status probe.
+  `email` in the status response is always `null` under this approach.
+- **Outlook must have synced recently.** COM reads the local Outlook cache.
+  If Outlook has not synced (e.g., offline for days), the local cache may be
+  stale. This is the same situation a user is already in for any Outlook-based
+  workflow.
 
 ## Alternatives Considered
 
 | Alternative | Rejected because |
 |---|---|
-| PKCE authorization-code redirect | Requires localhost HTTP listener; blocked by Windows Firewall on corporate machines |
-| Client-credentials (app-only) | Requires admin consent to access mailboxes; not viable for a personal-use app |
-| MSAL.js in browser | Puts token management in the frontend; violates the layer rule that secrets stay server-side |
-| Microsoft Graph SDK (Node) | Adds a large dependency graph; device-code + fetch is sufficient and auditable |
+| Device-code OAuth (RFC 8628) | Requires an approved Azure app registration — blocked by WWT IT policy |
+| PKCE authorization-code redirect | Same Azure registration requirement; also needs a localhost HTTP listener |
+| Client-credentials (app-only) | Requires admin consent to access mailboxes; not viable for personal-use app |
+| Microsoft Graph SDK (Node) | Same registration requirement as any Graph-based approach |
+| Graph API with personal Microsoft account | WWT M365 tenant does not allow personal accounts; tenant policy restricts to org accounts only |
+
+## Removed Components
+
+- `outlook_refresh_token` from `SECRET_KEYS` in `settings.model.ts`
+- `initiateDeviceCodeFlow`, `pollDeviceCodeAuth`, `refreshIfNeeded`,
+  `getGraphToken`, `graphFetch` from `outlook.service.ts`
+- `POST /api/outlook/auth-start` and `GET /api/outlook/auth-poll` routes
+- `OutlookSetup.tsx` modal component
+- `useOutlookAuthStart`, `fetchAuthPoll` hooks from `useOutlook.ts`
+- `DeviceCodeResponse`, `AuthPollResponse` from `types/outlook.ts`
 
 ## Security Notes
 
-- `outlook_refresh_token` is in `SECRET_KEYS` (settings.model.ts), so it is
-  DPAPI-encrypted on write and never returned by any API route.
-- The `device_code` is stored in a module-level variable in
-  `outlook.route.ts` and cleared on success. It is never sent to the browser.
-- Access to Graph is scoped to `Mail.Read` (read-only). Phase 3 does not
-  implement any write or send capability (per spec).
-- R-021 applies if Graph email body content is ever embedded in system
+- No tokens of any kind are stored for Outlook. The surface area for token
+  theft or leakage is zero.
+- The PowerShell script runs as the current user and can only access folders
+  that user can already access in Outlook — no privilege escalation.
+- R-013 applies: the raw PS1 stdout (which may contain email subjects and
+  body previews) is never logged. Only counts and status codes are logged.
+- R-021 applies if email body content is ever embedded in agent system
   prompts: wrap in `<untrusted_document>` and disable `record_insight`.

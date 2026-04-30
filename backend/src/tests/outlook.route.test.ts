@@ -1,19 +1,21 @@
 /**
  * outlook.route.test.ts
  *
- * Supertest tests for the 5 Outlook routes. The outlook.service module is
- * mocked so no real Microsoft Graph calls are made.
+ * Supertest tests for the 3 Outlook routes. The outlook.service module is
+ * mocked so no PowerShell process is spawned.
  *
  * Routes under test:
  *   GET  /api/outlook/status
- *   POST /api/outlook/auth-start
- *   GET  /api/outlook/auth-poll
  *   POST /api/outlook/sync-now
  *   GET  /api/outlook/messages
  *
+ * Auth routes (auth-start, auth-poll) were removed when the integration
+ * was switched from Microsoft Graph device-code OAuth to Windows COM
+ * automation (ADR 0009).
+ *
  * NOTE: vitest module mocking requires the mock to be defined BEFORE the
- * module is imported via dynamic import in buildApp(). We use vi.mock() at
- * the top of the file.
+ * module is imported via dynamic import in buildAppWithOutlook(). We use
+ * vi.mock() at the top of the file.
  */
 
 import { describe, it, expect, vi, beforeAll } from 'vitest';
@@ -33,15 +35,7 @@ vi.mock('../services/outlook.service.js', () => ({
     email: null,
     last_sync: null,
   }),
-  initiateDeviceCodeFlow: vi.fn().mockResolvedValue({
-    device_code: 'device_code_secret',
-    user_code: 'ABCD-1234',
-    verification_uri: 'https://microsoft.com/devicelogin',
-    expires_in: 900,
-    interval: 5,
-  }),
-  pollDeviceCodeAuth: vi.fn().mockResolvedValue(false),
-  refreshIfNeeded: vi.fn().mockResolvedValue(undefined),
+  fetchOutlookMessages: vi.fn().mockResolvedValue([]),
 }));
 
 vi.mock('../services/outlookSync.service.js', () => ({
@@ -68,40 +62,6 @@ describe('GET /api/outlook/status', () => {
       email: null,
       last_sync: null,
     });
-  });
-});
-
-// ---------------------------------------------------------------------------
-// POST /api/outlook/auth-start
-// ---------------------------------------------------------------------------
-
-describe('POST /api/outlook/auth-start', () => {
-  it('returns user_code and verification_uri (not the device_code)', async () => {
-    const res = await request(app).post('/api/outlook/auth-start');
-    expect(res.status).toBe(200);
-    expect(res.body).toMatchObject({
-      user_code: 'ABCD-1234',
-      verification_uri: 'https://microsoft.com/devicelogin',
-      expires_in: 900,
-    });
-    // device_code must NOT be exposed to the client
-    expect((res.body as Record<string, unknown>).device_code).toBeUndefined();
-  });
-});
-
-// ---------------------------------------------------------------------------
-// GET /api/outlook/auth-poll
-// ---------------------------------------------------------------------------
-
-describe('GET /api/outlook/auth-poll', () => {
-  it('returns { status: "error" } when no auth flow is active', async () => {
-    // Fresh request — no ongoing flow
-    const freshRes = await request(app).get('/api/outlook/auth-poll');
-    expect(freshRes.status).toBe(200);
-    // Could be 'pending' from a previous test's start or 'error' if none active.
-    expect(['pending', 'error', 'success']).toContain(
-      (freshRes.body as { status: string }).status,
-    );
   });
 });
 

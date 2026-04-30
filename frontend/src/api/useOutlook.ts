@@ -3,6 +3,10 @@
  *
  * All server state goes through these hooks — no direct fetch() calls
  * in component files.
+ *
+ * Auth hooks removed (useOutlookAuthStart, fetchAuthPoll): the integration
+ * now reads from the local Outlook desktop app via COM automation, so no
+ * OAuth flow is needed (ADR 0009).
  */
 
 import {
@@ -13,12 +17,7 @@ import {
   type UseMutationResult,
 } from '@tanstack/react-query';
 import { request } from './http';
-import type {
-  OutlookMessage,
-  OutlookStatus,
-  DeviceCodeResponse,
-  AuthPollResponse,
-} from '../types/outlook';
+import type { OutlookMessage, OutlookStatus } from '../types/outlook';
 
 // ---------------------------------------------------------------------------
 // Cache key factory
@@ -36,7 +35,7 @@ export const outlookKeys = {
 
 /**
  * GET /api/outlook/status → { connected, email, last_sync }
- * Polled every 30s so the UI reflects auth state without a manual refresh.
+ * Polled every 30s so the UI reflects Outlook availability without manual refresh.
  */
 export function useOutlookStatus(): UseQueryResult<OutlookStatus> {
   return useQuery({
@@ -84,33 +83,4 @@ export function useOutlookSyncNow(): UseMutationResult<
       void qc.invalidateQueries({ queryKey: ['outlook'] });
     },
   });
-}
-
-/**
- * POST /api/outlook/auth-start → DeviceCodeResponse
- * Starts a device-code flow and returns the user-facing code + URI.
- */
-export function useOutlookAuthStart(): UseMutationResult<
-  DeviceCodeResponse,
-  Error,
-  void
-> {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: () =>
-      request<DeviceCodeResponse>('POST', '/api/outlook/auth-start'),
-    onSuccess: () => {
-      // Status will update once polling completes; preemptively invalidate.
-      void qc.invalidateQueries({ queryKey: outlookKeys.status() });
-    },
-  });
-}
-
-/**
- * Poll GET /api/outlook/auth-poll → AuthPollResponse.
- * This is used manually inside OutlookSetup with a setInterval — not a
- * standard useQuery so we can control when polling starts/stops.
- */
-export async function fetchAuthPoll(): Promise<AuthPollResponse> {
-  return request<AuthPollResponse>('GET', '/api/outlook/auth-poll');
 }

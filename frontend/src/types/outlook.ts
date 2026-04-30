@@ -1,6 +1,9 @@
 /**
  * Outlook integration TypeScript interfaces.
  * These mirror the wire shapes returned by /api/outlook/*.
+ *
+ * Auth types removed (DeviceCodeResponse, AuthPollResponse): the integration
+ * now reads from the local Outlook desktop app via COM — no OAuth required.
  */
 
 export interface OutlookMessage {
@@ -31,15 +34,4 @@ export interface OutlookStatus {
   connected: boolean;
   email: string | null;
   last_sync: string | null;
-}
-
-export interface DeviceCodeResponse {
-  user_code: string;
-  verification_uri: string;
-  expires_in: number;
-}
-
-export interface AuthPollResponse {
-  status: 'pending' | 'success' | 'error';
-  message?: string;
 }
