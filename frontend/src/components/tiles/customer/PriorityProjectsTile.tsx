@@ -4,6 +4,7 @@ import { Plus, Trash2, FolderOpen, Archive, X } from 'lucide-react';
 import { useOpenPath, useBrowsePath } from '../../../api/useShell';
 import { Tile } from '../Tile';
 import { TileEmptyState } from '../TileEmptyState';
+import { StatusPill } from '../../shared/StatusPill';
 import type { Project, ProjectCreate, ProjectUpdate, ProjectStatus } from '../../../types';
 import {
   useProjects as useProjectsReal,
@@ -54,16 +55,6 @@ const STATUS_GROUPS: { label: string; statuses: ProjectStatus[] }[] = [
   { label: 'Open', statuses: ['active', 'qualifying', 'paused'] },
   { label: 'Closed', statuses: ['won', 'lost', 'closed'] },
 ];
-
-function statusColor(status: ProjectStatus): string {
-  if (status === 'paused') return '#c2710c';
-  return 'var(--ink-1)';
-}
-
-function statusBg(status: ProjectStatus): string {
-  if (status === 'paused') return 'rgba(194,113,12,0.12)';
-  return 'var(--bg-2)';
-}
 
 // ── Style constants ───────────────────────────────────────────────────────────
 
@@ -249,23 +240,7 @@ function AllProjectsModal({
                           </div>
                         )}
                       </div>
-                      <span
-                        style={{
-                          fontSize: 10,
-                          letterSpacing: '0.06em',
-                          textTransform: 'uppercase',
-                          fontWeight: 600,
-                          padding: '2px 8px',
-                          borderRadius: 10,
-                          background: statusBg(project.status),
-                          color: statusColor(project.status),
-                          whiteSpace: 'nowrap',
-                          flexShrink: 0,
-                          fontFamily: 'var(--body)',
-                        }}
-                      >
-                        {project.status}
-                      </span>
+                      <StatusPill status={project.status} size="sm" />
                     </button>
                   </li>
                 ))}
@@ -588,24 +563,7 @@ function ProjectRow({ project, onUpdate, onDelete, isUpdating, isDeleting }: Pro
         <FolderOpen size={11} strokeWidth={1.5} aria-hidden="true" />
       </button>
 
-      {/* Status pill — paused gets amber text */}
-      <span
-        style={{
-          fontSize: 10,
-          letterSpacing: '0.06em',
-          textTransform: 'uppercase',
-          fontWeight: 600,
-          padding: '2px 8px',
-          borderRadius: 10,
-          background: statusBg(project.status),
-          color: statusColor(project.status),
-          whiteSpace: 'nowrap',
-          flexShrink: 0,
-          fontFamily: 'var(--body)',
-        }}
-      >
-        {project.status}
-      </span>
+      <StatusPill status={project.status} size="sm" />
     </li>
   );
 }
