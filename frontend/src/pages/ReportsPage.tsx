@@ -9,15 +9,15 @@ import {
   type FormEvent,
   type ReactNode,
 } from 'react';
-import { Plus, X } from 'lucide-react';
+import { Loader2, Plus, X } from 'lucide-react';
 import {
   useReports,
   useCreateReport,
   useUpdateReport,
   useRunReportNow,
 } from '../api/useReports';
-import { useReportRuns } from '../api/useReportRuns';
-import { ReportPreview } from '../components/overlays/ReportPreview';
+import { useReportRuns, useRunContent } from '../api/useReportRuns';
+import { MarkdownViewer } from '../components/shared/MarkdownViewer';
 import { StatusPill } from '../components/shared/StatusPill';
 import { useOrganizations } from '../api/useOrganizations';
 import type {
@@ -795,6 +795,60 @@ interface HistoryRowProps {
   reportId: number;
 }
 
+function RunContentPreview({ reportId, runId, outputPath }: { reportId: number; runId: number; outputPath: string | null }) {
+  const contentQuery = useRunContent(reportId, runId, true);
+
+  if (outputPath === null) {
+    return (
+      <p style={{ fontSize: 13, color: 'var(--ink-3)', fontFamily: 'var(--body)', fontStyle: 'italic', margin: 0 }}>
+        No output file.
+      </p>
+    );
+  }
+
+  return (
+    <div
+      style={{
+        marginTop: 10,
+        padding: '12px 14px',
+        background: 'var(--bg)',
+        border: '1px solid var(--rule)',
+        borderRadius: 6,
+      }}
+    >
+      {contentQuery.isLoading && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--ink-3)', fontSize: 13, fontFamily: 'var(--body)' }}>
+          <Loader2 size={14} strokeWidth={1.5} aria-hidden="true" className="animate-spin" />
+          Loading preview…
+        </div>
+      )}
+      {contentQuery.isError && (
+        <p role="alert" style={{ fontSize: 13, color: 'var(--ink-2)', fontFamily: 'var(--body)', margin: 0 }}>
+          Could not load report content.
+        </p>
+      )}
+      {contentQuery.isSuccess && (
+        <MarkdownViewer
+          source={contentQuery.data.content}
+          ariaLabel="Report output"
+        />
+      )}
+      <code
+        style={{
+          display: 'block',
+          marginTop: 10,
+          fontFamily: 'var(--mono)',
+          fontSize: 11,
+          color: 'var(--ink-3)',
+          wordBreak: 'break-all',
+        }}
+      >
+        {outputPath}
+      </code>
+    </div>
+  );
+}
+
 function HistoryRow({ run, reportId }: HistoryRowProps) {
   const [expanded, setExpanded] = useState(false);
   const canPreview = run.status === 'done' && run.output_path !== null;
@@ -862,18 +916,6 @@ function HistoryRow({ run, reportId }: HistoryRowProps) {
       >
         Duration {formatDuration(run.started_at, run.finished_at)}
       </div>
-      {run.output_path && (
-        <code
-          style={{
-            fontFamily: 'var(--mono)',
-            fontSize: 11,
-            color: 'var(--ink-2)',
-            wordBreak: 'break-all',
-          }}
-        >
-          {run.output_path}
-        </code>
-      )}
       {run.error && (
         <p
           // Failed runs surface the error inline beneath the timestamp, capped
@@ -894,12 +936,11 @@ function HistoryRow({ run, reportId }: HistoryRowProps) {
           {run.error.length > 120 ? `${run.error.slice(0, 120)}…` : run.error}
         </p>
       )}
-      {expanded && canPreview && (
-        <ReportPreview
+      {expanded && (
+        <RunContentPreview
           reportId={reportId}
           runId={run.id}
-          runDate={run.started_at}
-          enabled={expanded}
+          outputPath={run.output_path ?? null}
         />
       )}
     </li>
