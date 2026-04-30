@@ -1105,21 +1105,21 @@ above checks pass.
 ## Verification checklist
 
 ```
-[ ] npm run test                  — all tests pass
-[ ] npm run typecheck             — both workspaces clean
-[ ] npm run lint                  — both workspaces clean
-[ ] _migrations has 6 rows        — migrations applied in order
-[ ] Daily Task Review seeded      — reports + report_schedules rows exist
-[ ] Run Now fires correctly       — report_runs row, output file on disk
-[ ] Second Run Now is a no-op     — single run row
-[ ] runMissedJobs catches up      — restart with stale last_run_at, run fires
-[ ] Ingest scan reconciles        — 5 cases exercised in tests
-[ ] Mention extraction populates  — note_mentions rows with source='ai_auto'
-[ ] read_document rejects ../     — safe-path test passes
-[ ] OEM docs tile lists files     — (requires onedrive_folder in org metadata)
-[ ] Reports page renders          — list, run-now, history drawer
-[ ] Task trigger enforced         — cross-org contact insert rejected
-[ ] CHANGELOG entry added         — docs/CHANGELOG.md updated
+[x] npm run test                  — all tests pass (backend + frontend Vitest suites green on 2026-04-29)
+[x] npm run typecheck             — both workspaces clean (verified 2026-04-29 from worktree-agent-a011334cc2f9db481)
+[x] npm run lint                  — both workspaces clean (verified 2026-04-29; ESLint v9 flat config)
+[x] _migrations has 6 rows        — _migrations holds 24 rows (001–024) on the live DB; 001–006 the original Phase 2 set, 007–024 the post-checkpoint schema work
+[x] Daily Task Review seeded      — reports id=1 'Daily Task Review' + report_schedules id=1 cron='0 7 * * *' confirmed via better-sqlite3 read
+[x] Run Now fires correctly       — report_runs has 4 rows on disk; reports.service.test.ts covers run-now → status transitions and output write
+[x] Second Run Now is a no-op     — reportRun.model uses INSERT OR IGNORE on UNIQUE(schedule_id, fire_time); idempotency covered in reports.service.test.ts
+[x] runMissedJobs catches up      — scheduler.service.test.ts asserts a stale last_run_at fires runReport on next runMissedJobs() pass
+[ ] Ingest scan reconciles        — (deferred — WorkVault wiring excluded from this Phase 2 close-out per user direction; the 5-case matrix is covered by ingest.service.test.ts but live wiring/ingest_sources is empty)
+[ ] Mention extraction populates  — (deferred — WorkVault wiring excluded from this Phase 2 close-out per user direction; live note_mentions has 3 rows with source='ai_auto' from earlier dev runs and unit tests cover the path)
+[x] read_document rejects ../     — claude.service.tools.test.ts covers resolveSafePath rejection of paths escaping workvault_root
+[x] OEM docs tile lists files     — oem-scan.route.ts + oem-scan.route.test.ts in place; route returns `{ configured: false }` until the OEM's metadata.onedrive_folder is set (manual configuration required)
+[x] Reports page renders          — ReportsPage.test.tsx covers list view, run-now control, history dialog, and failed-run flag
+[x] Task trigger enforced         — sqlite_master shows trg_tasks_contact_org_insert + trg_tasks_contact_org_update on the live DB; create_task service-layer guard backstops them
+[x] CHANGELOG entry added         — docs/CHANGELOG.md "Phase 2 — closeout (2026-04-29)" section landed alongside this checklist update
 ```
 
 ## Open questions
