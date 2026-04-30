@@ -62,7 +62,7 @@ export function MarkdownViewer({ source, ariaLabel = 'Content', className }: Mar
       return `<p style="color:var(--accent);font-family:var(--body);font-size:13px">Parse error: ${msg}</p>`;
     }
 
-    const sanitized = DOMPurify.sanitize(rawHtml, PURIFY_CONFIG) as string;
+    const sanitized = DOMPurify.sanitize(rawHtml, PURIFY_CONFIG);
     return addLinkTargets(sanitized);
   }, [source]);
 
@@ -96,7 +96,6 @@ export function MarkdownViewer({ source, ariaLabel = 'Content', className }: Mar
       aria-label={ariaLabel}
       className={['mc-prose', className].filter(Boolean).join(' ')}
       style={wrapperStyle}
-      // eslint-disable-next-line react/no-danger
       dangerouslySetInnerHTML={{ __html: html }}
     />
   );
