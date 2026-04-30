@@ -1,5 +1,156 @@
 # Changelog
 
+## Phase 2 — closeout (2026-04-29)
+
+Synthesizes the work that landed since the `phase2-checkpoint-6` polish round
+into the closing surface of Phase 2. WorkVault ingest wiring is intentionally
+deferred; everything else in the Phase 2 plan is on `main`.
+
+### Migrations
+- `015_note_manager.sql` — `note_proposals` approval queue plus capture-path
+  metadata for durable markdown notes.
+- `016_calendar.sql` — `calendar_events` with `uid` PK (recurring instances
+  use `uid:YYYY-MM-DD` composite keys).
+- `017_alerts.sql` — `system_alerts` (severity, source, message, detail,
+  read_at) for surfacing background-job failures.
+- `018_project_tasks_and_resources.sql` — nullable `tasks.project_id` FK and
+  the new `project_resources` table.
+- `019_note_proposals_internal_resource.sql` — rebuilds the proposal CHECK
+  to admit `internal_resource` approvals on live databases.
+- `020_note_proposals_contact.sql` — proposal contact linkage for
+  contact-targeted approvals.
+- `021_notes_customer_ask_role.sql` — extends the `notes.role` set with
+  `customer_ask`.
+- `022_master_notes.sql` — `master_notes` (one durable per-org note) plus
+  the metadata needed to round-trip with the entity's vault folder.
+- `023_backlog_items.sql` — backlog table for parked-but-not-task items.
+- `024_alert_resolution.sql` — adds resolved state + actor columns so the
+  bell only counts unread unresolved alerts.
+
+### Backend services
+- `ingest.service.ts` — walk → hash → reconcile loop with the five-case
+  matrix and the `<untrusted_document>`-wrapped mention extractor; per-error
+  retry endpoint hooks back into `retrySingleError()`.
+- `workvault.service.ts` — server-derived filename, safe-path containment,
+  collision refusal (R-025).
+- `reports.service.ts` — `runReport`, prompt-template expansion,
+  `seedDailyTaskReview`, `recordUsageFromMessage` instrumentation, and
+  failure-path `logAlert` calls.
+- `mention.service.ts` — extracts org mentions on note save with `tools: []`
+  and a confidence floor of 0.5 (R-021/R-026).
+- `scheduler.service.ts` — `node-cron` in-process plus `runMissedJobs()`
+  catch-up at startup, with per-iteration try/catch.
+- `calendarSync.service.ts` — DPAPI-encrypted ICS URL, `node-ical` parsing,
+  90-day recurring expansion via `expandRecurringEvent`, scheduled at 06:00 /
+  12:00 / 17:00 with a fire-and-forget startup sync.
+- `masterNote.service.ts` — `scanExternalMasterNoteEdits` reconciles edits
+  the user makes to master-note files outside the app; runs hourly via cron
+  and on demand through a manual scan endpoint.
+- `noteProposal.service.ts` — `runLlmExtraction()` fire-and-forget pipeline,
+  `applyApproval()` materializing tasks / notes / resources / mentions.
+- `noteCapture.service.ts` — durable markdown capture into scoped vault
+  folders, indexed back into `notes`.
+
+### Backend routes
+- `reports.route.ts` — full CRUD plus `run-now`, `runs`, and cron-validate.
+- `ingest.route.ts` — scan, status, per-error retry.
+- `oem-scan.route.ts` — `GET /api/oem/:id/documents/scan` upserts
+  `documents` rows with `source='onedrive_scan'`.
+- `calendar.route.ts` — `GET /api/calendar/today`, `POST /api/calendar/sync`.
+- `alerts.route.ts` — list / count / read / read-all / resolve, all routed
+  through the redacting error handler.
+- `masterNotes.route.ts` — get/save plus the manual external-edit scan
+  trigger.
+- `backlogItems.route.ts` — backlog CRUD.
+- `projectResources.route.ts` — nested `/api/projects/:projectId/resources`
+  CRUD with `mergeParams`.
+
+### Agent tools
+- `search_notes`, `list_documents`, `read_document` (via `resolveSafePath`,
+  1 MiB cap, `<untrusted_document>` envelope), and `create_task` (with
+  service-layer cross-org guard) — all logged to `agent_tool_audit` and
+  gated by `agent_configs.tools_enabled` (R-021).
+- `report_note_proposals` output-only tool added to `claude.service.ts` for
+  forced-tool-use structured extraction with claude-haiku-4-5.
+- Subscription-login path maps the same five MasterControl tools into an
+  in-process SDK MCP server so `claude_auth_mode=subscription` keeps the
+  same write boundaries.
+
+### Frontend
+- `ReportsPage.tsx` real implementation — humanized cron, run-now spinner,
+  History dialog with the last 20 runs, and failure flag in the run table.
+- `AlertsPage.tsx` plus the `AlertBell` Shell header component with
+  vermilion unread dot, dismiss-per-item, dismiss-all, and Escape close.
+- `TasksPage.tsx` rebuilt around a sortable column table with per-column
+  filters, inline complete checkbox, and reopen-on-uncheck.
+- `TodayAgendaTile` reads from the local calendar cache and exposes an
+  inline Sync button against `POST /api/calendar/sync`.
+- `ProjectNextStepsTile` and `ProjectResourcesTile` added to
+  `ProjectPage` for project-scoped tasks and WWT internal resources.
+- Customer page reorganized into Home + per-project tabs with editable
+  project header, and the OEM workspace consolidated into a single sidebar
+  entry with in-page tabs.
+- `OpenProjectsTile` (renamed from "Priority Projects") shows
+  active/qualifying/paused with amber styling for paused, plus the
+  "All projects" archive modal.
+- Sidebar gained per-org vermilion activity dots backed by
+  `useOrgLastTouched`, plus tightened active-route treatment.
+- `AgentsPage` Templates tab now hosts `AgentSectionEditor` and
+  `AgentOverridesPanel`; Threads / Insights / Delegate tabs preserved.
+- `SettingsPage` got Anthropic API key, Core Claude Authentication
+  (subscription / auto / api_key), default model, theme, paths, and the
+  Ingest Scan panel inline.
+- `frontend/src/components/ingest/` (`IngestStatusPanel`,
+  `SourcePathConfig`, `IngestErrorList`) wires the per-error retry flow.
+
+### Themes
+- Theme selector (Light / Dark / System) wired through Zustand,
+  `documentElement`, and the backend `settings` row so the choice persists
+  across reloads.
+
+### Notes pipeline
+- `extractNoteProposals()` in `claude.service.ts` uses claude-haiku-4-5 with
+  forced tool-use output; proposal types include `customer_ask`,
+  `task_follow_up`, `project_update`, `risk_blocker`, `oem_mention`,
+  `customer_insight`, and `internal_resource`.
+- `applyApproval()` materializes durable records on Approve (tasks, notes,
+  project resources, agent insights, OEM cross-org notes).
+- `POST /api/notes/proposals/:id/status` keeps the proposal in `pending` on
+  apply-failure so the queue self-heals.
+- Redo-with-feedback path lets the user reject a proposal with a comment
+  and rerun extraction without losing the original capture.
+
+### Master notes
+- `scanExternalMasterNoteEdits` watches the on-disk master-note file per
+  org and reconciles user edits; hourly cron via `scheduler.service.ts`
+  plus `POST /api/master-notes/:orgId/scan-external` for manual triggers.
+- Master-note tile and OEM-header inline editor read/write through the
+  same model layer, no duplicate state.
+
+### Backlog
+- `BacklogTile` plus `BacklogEditDialog` for parked items that aren't yet
+  tasks; backed by `backlog_items` and `backlogItems.route.ts`.
+
+### Reports
+- `ReportsPage` flags failed runs visually and the failure path now raises
+  a `system_alerts` row through `logAlert('error', 'reports', ...)` so
+  silent failures surface in the bell.
+- DB-write failures from the alert pipeline route through the redactor
+  per R-013.
+
+### Tile system
+- Tiles migrated to `react-grid-layout` with persisted resize/move while in
+  Customize mode, replacing the previous `@dnd-kit` sortable approach.
+- `Customize Layout` icon control added to dashboard headers; layouts
+  persist per dashboard via `useTileLayout`.
+- Inline-add affordances landed on contact, link, and task tiles
+  (Esc cancels, Enter saves, Save vermilion only when dirty).
+
+### Brand
+- Shared `StatusPill` primitive in `frontend/src/components/shared/` now
+  drives status chips on `CustomerPage`, `ReportsPage`, and
+  `PriorityProjectsTile` so vermilion budget stays consistent (R-008).
+
 ## Unreleased
 
 - Tasks page now uses a column table with header sorting and per-column filters;
