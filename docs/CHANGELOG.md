@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Agent chat answers now render sanitized Markdown so assistant lists, bold
+  labels, and inline tool names are readable instead of flattened into one
+  paragraph.
 - Per-org chat now shows live activity breadcrumbs while an agent is working,
   including Claude Code connection status and tool-use progress before the
   first answer token arrives.

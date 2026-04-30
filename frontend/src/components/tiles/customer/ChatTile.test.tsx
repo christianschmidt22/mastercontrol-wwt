@@ -58,6 +58,12 @@ const assistantMsg: UseStreamChat['messages'][number] = {
   content: 'Here is the answer.',
 };
 
+const markdownAssistantMsg: UseStreamChat['messages'][number] = {
+  id: 3,
+  role: 'assistant',
+  content: '**Email**\n- `outlook_email_search` — Search Outlook inbox\n\n**Calendar**\n- `outlook_calendar_search` — Search calendar events',
+};
+
 const userMsg: UseStreamChat['messages'][number] = {
   id: 2,
   role: 'user',
@@ -158,6 +164,23 @@ describe('ChatTile — Copy button', () => {
 
     const copyBtns = screen.getAllByRole('button', { name: 'Copy message' });
     expect(copyBtns).toHaveLength(2);
+  });
+});
+
+describe('ChatTile — assistant formatting', () => {
+  it('renders assistant Markdown as structured HTML instead of one flat paragraph', () => {
+    render(
+      <ChatTile
+        orgId={10}
+        orgName="Acme"
+        _useStreamChat={makeStreamHook([markdownAssistantMsg])}
+        _useCreateNote={makeCreateNoteHook()}
+      />,
+    );
+
+    expect(screen.getByText('Email').tagName).toBe('STRONG');
+    expect(screen.getByText('outlook_email_search').tagName).toBe('CODE');
+    expect(screen.getByText(/Search Outlook inbox/i).tagName).toBe('LI');
   });
 });
 

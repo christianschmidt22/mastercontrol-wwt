@@ -6,7 +6,9 @@ import {
   type KeyboardEvent,
   type FormEvent,
 } from 'react';
+import DOMPurify from 'dompurify';
 import { Send, Square, Copy, BookmarkPlus } from 'lucide-react';
+import { marked } from 'marked';
 import { Tile } from '../Tile';
 import { useStreamChat, type StreamActivity, type UseStreamChat } from '../../../api/useStreamChat';
 import { useCreateNote } from '../../../api/useNotes';
@@ -138,6 +140,25 @@ function ActivityFeed({
         })}
       </ol>
     </div>
+  );
+}
+
+function AssistantMessage({ content, reserveToolbarSpace = true }: {
+  content: string;
+  reserveToolbarSpace?: boolean;
+}) {
+  const html = DOMPurify.sanitize(marked.parse(content, {
+    async: false,
+    breaks: true,
+    gfm: true,
+  }) as string);
+
+  return (
+    <div
+      className="chat-markdown"
+      style={{ paddingRight: reserveToolbarSpace ? 56 : 0 }}
+      dangerouslySetInnerHTML={{ __html: html }}
+    />
   );
 }
 
@@ -434,19 +455,23 @@ export function ChatTile({
 
                 {/* Content + hover toolbar */}
                 <div style={{ position: 'relative' }}>
-                  <p
-                    style={{
-                      fontSize: 14,
-                      lineHeight: 1.55,
-                      color: msg.role === 'assistant' ? 'var(--ink-2)' : 'var(--ink-1)',
-                      margin: 0,
-                      textWrap: 'pretty',
-                      // Reserve space so toolbar doesn't overlap last line
-                      paddingRight: msg.role === 'assistant' ? 56 : 32,
-                    }}
-                  >
-                    {msg.content}
-                  </p>
+                  {msg.role === 'assistant' ? (
+                    <AssistantMessage content={msg.content} />
+                  ) : (
+                    <p
+                      style={{
+                        fontSize: 14,
+                        lineHeight: 1.55,
+                        color: 'var(--ink-1)',
+                        margin: 0,
+                        textWrap: 'pretty',
+                        // Reserve space so toolbar doesn't overlap last line
+                        paddingRight: 32,
+                      }}
+                    >
+                      {msg.content}
+                    </p>
+                  )}
 
                   {/* Hover toolbar — opacity-only, always in accessibility tree */}
                   <div
@@ -555,15 +580,8 @@ export function ChatTile({
               }}
             >
               <time style={{ fontSize: 10, color: 'var(--ink-3)' }}>Now</time>
-              <p
-                style={{
-                  fontSize: 14,
-                  lineHeight: 1.55,
-                  color: 'var(--ink-2)',
-                  margin: 0,
-                }}
-              >
-                {stream.partial}
+              <div style={{ position: 'relative' }}>
+                <AssistantMessage content={stream.partial} reserveToolbarSpace={false} />
                 <span
                   className="stream-caret"
                   aria-hidden="true"
@@ -577,7 +595,7 @@ export function ChatTile({
                     animation: 'blink 1s steps(2, start) infinite',
                   }}
                 />
-              </p>
+              </div>
             </div>
           )}
 
@@ -592,16 +610,7 @@ export function ChatTile({
               }}
             >
               <span style={{ fontSize: 10, color: 'var(--ink-3)' }} aria-hidden="true" />
-              <p
-                style={{
-                  fontSize: 14,
-                  lineHeight: 1.55,
-                  color: 'var(--ink-2)',
-                  margin: 0,
-                }}
-              >
-                {stream.partial}
-              </p>
+              <AssistantMessage content={stream.partial} reserveToolbarSpace={false} />
             </div>
           )}
         </div>
@@ -748,6 +757,55 @@ export function ChatTile({
         }
         .activity-dot-active {
           animation: activity-pulse 1.1s ease-in-out infinite;
+        }
+        .chat-markdown {
+          color: var(--ink-2);
+          font-size: 14px;
+          line-height: 1.55;
+          text-wrap: pretty;
+        }
+        .chat-markdown > :first-child { margin-top: 0; }
+        .chat-markdown > :last-child { margin-bottom: 0; }
+        .chat-markdown p {
+          margin: 0 0 8px;
+        }
+        .chat-markdown ul,
+        .chat-markdown ol {
+          margin: 6px 0 10px;
+          padding-left: 18px;
+        }
+        .chat-markdown li {
+          margin: 3px 0;
+          padding-left: 2px;
+        }
+        .chat-markdown strong {
+          color: var(--ink-1);
+          font-weight: 600;
+        }
+        .chat-markdown code {
+          font-family: var(--mono);
+          font-size: 12px;
+          color: var(--ink-1);
+          background: var(--bg-2);
+          border: 1px solid var(--rule);
+          border-radius: 4px;
+          padding: 1px 4px;
+          white-space: normal;
+          word-break: break-word;
+        }
+        .chat-markdown pre {
+          margin: 8px 0;
+          padding: 8px 10px;
+          background: var(--bg-2);
+          border: 1px solid var(--rule);
+          border-radius: 6px;
+          overflow-x: auto;
+        }
+        .chat-markdown pre code {
+          border: 0;
+          background: transparent;
+          padding: 0;
+          white-space: pre;
         }
         .sr-only {
           position: absolute;
