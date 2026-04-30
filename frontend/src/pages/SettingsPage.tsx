@@ -20,6 +20,7 @@ import { useSetting, useSetSetting } from '../api/useSettings';
 import { useAuthStatus } from '../api/useSubagent';
 import { useUiStore, type Theme } from '../store/useUiStore';
 import { AuthModeSection } from '../components/agents/AuthModeSection';
+import { M365McpSection } from '../components/settings/M365McpSection';
 
 // ─── Style tokens ──────────────────────────────────────────────────────────────
 
@@ -874,6 +875,8 @@ export function SettingsPage() {
         <ThemeSection />
 
         <PathsSection />
+
+        <M365McpSection />
       </div>
     </div>
   );
