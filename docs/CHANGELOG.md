@@ -1,5 +1,81 @@
 # Changelog
 
+## Phase 3 — integrations + polish (2026-04-29)
+
+Outlook integration (device-code auth, Graph sync, per-org tile), FTS5 search,
+in-app Markdown viewer, mention-extraction settings, OEM OneDrive folder input,
+and Phase 2 carry-overs. Vault writeback intentionally deferred to a later phase.
+
+### Migrations
+- `025_notes_fts.sql` — FTS5 virtual table `notes_fts` backed by `notes.content`
+  with INSERT/UPDATE/DELETE sync triggers; backfills existing rows.
+- `026_extraction_settings.sql` — seeds `mention_extraction_model` and
+  `mention_extraction_threshold` settings rows with safe defaults.
+- `027_outlook_auth.sql` — seeds Outlook settings keys (`outlook_tenant_id`,
+  `outlook_client_id`, `outlook_account_email`).
+- `028_outlook_messages.sql` — `outlook_messages` and `outlook_message_orgs`
+  tables for Graph-synced email metadata.
+
+### Backend services / models
+- **FTS5 search** — `handleSearchNotes` in `claude.service.ts` swapped from
+  LIKE-scan to FTS5 `MATCH`; supports phrase search, prefix match, ranked results.
+- **Mention extraction settings** — `mention.service.ts` reads
+  `mention_extraction_model` and `mention_extraction_threshold` from the settings
+  table at call time (not module-load), so changes apply without restart.
+- **Outlook Graph client** (`outlook.service.ts`) — device-code OAuth flow; access
+  token cached in-process; refresh token DPAPI-wrapped via `SECRET_KEYS`.
+- **Outlook sync** (`outlookSync.service.ts`) — 15-minute scheduled mailbox poll
+  (inbox + sent items) via Microsoft Graph delta query; org mention extraction over
+  subject + body preview; `last_outlook_sync_at` watermark in settings.
+- **OutlookMessage model** — prepared-statement model for `outlook_messages` /
+  `outlook_message_orgs` with `upsert`, `findByOrg`, `getRecentByOrg`.
+- **Report content endpoint** — `GET /api/reports/:reportId/runs/:runId/content`
+  reads run output file via `resolveSafePath`; returns `{ content: string }`.
+- **Outlook routes** — `GET /status`, `POST /auth-start`, `GET /auth-poll`,
+  `POST /sync-now`, `GET /messages?org_id=`; `device_code` never sent to browser.
+- **`reportRun.create` stuck-row alert** — "INSERT OR IGNORE fired but no existing
+  row found" path now raises a system alert before throwing (Phase 2 carry-over).
+
+### Frontend
+- **MarkdownViewer** (`components/shared/MarkdownViewer.tsx`) — read-only sanitized
+  renderer using `marked` + `DOMPurify`; conservative tag allowlist; all links open
+  in new tab; `role="region"` + `aria-label` for a11y.
+- **ReportsPage viewer** — history drawer replaces file-path code block with
+  `MarkdownViewer`; output path preserved as secondary `<code>` element.
+- **MasterNotesTile preview** — Edit/Preview toggle; Preview tab renders master note
+  content via `MarkdownViewer` in a fixed-height scroll container.
+- **OutlookPage** — connect-mailbox flow (device-code modal), sync status, last-sync
+  time, Sync Now button; route `/outlook`.
+- **OutlookSetup modal** — displays user code in large mono font, auto-polls
+  `auth-poll` every 5 s, closes on success.
+- **OutlookMessagesTile** — org-scoped message list tile; same shape as
+  `RecentNotesTile`; uses `useOutlookMessages(orgId)`.
+- **AgentsPage mention settings** — model dropdown + confidence threshold slider
+  (0–1, step 0.05) in the Templates tab; wired to settings via `useSetSetting`.
+- **OemPage OneDrive folder** — dedicated labeled input in the OEM settings popover
+  persists `metadata.onedrive_folder` via `useUpdateOrganization`.
+
+### ADR
+- `docs/adr/0009-outlook-delegated-auth.md` — device-code flow chosen over PKCE
+  redirect (no localhost callback server required on Windows desktop).
+
+### Tests added
+- `searchFts.test.ts` — 7 tests: keyword match, phrase search, empty-query guard,
+  UPDATE/DELETE trigger sync, org-scoped filtering.
+- `mentionSettings.test.ts` — 5 tests: model + threshold read from settings at
+  call time, not hardcoded.
+- `reportsContent.route.test.ts` — 7 tests: happy path, 404 variants, 403 path
+  escape, 400 invalid params.
+- `outlookMessage.model.test.ts` — 11 model tests.
+- `outlook.route.test.ts` — 9 route tests (service mocked).
+
+### Verification
+- `npm run typecheck` — clean (both workspaces)
+- `npm run lint` — clean (both workspaces)
+- `npm run test -w backend` — 617 tests, 50 files, all green
+
+---
+
 ## Phase 2 — closeout (2026-04-29)
 
 Synthesizes the work that landed since the `phase2-checkpoint-6` polish round
