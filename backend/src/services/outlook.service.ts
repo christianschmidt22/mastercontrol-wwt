@@ -44,7 +44,13 @@ interface Ps1Result {
 interface LaunchResult {
   launched: boolean;
   ready: boolean;
+  weStartedIt: boolean;
   error: string | null;
+}
+
+export interface EnsureResult {
+  ready: boolean;
+  weStartedIt: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -57,6 +63,10 @@ const PS1_PATH = fileURLToPath(
 
 const LAUNCH_PS1_PATH = fileURLToPath(
   new URL('../scripts/outlook-launch.ps1', import.meta.url),
+);
+
+const CLOSE_PS1_PATH = fileURLToPath(
+  new URL('../scripts/outlook-close.ps1', import.meta.url),
 );
 
 // ---------------------------------------------------------------------------
@@ -127,11 +137,13 @@ async function runPs1(limit: number): Promise<Ps1Result> {
 
 /**
  * Ensures Outlook is running and COM-accessible.
- * Launches Outlook if it isn't running and waits up to 30s.
- * Returns whether Outlook is ready for COM access.
+ * - If classic Outlook (OUTLOOK.EXE) is already running, uses it as-is.
+ * - If it is not running, launches it minimized and waits up to 30s.
+ * Returns { ready, weStartedIt } so the caller can close Outlook when done
+ * if and only if this call was the one that started it.
  * Never throws.
  */
-export async function ensureOutlookRunning(): Promise<boolean> {
+export async function ensureOutlookRunning(): Promise<EnsureResult> {
   return new Promise((resolve) => {
     let stdout = '';
 
@@ -153,13 +165,35 @@ export async function ensureOutlookRunning(): Promise<boolean> {
     child.on('close', () => {
       try {
         const result = JSON.parse(stdout.trim()) as LaunchResult;
-        resolve(result.ready);
+        resolve({ ready: result.ready, weStartedIt: result.weStartedIt });
       } catch {
-        resolve(false);
+        resolve({ ready: false, weStartedIt: false });
       }
     });
 
-    child.on('error', () => resolve(false));
+    child.on('error', () => resolve({ ready: false, weStartedIt: false }));
+  });
+}
+
+/**
+ * Closes classic Outlook via Application.Quit() if and only if this sync
+ * session started it. If the user had Outlook open before sync, this is a
+ * no-op. Never throws.
+ */
+export async function closeOutlookIfWeStartedIt(weStartedIt: boolean): Promise<void> {
+  if (!weStartedIt) return;
+  return new Promise((resolve) => {
+    const child = spawn('powershell.exe', [
+      '-NonInteractive',
+      '-NoProfile',
+      '-ExecutionPolicy',
+      'Bypass',
+      '-File',
+      CLOSE_PS1_PATH,
+    ]);
+    child.stdout.on('data', (_chunk: Buffer) => { /* consumed — not needed */ });
+    child.on('close', () => resolve());
+    child.on('error', () => resolve());
   });
 }
 
@@ -171,7 +205,7 @@ export async function ensureOutlookRunning(): Promise<boolean> {
  * Never throws — returns [] on any failure.
  */
 export async function fetchOutlookMessages(limit = 50): Promise<RawOutlookMessage[]> {
-  const ready = await ensureOutlookRunning();
+  const { ready } = await ensureOutlookRunning();
   if (!ready) {
     console.warn('[outlook.service] Outlook not accessible, skipping fetch');
     return [];
