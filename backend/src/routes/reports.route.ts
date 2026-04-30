@@ -25,6 +25,7 @@
  */
 
 import { readFileSync } from 'node:fs';
+import { z } from 'zod';
 import { Router } from 'express';
 import { reportModel } from '../models/report.model.js';
 import { reportScheduleModel } from '../models/reportSchedule.model.js';
@@ -263,6 +264,65 @@ reportsRouter.get('/:id/runs/:run_id/output', (req, res, next) => {
     output_path: run.output_path,
     output_sha256: run.output_sha256,
   });
+});
+
+// ---------------------------------------------------------------------------
+// Run content — GET /:reportId/runs/:runId/content
+// Alias for the output endpoint using validated numeric params via zod.
+// Returns { content: string } for the MarkdownViewer component.
+// ---------------------------------------------------------------------------
+
+const RunContentParamsSchema = z.object({
+  reportId: z.string().regex(/^\d+$/, 'reportId must be a positive integer'),
+  runId:    z.string().regex(/^\d+$/, 'runId must be a positive integer'),
+});
+
+reportsRouter.get('/:reportId/runs/:runId/content', (req, res, next) => {
+  const parsed = RunContentParamsSchema.safeParse(req.params);
+  if (!parsed.success) {
+    return next(new HttpError(400, parsed.error.issues[0]?.message ?? 'Invalid params'));
+  }
+
+  const reportId = Number(parsed.data.reportId);
+  const runId    = Number(parsed.data.runId);
+
+  const report = reportModel.get(reportId);
+  if (!report) return next(new HttpError(404, 'Report not found'));
+
+  const run = reportRunModel.get(runId);
+  if (!run) return next(new HttpError(404, 'Run not found'));
+
+  // Verify ownership — run must belong to a schedule of this report.
+  const schedule = reportScheduleModel.get(run.schedule_id);
+  if (!schedule || schedule.report_id !== reportId) {
+    return next(new HttpError(400, 'Run does not belong to this report'));
+  }
+
+  if (run.output_path === null) {
+    return next(new HttpError(404, 'Run has no output file'));
+  }
+
+  const reportsRoot = getReportsRoot();
+  let absPath: string;
+  try {
+    absPath = resolveSafePath(run.output_path, reportsRoot);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    // Distinguish "outside vault" (403) from "file missing" (404).
+    if (msg.includes('escapes root')) {
+      return next(new HttpError(403, 'Output file path is outside the reports root'));
+    }
+    return next(new HttpError(404, `Output file not accessible: ${msg}`));
+  }
+
+  let content: string;
+  try {
+    content = readFileSync(absPath, 'utf8');
+  } catch {
+    return next(new HttpError(404, 'Output file not found on disk'));
+  }
+
+  res.json({ content });
 });
 
 reportsRouter.post('/:id/run-now', async (req, res, next) => {

@@ -30,6 +30,11 @@ export interface ReportRunOutput {
   output_sha256: string | null;
 }
 
+/** Shape returned by GET /api/reports/:reportId/runs/:runId/content */
+export interface ReportRunContent {
+  content: string;
+}
+
 /**
  * Fetches the markdown content of a specific run's output file.
  *
@@ -54,5 +59,30 @@ export function useReportRunOutput(
     enabled: enabled && reportId > 0 && runId > 0,
     // Output content is stable once a run is done — no need to re-fetch.
     staleTime: Infinity,
+  });
+}
+
+/**
+ * Fetches just the markdown content string for a run via the
+ * GET /api/reports/:reportId/runs/:runId/content endpoint.
+ *
+ * Designed for use with MarkdownViewer — returns only `{ content }` without
+ * the sha256 / path fields. Enable by passing `enabled: true` (e.g. when
+ * the user expands the run row).
+ */
+export function useRunContent(
+  reportId: number,
+  runId: number,
+  enabled: boolean,
+): UseQueryResult<ReportRunContent> {
+  return useQuery({
+    queryKey: [...reportKeys.runs(reportId), runId, 'content'],
+    queryFn: () =>
+      request<ReportRunContent>(
+        'GET',
+        `/api/reports/${reportId}/runs/${runId}/content`,
+      ),
+    enabled: enabled && reportId > 0 && runId > 0,
+    staleTime: 60_000,
   });
 }

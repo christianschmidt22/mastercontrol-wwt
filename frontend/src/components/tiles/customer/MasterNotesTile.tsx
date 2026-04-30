@@ -1,10 +1,11 @@
-import { type CSSProperties } from 'react';
+import { useState, type CSSProperties } from 'react';
 import { Sparkles } from 'lucide-react';
 import { Tile } from '../Tile';
 import {
   useMasterNoteEditor,
   useProcessMasterNote,
 } from '../../../api/useMasterNotes';
+import { MarkdownViewer } from '../../shared/MarkdownViewer';
 
 interface MasterNotesTileProps {
   orgId: number;
@@ -48,9 +49,12 @@ const statusColor: Record<'idle' | 'saving' | 'saved' | 'error', string> = {
  * extraction pipeline against the current content so any new tasks /
  * customer-asks / OEM mentions land in the approvals queue right away.
  */
+type EditorTab = 'edit' | 'preview';
+
 export function MasterNotesTile({ orgId, projectId = null }: MasterNotesTileProps) {
   const editor = useMasterNoteEditor({ orgId, projectId });
   const process = useProcessMasterNote();
+  const [activeTab, setActiveTab] = useState<EditorTab>('edit');
 
   const status = editor.status;
 
@@ -63,11 +67,51 @@ export function MasterNotesTile({ orgId, projectId = null }: MasterNotesTileProp
       }).format(new Date(editor.lastIngestedAt))
     : null;
 
+  const tabBtnStyle = (tab: EditorTab): CSSProperties => ({
+    display: 'inline-flex',
+    alignItems: 'center',
+    border: '1px solid var(--rule)',
+    background: activeTab === tab ? 'var(--bg-2)' : 'transparent',
+    color: activeTab === tab ? 'var(--ink-1)' : 'var(--ink-3)',
+    borderRadius: 3,
+    padding: '2px 8px',
+    cursor: 'pointer',
+    fontSize: 11,
+    fontFamily: 'var(--body)',
+    fontWeight: activeTab === tab ? 500 : 400,
+  });
+
   return (
     <Tile
       title="Master Notes"
       titleAction={
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          {/* Edit / Preview toggle */}
+          <div
+            role="group"
+            aria-label="Editor view"
+            style={{ display: 'flex', gap: 2 }}
+            data-no-drag
+          >
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === 'edit'}
+              onClick={() => setActiveTab('edit')}
+              style={tabBtnStyle('edit')}
+            >
+              Edit
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === 'preview'}
+              onClick={() => setActiveTab('preview')}
+              style={tabBtnStyle('preview')}
+            >
+              Preview
+            </button>
+          </div>
           <span
             aria-live="polite"
             style={{
@@ -123,19 +167,40 @@ export function MasterNotesTile({ orgId, projectId = null }: MasterNotesTileProp
           minHeight: 0,
         }}
       >
-        <textarea
-          aria-label="Master notes for this account/project"
-          placeholder={
-            editor.loaded
-              ? 'Free-form notes. Autosaves while you type. Click "Process now" to extract tasks, OEM mentions, and customer asks into the approvals queue.'
-              : 'Loading…'
-          }
-          value={editor.value}
-          onChange={(e) => editor.setValue(e.target.value)}
-          spellCheck={false}
-          style={textareaStyle}
-          data-no-drag
-        />
+        {activeTab === 'edit' ? (
+          <textarea
+            aria-label="Master notes for this account/project"
+            placeholder={
+              editor.loaded
+                ? 'Free-form notes. Autosaves while you type. Click "Process now" to extract tasks, OEM mentions, and customer asks into the approvals queue.'
+                : 'Loading…'
+            }
+            value={editor.value}
+            onChange={(e) => editor.setValue(e.target.value)}
+            spellCheck={false}
+            style={textareaStyle}
+            data-no-drag
+          />
+        ) : (
+          <div
+            style={{
+              flex: 1,
+              minHeight: 220,
+              maxHeight: 400,
+              overflowY: 'auto',
+              border: '1px solid var(--rule)',
+              borderRadius: 6,
+              padding: '12px 14px',
+              background: 'var(--bg)',
+            }}
+            data-no-drag
+          >
+            <MarkdownViewer
+              source={editor.value}
+              ariaLabel="Master notes preview"
+            />
+          </div>
+        )}
         <div
           style={{
             display: 'flex',
