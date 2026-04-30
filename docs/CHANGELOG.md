@@ -1,6 +1,6 @@
 # Changelog
 
-## Phase 3 — integrations + polish (2026-04-29)
+## Phase 3 — integrations + polish (2026-04-29, updated)
 
 Outlook integration (device-code auth, Graph sync, per-org tile), FTS5 search,
 in-app Markdown viewer, mention-extraction settings, OEM OneDrive folder input,
@@ -56,8 +56,23 @@ and Phase 2 carry-overs. Vault writeback intentionally deferred to a later phase
   persists `metadata.onedrive_folder` via `useUpdateOrganization`.
 
 ### ADR
-- `docs/adr/0009-outlook-delegated-auth.md` — device-code flow chosen over PKCE
-  redirect (no localhost callback server required on Windows desktop).
+- `docs/adr/0009-outlook-delegated-auth.md` — documents switch from Graph/device-code
+  (blocked by corporate IT — no Azure app registration permitted) to Windows COM
+  automation via PowerShell; reads from local Outlook desktop cache, no auth required.
+
+### Outlook integration revised: Graph → COM automation
+Original Graph/OAuth approach was blocked (IT denied Azure app registration).
+Replaced with PowerShell COM automation:
+- `backend/src/scripts/outlook-fetch.ps1` — spawned by Node; reads Inbox + Sent
+  Items from the running Outlook desktop app via `Marshal.GetActiveObject`; outputs
+  JSON to stdout; gracefully returns empty result if Outlook is not running.
+- `outlook.service.ts` rewritten — no OAuth, no tokens, no Azure; `fetchOutlookMessages()`
+  spawns the PS1 script, `getOutlookStatus()` probes COM availability.
+- `outlookSync.service.ts` updated — calls `fetchOutlookMessages()` instead of Graph;
+  upsert pipeline and org-mention matching unchanged.
+- Auth routes (`auth-start`, `auth-poll`) removed; `OutlookSetup` modal removed.
+- `OutlookPage` simplified — green/amber status dot, Sync Now button, no connect flow.
+- `outlook_refresh_token` removed from `SECRET_KEYS`.
 
 ### Tests added
 - `searchFts.test.ts` — 7 tests: keyword match, phrase search, empty-query guard,
