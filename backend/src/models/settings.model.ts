@@ -27,6 +27,10 @@ export const SECRET_KEYS: ReadonlySet<string> = new Set([
   // ICS subscription URL for M365 calendar sync. Contains an embedded auth
   // token so treat it with the same care as an API key.
   'calendar_ics_url',
+  // Phase 3: Outlook OAuth refresh token — DPAPI-wrapped on Windows.
+  // Written only by outlook.service after a successful device-code flow.
+  // Never returned to the frontend by any route.
+  'outlook_refresh_token',
 ]);
 
 const ENC_PREFIX = 'enc:';
