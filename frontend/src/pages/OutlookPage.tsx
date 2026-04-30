@@ -1,18 +1,19 @@
 /**
- * OutlookPage — Outlook integration settings and status page.
+ * OutlookPage — Outlook integration status and sync controls.
  *
- * Route: /outlook (wired separately — this file is the page component only)
+ * Route: /outlook
+ *
+ * MasterControl reads your local Outlook cache directly via Windows COM
+ * automation — no sign-in, no Azure app registration required.
  *
  * Sections:
- *   1. Connection status card (email or "Not connected").
- *   2. "Connect Mailbox" button → OutlookSetup modal (device-code flow).
- *   3. Last sync time + "Sync Now" button.
+ *   1. Status card: "Outlook is accessible" (green) or "Outlook is not
+ *      running" (amber).
+ *   2. Last sync time + "Sync Now" button.
  */
 
-import { useState } from 'react';
 import { Mail } from 'lucide-react';
 import { useOutlookStatus, useOutlookSyncNow } from '../api/useOutlook';
-import { OutlookSetup } from '../components/outlook/OutlookSetup';
 import { useQueryClient } from '@tanstack/react-query';
 import { outlookKeys } from '../api/useOutlook';
 
@@ -32,12 +33,14 @@ function formatDateTime(iso: string | null): string {
 export function OutlookPage() {
   const { data: status, isLoading } = useOutlookStatus();
   const { mutate: syncNow, isPending: isSyncing } = useOutlookSyncNow();
-  const [showSetup, setShowSetup] = useState(false);
   const qc = useQueryClient();
 
-  function handleAuthSuccess() {
-    setShowSetup(false);
-    void qc.invalidateQueries({ queryKey: outlookKeys.status() });
+  function handleSyncNow() {
+    syncNow(undefined, {
+      onSuccess: () => {
+        void qc.invalidateQueries({ queryKey: outlookKeys.status() });
+      },
+    });
   }
 
   return (
@@ -69,9 +72,9 @@ export function OutlookPage() {
 
       {!isLoading && status && (
         <>
-          {/* Connection status card */}
+          {/* Status card */}
           <section
-            aria-label="Connection status"
+            aria-label="Outlook status"
             style={{
               border: '1px solid var(--rule)',
               borderRadius: 8,
@@ -87,47 +90,20 @@ export function OutlookPage() {
                   width: 8,
                   height: 8,
                   borderRadius: '50%',
-                  background: status.connected ? '#2dab4f' : 'var(--ink-3)',
+                  background: status.connected ? '#2dab4f' : '#d97706',
                   flexShrink: 0,
                 }}
               />
               <span style={{ fontSize: 14, fontWeight: 500, color: 'var(--ink-1)' }}>
-                {status.connected ? 'Connected' : 'Not connected'}
+                {status.connected ? 'Outlook is accessible' : 'Outlook is not running'}
               </span>
             </div>
 
-            {status.connected && status.email && (
-              <p style={{ margin: '0 0 16px', fontSize: 13, color: 'var(--ink-2)' }}>
-                Signed in as{' '}
-                <strong style={{ fontWeight: 600 }}>{status.email}</strong>
-              </p>
-            )}
-
-            {!status.connected && (
-              <p style={{ margin: '0 0 16px', fontSize: 13, color: 'var(--ink-3)' }}>
-                Connect your Microsoft 365 mailbox to surface relevant emails
-                alongside your org notes. Read-only access only.
-              </p>
-            )}
-
-            {!status.connected && (
-              <button
-                type="button"
-                onClick={() => setShowSetup(true)}
-                style={{
-                  padding: '7px 16px',
-                  fontSize: 13,
-                  border: 'none',
-                  borderRadius: 5,
-                  background: 'var(--accent)',
-                  color: '#fff',
-                  cursor: 'pointer',
-                  fontFamily: 'var(--body)',
-                }}
-              >
-                Connect Mailbox
-              </button>
-            )}
+            <p style={{ margin: 0, fontSize: 13, color: 'var(--ink-3)' }}>
+              {status.connected
+                ? 'MasterControl is reading your local Outlook cache directly — no sign-in required.'
+                : 'Open Outlook and let it sync, then try again. No sign-in or Azure setup required.'}
+            </p>
           </section>
 
           {/* Sync controls */}
@@ -168,15 +144,15 @@ export function OutlookPage() {
                   </span>
                 </p>
                 <p style={{ margin: '4px 0 0', fontSize: 11, color: 'var(--ink-3)' }}>
-                  Automatic sync runs every 15 minutes when connected.
+                  Automatic sync runs every 15 minutes while Outlook is open.
                 </p>
               </div>
 
               <button
                 type="button"
-                onClick={() => syncNow()}
-                disabled={isSyncing || !status.connected}
-                aria-disabled={isSyncing || !status.connected}
+                onClick={handleSyncNow}
+                disabled={isSyncing}
+                aria-disabled={isSyncing}
                 style={{
                   padding: '7px 16px',
                   fontSize: 13,
@@ -184,8 +160,8 @@ export function OutlookPage() {
                   borderRadius: 5,
                   background: 'transparent',
                   color: 'var(--ink-2)',
-                  cursor: isSyncing || !status.connected ? 'not-allowed' : 'pointer',
-                  opacity: isSyncing || !status.connected ? 0.5 : 1,
+                  cursor: isSyncing ? 'not-allowed' : 'pointer',
+                  opacity: isSyncing ? 0.5 : 1,
                   fontFamily: 'var(--body)',
                   whiteSpace: 'nowrap',
                 }}
@@ -195,7 +171,6 @@ export function OutlookPage() {
             </div>
           </section>
 
-          {/* Prerequisites note if client ID not set */}
           <p
             style={{
               marginTop: 16,
@@ -204,18 +179,10 @@ export function OutlookPage() {
               lineHeight: 1.5,
             }}
           >
-            To connect, you need an Azure app registration with{' '}
-            <code style={{ fontFamily: 'monospace' }}>Mail.Read</code> delegated
-            permission. Add the Client ID under Settings → Outlook Client ID.
+            MasterControl reads your local Outlook cache directly — no sign-in required.
+            Outlook must be installed, open, and have synced recently.
           </p>
         </>
-      )}
-
-      {showSetup && (
-        <OutlookSetup
-          onSuccess={handleAuthSuccess}
-          onClose={() => setShowSetup(false)}
-        />
       )}
     </main>
   );
