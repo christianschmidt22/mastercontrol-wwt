@@ -1,120 +1,286 @@
 /**
- * outlookSync.service.ts — periodic sync of Outlook inbox + sent items.
+ * outlookSync.service.ts
  *
- * Called every 15 minutes from scheduler.service.ts.
+ * Runs the Outlook sync pipeline on demand or on a schedule:
+ *   1. Invoke outlook-fetch.ps1 via COM → get recent messages as JSON.
+ *   2. Upsert each message into `outlook_messages`.
+ *   3. Match messages to organizations by sender domain / subject keywords
+ *      and upsert links into `outlook_message_orgs`.
+ *   4. For messages with attachments, call saveMessageAttachments() to save
+ *      qualifying files to the vault and index them as `documents` rows.
  *
- * Steps:
- *   1. Fetch messages via the PowerShell COM script (outlook.service.ts).
- *   2. Upsert each into outlook_messages.
- *   3. Run simple org name matching on subject + bodyPreview.
- *   4. Upsert matches into outlook_message_orgs.
- *   5. Update last_outlook_sync_at in settings.
- *
- * R-013: Raw message content must not be logged (may contain sensitive email
- *        body content). Log metadata only (message ids, counts, status).
+ * Idempotent: re-running the sync only writes new data.
  */
 
-import { fetchOutlookMessages } from './outlook.service.js';
-import { outlookMessageModel } from '../models/outlookMessage.model.js';
-import { organizationModel } from '../models/organization.model.js';
-import { settingsModel } from '../models/settings.model.js';
+import * as child_process from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+
+import { db } from '../db/database.js';
+import { logAlert } from '../models/systemAlert.model.js';
+import { saveMessageAttachments, type OutlookMessage, type OrgLink } from './outlookAttachment.service.js';
+import { ensureOutlookRunning } from './outlook.service.js';
 
 // ---------------------------------------------------------------------------
-// Helpers
+// PS1 path — same pattern as other services that shell out to PowerShell
 // ---------------------------------------------------------------------------
 
-/**
- * Simple substring-based org name matching against subject + bodyPreview.
- * Returns org ids with a confidence score (0.8 for exact word-boundary match,
- * 0.6 for substring). Avoids LLM calls in sync path to keep it fast + cheap.
- */
-function matchOrgs(
-  text: string,
-  orgs: Array<{ id: number; name: string }>,
-): Array<{ orgId: number; confidence: number }> {
-  const lowerText = text.toLowerCase();
-  const results: Array<{ orgId: number; confidence: number }> = [];
+const FETCH_PS1 = fileURLToPath(new URL('../scripts/outlook-fetch.ps1', import.meta.url));
 
-  for (const org of orgs) {
-    const lowerName = org.name.toLowerCase();
-    if (lowerName.length < 3) continue; // skip very short names to avoid false positives
+// ---------------------------------------------------------------------------
+// Raw shape returned by outlook-fetch.ps1
+// ---------------------------------------------------------------------------
 
-    const idx = lowerText.indexOf(lowerName);
-    if (idx === -1) continue;
+interface RawAttachment {
+  name: string;
+  size: number;
+  content_type: string;
+}
 
-    // Word-boundary check: character before/after the match should be non-word
-    const before = idx > 0 ? lowerText[idx - 1] : ' ';
-    const after = idx + lowerName.length < lowerText.length
-      ? lowerText[idx + lowerName.length]
-      : ' ';
-
-    const wordBoundary = /\W/.test(before ?? ' ') && /\W/.test(after ?? ' ');
-    results.push({ orgId: org.id, confidence: wordBoundary ? 0.8 : 0.6 });
-  }
-
-  return results;
+interface RawMessage {
+  internet_message_id: string;
+  subject: string;
+  sender: string | null;
+  sent_at: string | null;
+  body_preview: string | null;
+  has_attachments: number;
+  attachments: RawAttachment[];
 }
 
 // ---------------------------------------------------------------------------
-// Main sync function
+// Module-level types
 // ---------------------------------------------------------------------------
 
-export async function syncOutlook(): Promise<void> {
-  // Load all org names once for mention matching.
-  const customers = organizationModel.listByType('customer');
-  const oems = organizationModel.listByType('oem');
-  const allOrgs = [...customers, ...oems].map((o) => ({ id: o.id, name: o.name }));
+interface OrgRow {
+  id: number;
+  name: string;
+  type: string;
+}
 
-  // Fetch messages via COM — returns [] if Outlook is not running.
-  const rawMessages = await fetchOutlookMessages(50);
+// ---------------------------------------------------------------------------
+// Prepared statements
+// ---------------------------------------------------------------------------
 
-  if (rawMessages.length === 0) {
-    // Outlook not running or no messages — skip silently, don't update sync time.
-    console.log('[outlookSync] no messages returned (Outlook may not be running)');
-    return;
+const upsertMessageStmt = db.prepare<
+  [string, string, string | null, string | null, string | null, number, string],
+  { id: number }
+>(
+  `INSERT INTO outlook_messages
+     (internet_message_id, subject, sender, sent_at, body_preview, has_attachments, attachments_meta)
+   VALUES (?, ?, ?, ?, ?, ?, ?)
+   ON CONFLICT(internet_message_id) DO UPDATE SET
+     subject          = excluded.subject,
+     sender           = excluded.sender,
+     sent_at          = excluded.sent_at,
+     body_preview     = excluded.body_preview,
+     has_attachments  = excluded.has_attachments,
+     attachments_meta = excluded.attachments_meta,
+     synced_at        = datetime('now')
+   RETURNING id`,
+);
+
+const upsertOrgLinkStmt = db.prepare<[number, number, number]>(
+  `INSERT INTO outlook_message_orgs (message_id, org_id, confidence)
+   VALUES (?, ?, ?)
+   ON CONFLICT(message_id, org_id) DO UPDATE SET confidence = excluded.confidence`,
+);
+
+const listAllOrgsStmt = db.prepare<[], OrgRow>(
+  'SELECT id, name, type FROM organizations ORDER BY name COLLATE NOCASE',
+);
+
+const listMsgOrgLinksStmt = db.prepare<[number], OrgLink>(
+  `SELECT omo.org_id, o.name AS org_name, o.type AS org_type
+   FROM outlook_message_orgs omo
+   JOIN organizations o ON o.id = omo.org_id
+   WHERE omo.message_id = ?
+   ORDER BY omo.confidence DESC
+   LIMIT 3`,
+);
+
+// ---------------------------------------------------------------------------
+// Org matching
+// ---------------------------------------------------------------------------
+
+/**
+ * Attempt to match a raw message to known organizations.
+ *
+ * Strategy (simple heuristics — can be extended later):
+ *   1. Extract the sender domain and look for orgs whose name contains a
+ *      keyword from that domain.
+ *   2. Scan the subject for org name matches.
+ *
+ * Returns an array of { org_id, org_name, org_type, confidence } sorted by
+ * confidence descending, capped at the top 3 matches.
+ */
+function matchOrgs(raw: RawMessage): Array<{ org_id: number; org_name: string; org_type: string; confidence: number }> {
+  const allOrgs = listAllOrgsStmt.all();
+  const matches: Array<{ org_id: number; org_name: string; org_type: string; confidence: number }> = [];
+
+  const senderDomain = (raw.sender ?? '')
+    .toLowerCase()
+    .replace(/^.*@/, '')
+    .replace(/\.$/, '');
+
+  const subjectLower = (raw.subject ?? '').toLowerCase();
+
+  for (const org of allOrgs) {
+    const orgNameLower = org.name.toLowerCase();
+    let confidence = 0;
+
+    // Domain keyword match: e.g. sender "joe@fairview.org" matches "Fairview Health Services"
+    if (senderDomain) {
+      const domainParts = senderDomain.split('.').filter((p) => p.length > 3);
+      for (const part of domainParts) {
+        if (orgNameLower.includes(part)) {
+          confidence = Math.max(confidence, 0.7);
+        }
+      }
+    }
+
+    // Subject keyword match
+    if (subjectLower && orgNameLower.length > 3 && subjectLower.includes(orgNameLower.split(' ')[0])) {
+      confidence = Math.max(confidence, 0.4);
+    }
+
+    if (confidence > 0) {
+      matches.push({ org_id: org.id, org_name: org.name, org_type: org.type, confidence });
+    }
   }
 
-  // De-duplicate by internet_message_id (may appear in both inbox + sent for self-emails)
-  const seen = new Set<string>();
-  const unique = rawMessages.filter((m) => {
-    if (!m.internet_message_id || seen.has(m.internet_message_id)) return false;
-    seen.add(m.internet_message_id);
-    return true;
-  });
+  return matches.sort((a, b) => b.confidence - a.confidence).slice(0, 3);
+}
 
-  let upsertCount = 0;
-  let linkCount = 0;
+// ---------------------------------------------------------------------------
+// PS1 runner
+// ---------------------------------------------------------------------------
 
-  for (const rm of unique) {
-    const persisted = outlookMessageModel.upsert({
-      internet_message_id: rm.internet_message_id,
-      thread_id: null,
-      subject: rm.subject ?? null,
-      from_email: rm.from_email ?? null,
-      from_name: rm.from_name ?? null,
-      to_emails: Array.isArray(rm.to_emails) ? rm.to_emails : [],
-      cc_emails: Array.isArray(rm.cc_emails) ? rm.cc_emails : [],
-      sent_at: rm.sent_at ?? null,
-      has_attachments: Boolean(rm.has_attachments),
-      body_preview: rm.body_preview ?? null,
-    });
-    upsertCount++;
+function runFetchPs1(): RawMessage[] {
+  let stdout = '';
+  try {
+    stdout = child_process.execFileSync(
+      'powershell.exe',
+      [
+        '-NonInteractive',
+        '-ExecutionPolicy', 'Bypass',
+        '-File', FETCH_PS1,
+        '-MaxMessages', '200',
+      ],
+      { encoding: 'utf8', timeout: 120_000 },
+    );
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new Error(`outlook-fetch.ps1 spawn failed: ${msg}`);
+  }
 
-    // Run org mention matching on subject + body_preview.
-    const textToMatch = [rm.subject ?? '', rm.body_preview ?? ''].join(' ');
-    if (textToMatch.trim().length > 0 && allOrgs.length > 0) {
-      const matches = matchOrgs(textToMatch, allOrgs);
-      for (const { orgId, confidence } of matches) {
-        outlookMessageModel.upsertOrgLink(persisted.id, orgId, confidence);
-        linkCount++;
+  const trimmed = stdout.trim();
+  if (!trimmed || trimmed === 'null') return [];
+
+  try {
+    const parsed = JSON.parse(trimmed) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed as RawMessage[];
+  } catch {
+    throw new Error('outlook-fetch.ps1 output was not valid JSON');
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Main sync
+// ---------------------------------------------------------------------------
+
+export interface OutlookSyncResult {
+  messages_upserted: number;
+  org_links: number;
+  attachment_jobs: number;
+}
+
+export async function syncOutlook(): Promise<OutlookSyncResult> {
+  // Ensure Outlook is running (auto-launch if needed, wait up to 30s).
+  const ready = await ensureOutlookRunning();
+  if (!ready) {
+    console.warn('[outlookSync] Outlook not accessible — skipping sync');
+    return { messages_upserted: 0, org_links: 0, attachment_jobs: 0 };
+  }
+
+  let rawMessages: RawMessage[];
+
+  try {
+    rawMessages = runFetchPs1();
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    // Outlook not running is expected on non-Windows or when the app is closed.
+    console.warn(`[outlookSync] fetch skipped: ${msg}`);
+    return { messages_upserted: 0, org_links: 0, attachment_jobs: 0 };
+  }
+
+  if (rawMessages.length === 0) {
+    return { messages_upserted: 0, org_links: 0, attachment_jobs: 0 };
+  }
+
+  let messagesUpserted = 0;
+  let orgLinksTotal = 0;
+  let attachmentJobs = 0;
+
+  for (const raw of rawMessages) {
+    if (!raw.internet_message_id) continue;
+
+    // Upsert the message row.
+    const attachmentsMeta = JSON.stringify(raw.attachments ?? []);
+
+    const msgRow = upsertMessageStmt.get(
+      raw.internet_message_id,
+      raw.subject ?? '',
+      raw.sender ?? null,
+      raw.sent_at ?? null,
+      raw.body_preview ?? null,
+      raw.has_attachments ?? 0,
+      attachmentsMeta,
+    );
+
+    if (!msgRow) continue;
+    const dbMsgId = msgRow.id;
+    messagesUpserted++;
+
+    // Match to orgs and upsert links.
+    const orgMatches = matchOrgs(raw);
+    for (const match of orgMatches) {
+      upsertOrgLinkStmt.run(dbMsgId, match.org_id, match.confidence);
+      orgLinksTotal++;
+    }
+
+    // Save attachments if the message has any.
+    if (raw.has_attachments) {
+      // Build the OutlookMessage shape expected by saveMessageAttachments.
+      const dbMsg: OutlookMessage = {
+        id: dbMsgId,
+        internet_message_id: raw.internet_message_id,
+        subject: raw.subject ?? '',
+        sent_at: raw.sent_at ?? null,
+        has_attachments: 1,
+        attachments_meta: attachmentsMeta,
+      };
+
+      // Query org links with org name and type for path construction.
+      const orgLinks = listMsgOrgLinksStmt.all(dbMsgId);
+
+      try {
+        await saveMessageAttachments(dbMsg, orgLinks);
+        attachmentJobs++;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.warn(`[outlookSync] attachment save failed for message ${dbMsgId}: ${msg}`);
+        logAlert('warn', 'outlookSync', 'Attachment save failed', err);
       }
     }
   }
 
-  settingsModel.set('last_outlook_sync_at', new Date().toISOString());
+  console.info(
+    `[outlookSync] messages=${messagesUpserted} org_links=${orgLinksTotal} attachment_jobs=${attachmentJobs}`,
+  );
 
-  console.log('[outlookSync] sync complete', {
-    messages: upsertCount,
-    org_links: linkCount,
-  });
+  return {
+    messages_upserted: messagesUpserted,
+    org_links: orgLinksTotal,
+    attachment_jobs: attachmentJobs,
+  };
 }

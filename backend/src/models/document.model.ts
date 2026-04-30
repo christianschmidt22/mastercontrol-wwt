@@ -1,7 +1,7 @@
 import { db } from '../db/database.js';
 
 export type DocumentKind = 'link' | 'file';
-export type DocumentSource = 'manual' | 'onedrive_scan';
+export type DocumentSource = 'manual' | 'onedrive_scan' | 'outlook_attachment';
 
 export interface Document {
   id: number;
