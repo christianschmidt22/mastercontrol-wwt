@@ -16,6 +16,8 @@ import type { Express } from 'express';
 const mockCreate = vi.fn();
 const mockQuery = vi.fn();
 const mockHasClaudeCredentials = vi.fn();
+const mockResolveClaudeExecutable = vi.fn();
+const mockExecFile = vi.fn();
 
 vi.mock('@anthropic-ai/sdk', () => {
   return {
@@ -29,6 +31,10 @@ vi.mock('@anthropic-ai/sdk', () => {
 
 vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
   query: mockQuery,
+}));
+
+vi.mock('node:child_process', () => ({
+  execFile: mockExecFile,
 }));
 
 // Also mock settingsModel to control what settings values are returned.
@@ -50,7 +56,7 @@ vi.mock('../services/subagentSdk.service.js', () => ({
   AUTH_ACTION_MESSAGE: 'Claude.ai subscription not authenticated. Run `claude /login` first.',
   ensureBashEnvForClaudeCode: vi.fn(),
   hasClaudeCodeCredentials: mockHasClaudeCredentials,
-  resolveClaudeExecutable: vi.fn(() => null),
+  resolveClaudeExecutable: mockResolveClaudeExecutable,
 }));
 
 let app: Express;
@@ -73,6 +79,10 @@ afterEach(() => {
 
 beforeEach(() => {
   mockHasClaudeCredentials.mockReturnValue(false);
+  mockResolveClaudeExecutable.mockReturnValue(null);
+  mockExecFile.mockImplementation((_file, _args, _options, cb) => {
+    cb(null, { stdout: '', stderr: '' });
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -177,6 +187,37 @@ describe('POST /api/m365/test - Claude Code enterprise connector', () => {
     expect(res.status).toBe(200);
     expect((res.body as { ok: boolean; error: string }).ok).toBe(false);
     expect((res.body as { ok: boolean; error: string }).error).toMatch(/needs Microsoft 365 authentication/i);
+  });
+
+  it('accepts connected CLI status when SDK MCP status is stale', async () => {
+    mockHasClaudeCredentials.mockReturnValue(true);
+    mockResolveClaudeExecutable.mockReturnValue('C:\\Claude\\claude.exe');
+    mockGet.mockImplementation((key: string) => {
+      if (key === 'm365_mcp_enabled') return '1';
+      return null;
+    });
+    mockQuery.mockReturnValue({
+      mcpServerStatus: vi.fn().mockResolvedValue([
+        {
+          name: 'claude.ai Microsoft 365',
+          status: 'needs-auth',
+          scope: 'claudeai',
+        },
+      ]),
+      return: vi.fn().mockResolvedValue(undefined),
+    });
+    mockExecFile.mockImplementation((_file, _args, _options, cb) => {
+      cb(null, {
+        stdout: 'claude.ai Microsoft 365: https://microsoft365.mcp.claude.com/mcp - ✓ Connected\n',
+        stderr: '',
+      });
+    });
+
+    const res = await request(app).post('/api/m365/test').send({});
+
+    expect(res.status).toBe(200);
+    expect((res.body as { ok: boolean; response: string }).ok).toBe(true);
+    expect((res.body as { ok: boolean; response: string }).response).toMatch(/MCP_OK via Claude Code/i);
   });
 });
 

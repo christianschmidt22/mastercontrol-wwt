@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- M365 connector test now falls back to `claude mcp list` when the Claude Code
+  SDK status probe reports stale `needs-auth` after Microsoft 365 has been
+  authorized in Claude Code.
 - Settings now uses three tabs: Enterprise Claude for core app auth/model/M365,
   Delegated LLM for the personal Max-plan agent auth, and General for theme and
   local paths.

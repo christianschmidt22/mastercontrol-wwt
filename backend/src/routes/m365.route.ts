@@ -11,6 +11,8 @@
  */
 
 import { Router } from 'express';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import Anthropic from '@anthropic-ai/sdk';
 import { query as queryClaudeCode, type McpServerStatus } from '@anthropic-ai/claude-agent-sdk';
 import { settingsModel } from '../models/settings.model.js';
@@ -30,9 +32,45 @@ import {
 } from '../services/subagentSdk.service.js';
 
 export const m365Router = Router();
+const execFileAsync = promisify(execFile);
+
+type ClaudeCliMcpStatus = 'connected' | 'needs-auth' | 'failed' | 'missing' | 'unknown';
 
 function findM365Status(statuses: McpServerStatus[]): McpServerStatus | undefined {
   return statuses.find((status) => status.name === M365_CLAUDE_CODE_SERVER_NAME);
+}
+
+function parseM365StatusFromClaudeCli(output: string): ClaudeCliMcpStatus {
+  const line = output
+    .split(/\r?\n/)
+    .find((candidate) => candidate.startsWith(`${M365_CLAUDE_CODE_SERVER_NAME}:`));
+
+  if (!line) return 'missing';
+
+  const normalized = line.toLowerCase();
+  if (normalized.includes('needs authentication')) return 'needs-auth';
+  if (normalized.includes('failed')) return 'failed';
+  if (normalized.includes('connected')) return 'connected';
+  return 'unknown';
+}
+
+async function getM365StatusFromClaudeCli(claudeExe: string | null): Promise<ClaudeCliMcpStatus> {
+  if (!claudeExe) return 'unknown';
+  try {
+    const { stdout, stderr } = await execFileAsync(
+      claudeExe,
+      ['mcp', 'list'],
+      {
+        env: process.env,
+        timeout: 60_000,
+        windowsHide: true,
+        maxBuffer: 1024 * 1024,
+      },
+    );
+    return parseM365StatusFromClaudeCli(`${stdout}\n${stderr}`);
+  } catch {
+    return 'unknown';
+  }
 }
 
 async function testViaClaudeCode(): Promise<{ ok: boolean; response?: string; error?: string }> {
@@ -57,6 +95,17 @@ async function testViaClaudeCode(): Promise<{ ok: boolean; response?: string; er
 
   try {
     const status = findM365Status(await query.mcpServerStatus());
+    const cliStatus = status?.status === 'connected'
+      ? 'connected'
+      : await getM365StatusFromClaudeCli(claudeExe);
+
+    if (cliStatus === 'connected' && status?.status !== 'connected') {
+      return {
+        ok: true,
+        response: 'MCP_OK via Claude Code enterprise connector (Microsoft 365 connected).',
+      };
+    }
+
     if (!status) {
       return {
         ok: false,
