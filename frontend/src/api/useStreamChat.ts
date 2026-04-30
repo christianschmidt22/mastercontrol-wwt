@@ -42,6 +42,7 @@ export function useStreamChat(orgId: number, threadId?: number): UseStreamChat {
   const qc = useQueryClient();
   const [activeThreadId, setActiveThreadId] = useState<number | undefined>(threadId);
   const activeThreadIdRef = useRef<number | undefined>(threadId);
+  const orgIdRef = useRef(orgId);
 
   // Persisted history from the backend
   const { data: persistedMessages = [] } = useAgentMessages(activeThreadId ?? 0);
@@ -61,6 +62,11 @@ export function useStreamChat(orgId: number, threadId?: number): UseStreamChat {
   const [failed, setFailed] = useState<string | null>(null);
 
   useEffect(() => {
+    const orgChanged = orgIdRef.current !== orgId;
+    const externalThreadChange = threadId !== activeThreadIdRef.current;
+    if (!orgChanged && !externalThreadChange) return;
+
+    orgIdRef.current = orgId;
     abortControllerRef.current?.abort();
     setActiveThreadId(threadId);
     activeThreadIdRef.current = threadId;

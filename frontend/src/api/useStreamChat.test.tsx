@@ -193,6 +193,46 @@ describe('useStreamChat — happy path', () => {
     const secondBody = JSON.parse(rawSecondBody as string) as { thread_id?: number };
     expect(secondBody.thread_id).toBeUndefined();
   });
+
+  it('does not reset an in-flight stream when the URL catches up to the new thread id', async () => {
+    let capturedSignal: AbortSignal | undefined;
+    const hangingStream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(encoder.encode(sseFrame({ type: 'thread', thread_id: 101 })));
+      },
+    });
+
+    vi.mocked(fetch).mockImplementation((_url: unknown, init?: RequestInit) => {
+      capturedSignal = init?.signal ?? undefined;
+      return Promise.resolve(new Response(hangingStream, { status: 200 }));
+    });
+
+    const { result, rerender } = renderHook(
+      ({ threadId }) => useStreamChat(1, threadId),
+      {
+        initialProps: { threadId: undefined as number | undefined },
+        wrapper: makeWrapper(),
+      },
+    );
+
+    act(() => {
+      result.current.send('what M365 tools are available?');
+    });
+
+    await waitFor(() => {
+      expect(result.current.stream.streaming).toBe(true);
+    });
+
+    rerender({ threadId: 101 });
+
+    expect(capturedSignal?.aborted).toBe(false);
+    expect(result.current.stream.streaming).toBe(true);
+    expect(
+      result.current.messages.some((m) => (
+        m.role === 'user' && m.content === 'what M365 tools are available?'
+      )),
+    ).toBe(true);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -299,6 +339,26 @@ describe('useStreamChat — failure', () => {
 
     expect(result.current.stream.failed).not.toBeNull();
     expect(result.current.stream.failed).toContain('Mid-stream failure');
+  });
+
+  it('sets stream.failed when the backend sends an SSE error frame', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(fakeOkResponse([
+      sseFrame({ type: 'error', message: 'M365 connector failed' }),
+    ]));
+
+    const { result } = renderHook(() => useStreamChat(1, 10), {
+      wrapper: makeWrapper(),
+    });
+
+    act(() => {
+      result.current.send('trigger backend error');
+    });
+
+    await waitFor(() => {
+      expect(result.current.stream.streaming).toBe(false);
+    });
+
+    expect(result.current.stream.failed).toBe('M365 connector failed');
   });
 });
 

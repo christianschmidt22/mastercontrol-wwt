@@ -26,10 +26,11 @@ import type { NoteCreate } from '../../../types';
 function makeStreamHook(
   messages: UseStreamChat['messages'] = [],
   failed: string | null = null,
+  streamOverride: Partial<UseStreamChat['stream']> = {},
 ): (_orgId: number, _threadId?: number) => UseStreamChat {
   return () => ({
     messages,
-    stream: { streaming: false, partial: '', failed },
+    stream: { streaming: false, partial: '', failed, ...streamOverride },
     send: vi.fn(),
     stop: vi.fn(),
     retry: vi.fn(),
@@ -203,6 +204,27 @@ describe('ChatTile — textarea auto-resize', () => {
     const maxH = 24 * 1.4 * 8; // ≈ 268.8
     expect(ta.style.height).toBe(`${maxH}px`);
     expect(ta.style.overflowY).toBe('auto');
+  });
+});
+
+describe('ChatTile — streaming state', () => {
+  it('shows a visible waiting row before the first assistant token arrives', () => {
+    render(
+      <ChatTile
+        orgId={10}
+        orgName="Acme"
+        _useStreamChat={makeStreamHook(
+          [userMsg],
+          null,
+          { streaming: true, partial: '' },
+        )}
+        _useCreateNote={makeCreateNoteHook()}
+      />,
+    );
+
+    expect(screen.getByLabelText(/agent is working/i)).toBeInTheDocument();
+    expect(screen.getByText(/working\.\.\./i)).toBeInTheDocument();
+    expect(screen.getByText('What is the status?')).toBeInTheDocument();
   });
 });
 

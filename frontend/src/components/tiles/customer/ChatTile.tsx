@@ -467,6 +467,32 @@ export function ChatTile({
             );
           })}
 
+          {/* Visible waiting state before the first assistant token arrives. */}
+          {stream.streaming && !stream.partial && (
+            <div
+              aria-label="Agent is working"
+              style={{
+                display: 'grid',
+                gridTemplateColumns: '60px 1fr',
+                gap: 14,
+                alignItems: 'baseline',
+              }}
+            >
+              <time style={{ fontSize: 10, color: 'var(--ink-3)' }}>Now</time>
+              <p
+                style={{
+                  fontSize: 13,
+                  lineHeight: 1.55,
+                  color: 'var(--ink-2)',
+                  margin: 0,
+                  fontStyle: 'italic',
+                }}
+              >
+                Working...
+              </p>
+            </div>
+          )}
+
           {/* Streaming partial text + caret */}
           {stream.streaming && stream.partial && (
             <div

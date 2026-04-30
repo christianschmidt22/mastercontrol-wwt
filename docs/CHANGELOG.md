@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Customer/OEM agent chat now keeps in-flight messages visible when the URL
+  catches up to a newly-created thread during layout resize/rerender, surfaces
+  backend SSE error frames as real failures, and shows a visible working state
+  before the first assistant token arrives.
+- Claude Code M365 tool allowlist now matches the seven tools exposed by the
+  authenticated enterprise connector.
 - M365 connector test now falls back to `claude mcp list` when the Claude Code
   SDK status probe reports stale `needs-auth` after Microsoft 365 has been
   authorized in Claude Code.

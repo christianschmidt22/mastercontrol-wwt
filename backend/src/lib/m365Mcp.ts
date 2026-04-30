@@ -30,11 +30,9 @@ export const M365_CLAUDE_CODE_ALLOWED_TOOLS = [
   'mcp__claude_ai_Microsoft_365__outlook_calendar_search',
   'mcp__claude_ai_Microsoft_365__sharepoint_search',
   'mcp__claude_ai_Microsoft_365__sharepoint_folder_search',
-  'mcp__claude_ai_Microsoft_365__employee_search',
   'mcp__claude_ai_Microsoft_365__chat_message_search',
   'mcp__claude_ai_Microsoft_365__find_meeting_availability',
   'mcp__claude_ai_Microsoft_365__read_resource',
-  'mcp__claude_ai_Microsoft_365__read_document',
 ];
 
 export function buildM365Mcp(cfg: M365Config | null): BuildMcpResult {
@@ -71,8 +69,8 @@ const PAGINATION_BLOCK = `
 
 You have Microsoft 365 search tools available via the m365 MCP connector
 (outlook_email_search, outlook_calendar_search, sharepoint_search,
-sharepoint_folder_search, employee_search, chat_message_search,
-find_meeting_availability, read_resource, read_document, etc.).
+sharepoint_folder_search, chat_message_search, find_meeting_availability,
+read_resource).
 
 ### YOU MUST PAGINATE — DO NOT ASSUME 50 RESULTS MEANS "ALL RESULTS"
 

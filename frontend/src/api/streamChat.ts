@@ -61,6 +61,7 @@ export async function streamChat(args: StreamChatArgs): Promise<void> {
   const decoder = new TextDecoder();
   // Buffer across chunk boundaries so we never split a "data: ..." line
   let buf = '';
+  let completed = false;
 
   const processLine = (line: string): boolean => {
     // Returns true if caller should stop reading
@@ -68,6 +69,7 @@ export async function streamChat(args: StreamChatArgs): Promise<void> {
     const payload = line.slice(6); // strip "data: "
 
     if (payload === '[DONE]') {
+      completed = true;
       onDone?.();
       return true;
     }
@@ -84,6 +86,8 @@ export async function streamChat(args: StreamChatArgs): Promise<void> {
       case 'text':
         onText(chunk.delta);
         break;
+      case 'error':
+        throw new Error(chunk.message);
       case 'thread':
         onThread?.(chunk.thread_id);
         break;
@@ -98,6 +102,7 @@ export async function streamChat(args: StreamChatArgs): Promise<void> {
         });
         break;
       case 'done':
+        completed = true;
         onDone?.();
         return true;
     }
@@ -140,5 +145,9 @@ export async function streamChat(args: StreamChatArgs): Promise<void> {
     for (const line of buf.split('\n')) {
       processLine(line.trim());
     }
+  }
+
+  if (!completed) {
+    throw new Error('Stream ended before completion');
   }
 }
