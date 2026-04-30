@@ -5,7 +5,12 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { buildM365Mcp, type M365Config } from './m365Mcp.js';
+import {
+  M365_CLAUDE_CODE_ALLOWED_TOOLS,
+  buildM365ClaudeCode,
+  buildM365Mcp,
+  type M365Config,
+} from './m365Mcp.js';
 
 const FULL_CONFIG: M365Config = {
   enabled: true,
@@ -103,5 +108,19 @@ describe('buildM365Mcp — pagination prompt block content', () => {
   it('contains a Worked example section', () => {
     const { systemPromptBlock } = buildM365Mcp(FULL_CONFIG);
     expect(systemPromptBlock).toContain('Worked example');
+  });
+});
+
+describe('buildM365ClaudeCode', () => {
+  it('enables prompt guidance and record_insight suppression without URL/token config', () => {
+    const result = buildM365ClaudeCode(true);
+    expect(result.systemPromptBlock).toContain('Microsoft 365');
+    expect(result.suppressRecordInsight).toBe(true);
+  });
+
+  it('includes normalized Claude Code M365 MCP tool names', () => {
+    expect(M365_CLAUDE_CODE_ALLOWED_TOOLS).toContain(
+      'mcp__claude_ai_Microsoft_365__outlook_email_search',
+    );
   });
 });

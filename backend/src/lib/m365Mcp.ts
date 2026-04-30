@@ -23,6 +23,20 @@ export interface BuildMcpResult {
   suppressRecordInsight: boolean;   // R-021 compliance — drop record_insight tool
 }
 
+export const M365_CLAUDE_CODE_SERVER_NAME = 'claude.ai Microsoft 365';
+
+export const M365_CLAUDE_CODE_ALLOWED_TOOLS = [
+  'mcp__claude_ai_Microsoft_365__outlook_email_search',
+  'mcp__claude_ai_Microsoft_365__outlook_calendar_search',
+  'mcp__claude_ai_Microsoft_365__sharepoint_search',
+  'mcp__claude_ai_Microsoft_365__sharepoint_folder_search',
+  'mcp__claude_ai_Microsoft_365__employee_search',
+  'mcp__claude_ai_Microsoft_365__chat_message_search',
+  'mcp__claude_ai_Microsoft_365__find_meeting_availability',
+  'mcp__claude_ai_Microsoft_365__read_resource',
+  'mcp__claude_ai_Microsoft_365__read_document',
+];
+
 export function buildM365Mcp(cfg: M365Config | null): BuildMcpResult {
   if (!cfg || !cfg.enabled || !cfg.url || !cfg.token) {
     return {
@@ -42,6 +56,13 @@ export function buildM365Mcp(cfg: M365Config | null): BuildMcpResult {
     betaHeader: 'mcp-client-2025-04-04',
     systemPromptBlock: PAGINATION_BLOCK,
     suppressRecordInsight: true,
+  };
+}
+
+export function buildM365ClaudeCode(enabled: boolean): Pick<BuildMcpResult, 'systemPromptBlock' | 'suppressRecordInsight'> {
+  return {
+    systemPromptBlock: enabled ? PAGINATION_BLOCK : null,
+    suppressRecordInsight: enabled,
   };
 }
 

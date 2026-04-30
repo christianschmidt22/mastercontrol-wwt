@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Microsoft 365 connector can now run through the local Claude Code enterprise
+  login instead of requiring an Anthropic API key, connector URL, or pasted
+  connector token. Settings test now reports the Claude Code connector status,
+  including when Microsoft 365 still needs OAuth authentication.
+
 ## Phase 3 — integrations + polish (2026-04-29, updated)
 
 Outlook integration (device-code auth, Graph sync, per-org tile), FTS5 search,

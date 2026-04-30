@@ -26,6 +26,10 @@ const {
   mockAgentConfigGetEffective,
   mockAgentThreadTouch,
   mockOrgGet,
+  mockClaudeCodeQuery,
+  mockCreateSdkMcpServer,
+  mockSdkTool,
+  mockHasClaudeCodeCredentials,
 } = vi.hoisted(() => ({
   mockSettingsGet: vi.fn(),
   mockAuditAppend: vi.fn(),
@@ -33,6 +37,10 @@ const {
   mockAgentConfigGetEffective: vi.fn(),
   mockAgentThreadTouch: vi.fn(),
   mockOrgGet: vi.fn(),
+  mockClaudeCodeQuery: vi.fn(),
+  mockCreateSdkMcpServer: vi.fn(),
+  mockSdkTool: vi.fn(),
+  mockHasClaudeCodeCredentials: vi.fn(),
 }));
 
 // ---------------------------------------------------------------------------
@@ -42,6 +50,13 @@ vi.mock('@anthropic-ai/sdk', () => {
   const MockAnthropic = vi.fn();
   return { default: MockAnthropic };
 });
+
+vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
+  SYSTEM_PROMPT_DYNAMIC_BOUNDARY: '<dynamic-boundary>',
+  createSdkMcpServer: mockCreateSdkMcpServer,
+  query: mockClaudeCodeQuery,
+  tool: mockSdkTool,
+}));
 
 // ---------------------------------------------------------------------------
 // Mock: lib/sse.ts
@@ -165,7 +180,7 @@ vi.mock('../lib/safePath.js', () => ({
 vi.mock('./subagentSdk.service.js', () => ({
   AUTH_ACTION_MESSAGE: 'Please run claude /login',
   ensureBashEnvForClaudeCode: vi.fn(),
-  hasClaudeCodeCredentials: vi.fn(() => false),
+  hasClaudeCodeCredentials: mockHasClaudeCodeCredentials,
   resolveClaudeExecutable: vi.fn(() => null),
 }));
 
@@ -276,10 +291,14 @@ function firstCallOption<T>(mockFn: Mock): T | undefined {
 // Default settings getter — all M365 disabled
 // ---------------------------------------------------------------------------
 
-function buildSettingsGetter(m365Enabled: boolean, m365Configured: boolean) {
+function buildSettingsGetter(
+  m365Enabled: boolean,
+  m365Configured: boolean,
+  authMode: 'api_key' | 'subscription' = 'api_key',
+) {
   return (key: string): string | null => {
     if (key === 'anthropic_api_key') return 'sk-ant-test';
-    if (key === 'claude_auth_mode') return 'api_key';
+    if (key === 'claude_auth_mode') return authMode;
     if (key === 'm365_mcp_enabled') return m365Enabled ? '1' : '0';
     if (key === 'm365_mcp_url') return m365Configured ? 'https://mcp.anthropic.com/m365/abc' : '';
     if (key === 'm365_mcp_token') return m365Configured ? 'tok_test_secret' : '';
@@ -294,6 +313,13 @@ function buildSettingsGetter(m365Enabled: boolean, m365Configured: boolean) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockHasClaudeCodeCredentials.mockReturnValue(false);
+  mockCreateSdkMcpServer.mockImplementation((input: { name: string; tools?: Array<{ name: string }> }) => ({
+    type: 'sdk',
+    name: input.name,
+    tools: input.tools ?? [],
+  }));
+  mockSdkTool.mockImplementation((name: string) => ({ name }));
   mockOrgGet.mockReturnValue(BASE_ORG);
   mockAgentConfigGetEffective.mockReturnValue(DEFAULT_CONFIG);
 
@@ -355,6 +381,46 @@ describe('M365 MCP — disabled (baseline)', () => {
     const callArg = firstCallArg<{ tools?: Array<{ name?: string }> }>(mockStreamFn);
     const toolNames = (callArg.tools ?? []).map((t) => t.name ?? '');
     expect(toolNames).toContain('record_insight');
+  });
+});
+
+describe('M365 MCP - Claude Code subscription path', () => {
+  it('uses Claude Code managed M365 tools without URL/token config', async () => {
+    mockSettingsGet.mockImplementation(buildSettingsGetter(true, false, 'subscription'));
+    mockHasClaudeCodeCredentials.mockReturnValue(true);
+    async function* sdkEvents() {
+      yield {
+        type: 'result',
+        subtype: 'success',
+        duration_ms: 10,
+        duration_api_ms: 8,
+        is_error: false,
+        num_turns: 1,
+        result: 'ok',
+        errors: [],
+        total_cost_usd: 0,
+        usage: {
+          input_tokens: 10,
+          output_tokens: 5,
+          cache_read_input_tokens: 0,
+          cache_creation_input_tokens: 0,
+        },
+      };
+    }
+    mockClaudeCodeQuery.mockReturnValue(sdkEvents());
+    const { req, res } = makeMockReqRes();
+
+    await streamChat({ orgId: 1, threadId: 20, content: 'show emails', req, res });
+
+    expect(mockClaudeCodeQuery).toHaveBeenCalled();
+    const callArg = firstCallArg<{
+      options?: { allowedTools?: string[]; systemPrompt?: string[] };
+    }>(mockClaudeCodeQuery);
+    expect(callArg.options?.allowedTools).toContain(
+      'mcp__claude_ai_Microsoft_365__outlook_email_search',
+    );
+    expect(callArg.options?.allowedTools).not.toContain('mcp__mastercontrol__record_insight');
+    expect(callArg.options?.systemPrompt?.join('\n')).toContain('Microsoft 365 Search Tools');
   });
 });
 

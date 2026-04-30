@@ -12,13 +12,79 @@
 
 import { Router } from 'express';
 import Anthropic from '@anthropic-ai/sdk';
+import { query as queryClaudeCode, type McpServerStatus } from '@anthropic-ai/claude-agent-sdk';
 import { settingsModel } from '../models/settings.model.js';
-import { buildM365Mcp } from '../lib/m365Mcp.js';
+import {
+  M365_CLAUDE_CODE_ALLOWED_TOOLS,
+  M365_CLAUDE_CODE_SERVER_NAME,
+  buildM365Mcp,
+} from '../lib/m365Mcp.js';
 import { HttpError } from '../middleware/errorHandler.js';
 import { validateBody } from '../lib/validate.js';
 import { M365TestBodySchema } from '../schemas/m365.schema.js';
+import {
+  AUTH_ACTION_MESSAGE,
+  ensureBashEnvForClaudeCode,
+  hasClaudeCodeCredentials,
+  resolveClaudeExecutable,
+} from '../services/subagentSdk.service.js';
 
 export const m365Router = Router();
+
+function findM365Status(statuses: McpServerStatus[]): McpServerStatus | undefined {
+  return statuses.find((status) => status.name === M365_CLAUDE_CODE_SERVER_NAME);
+}
+
+async function testViaClaudeCode(): Promise<{ ok: boolean; response?: string; error?: string }> {
+  if (!hasClaudeCodeCredentials()) {
+    return { ok: false, error: AUTH_ACTION_MESSAGE };
+  }
+
+  ensureBashEnvForClaudeCode();
+  const claudeExe = resolveClaudeExecutable();
+  const query = queryClaudeCode({
+    prompt: 'Reply with MCP_OK only.',
+    options: {
+      maxTurns: 1,
+      tools: [],
+      allowedTools: M365_CLAUDE_CODE_ALLOWED_TOOLS,
+      permissionMode: 'dontAsk',
+      persistSession: false,
+      settingSources: ['user'],
+      ...(claudeExe ? { pathToClaudeCodeExecutable: claudeExe } : {}),
+    },
+  });
+
+  try {
+    const status = findM365Status(await query.mcpServerStatus());
+    if (!status) {
+      return {
+        ok: false,
+        error: 'Claude Code login is active, but the Claude.ai Microsoft 365 connector is not available on this account.',
+      };
+    }
+    if (status.status === 'connected') {
+      const toolCount = status.tools?.length ?? M365_CLAUDE_CODE_ALLOWED_TOOLS.length;
+      return {
+        ok: true,
+        response: `MCP_OK via Claude Code enterprise connector (${toolCount} M365 tools available).`,
+      };
+    }
+    if (status.status === 'needs-auth') {
+      return {
+        ok: false,
+        error:
+          'Claude Code can see the Claude.ai Microsoft 365 connector, but it still needs Microsoft 365 authentication. Open Claude Code and authenticate the "claude.ai Microsoft 365" MCP server.',
+      };
+    }
+    return {
+      ok: false,
+      error: `Claude.ai Microsoft 365 connector is ${status.status}${status.error ? `: ${status.error}` : ''}`,
+    };
+  } finally {
+    await query.return?.();
+  }
+}
 
 /**
  * POST /api/m365/test
@@ -37,8 +103,18 @@ m365Router.post('/test', validateBody(M365TestBodySchema), async (_req, res, nex
     // Token is secret — plaintext getter allowed here (service-adjacent route, R-003).
     const token = settingsModel.get('m365_mcp_token') ?? '';
 
+    const enabled = enabledRaw === '1' || enabledRaw === 'true';
+    if (!enabled) {
+      return next(new HttpError(400, 'M365 MCP not configured'));
+    }
+
+    if (hasClaudeCodeCredentials()) {
+      res.json(await testViaClaudeCode());
+      return;
+    }
+
     const mcpResult = buildM365Mcp({
-      enabled: enabledRaw === '1' || enabledRaw === 'true',
+      enabled,
       url,
       token,
       name,
@@ -48,11 +124,11 @@ m365Router.post('/test', validateBody(M365TestBodySchema), async (_req, res, nex
       return next(new HttpError(400, 'M365 MCP not configured'));
     }
 
-    // Resolve API key for the test call. We require a direct API key here
-    // because this test endpoint runs outside the normal streaming chat flow.
+    // Fallback for the direct API-key path. Subscription users should use the
+    // Claude Code branch above, which relies on the local enterprise login.
     const apiKey = settingsModel.get('anthropic_api_key');
     if (!apiKey) {
-      return next(new HttpError(503, 'Anthropic API key not configured'));
+      return next(new HttpError(503, AUTH_ACTION_MESSAGE));
     }
 
     const client = new Anthropic({ apiKey });

@@ -53,7 +53,11 @@ import {
   hasClaudeCodeCredentials,
   resolveClaudeExecutable,
 } from './subagentSdk.service.js';
-import { buildM365Mcp } from '../lib/m365Mcp.js';
+import {
+  M365_CLAUDE_CODE_ALLOWED_TOOLS,
+  buildM365ClaudeCode,
+  buildM365Mcp,
+} from '../lib/m365Mcp.js';
 
 // ---------------------------------------------------------------------------
 // Model imports (Agent 1 parallel build — these types are assumed; adjust if
@@ -925,6 +929,7 @@ export async function streamChat({
   }
 
   const volatile = await buildVolatileBlock(orgId, m);
+  const authMode = resolveClaudeAuthMode();
 
   // ------------------------------------------------------------------
   // 4. Load M365 MCP config (R-021: suppress record_insight when active)
@@ -934,21 +939,25 @@ export async function streamChat({
   const m365McpName = settingsModel.get('m365_mcp_name') ?? 'm365';
   // Token: plaintext getter is allowed in service-layer code (R-003).
   const m365McpToken = settingsModel.get('m365_mcp_token') ?? '';
+  const m365Enabled = m365McpEnabledRaw === '1' || m365McpEnabledRaw === 'true';
 
   const m365Result = buildM365Mcp({
-    enabled: m365McpEnabledRaw === '1' || m365McpEnabledRaw === 'true',
+    enabled: m365Enabled,
     url: m365McpUrl,
     token: m365McpToken,
     name: m365McpName,
   });
+  const m365ClaudeCode = buildM365ClaudeCode(m365Enabled && authMode === 'subscription');
+  const m365PromptBlock = m365Result.systemPromptBlock ?? m365ClaudeCode.systemPromptBlock;
+  const suppressRecordInsight = m365Result.suppressRecordInsight || m365ClaudeCode.suppressRecordInsight;
 
   // Append pagination guidance to the stable block when MCP is active.
   // This is done after the cache read/write so the cache stores the base
   // stable block without the M365 block; M365 config can change independently
   // of org data and the token is not stored in the cache.
   const stableWithMcp =
-    m365Result.systemPromptBlock
-      ? `${stable}\n\n${m365Result.systemPromptBlock}`
+    m365PromptBlock
+      ? `${stable}\n\n${m365PromptBlock}`
       : stable;
 
   // ------------------------------------------------------------------
@@ -999,7 +1008,7 @@ export async function streamChat({
   const filteredTools = allTools
     .filter((t) => enabledToolNames.has(t.name))
     // R-021: suppress record_insight when M365 MCP is active.
-    .filter((t) => !(m365Result.suppressRecordInsight && t.name === 'record_insight'))
+    .filter((t) => !(suppressRecordInsight && t.name === 'record_insight'))
     .map((t) => t.spec);
 
   let fullText = '';
@@ -1041,7 +1050,6 @@ export async function streamChat({
 
   sse.send({ type: 'thread', thread_id: threadId });
 
-  const authMode = resolveClaudeAuthMode();
   if (authMode === 'subscription') {
     await streamChatViaClaudeCode({
       orgId,
@@ -1055,7 +1063,8 @@ export async function streamChat({
       agentConfig,
       allowlist,
       enabledToolNames,
-      suppressRecordInsight: m365Result.suppressRecordInsight,
+      suppressRecordInsight,
+      m365ClaudeCodeEnabled: m365ClaudeCode.suppressRecordInsight,
       fullTextRef: {
         get: () => fullText,
         append: (delta: string) => {
@@ -1239,6 +1248,7 @@ interface StreamChatViaClaudeCodeArgs {
   enabledToolNames: Set<string>;
   /** R-021: when true, record_insight is excluded from the tool list. */
   suppressRecordInsight: boolean;
+  m365ClaudeCodeEnabled: boolean;
   fullTextRef: {
     get: () => string;
     append: (delta: string) => void;
@@ -1271,6 +1281,7 @@ async function streamChatViaClaudeCode({
   allowlist,
   enabledToolNames,
   suppressRecordInsight,
+  m365ClaudeCodeEnabled,
   fullTextRef,
   toolCallsAccumulated,
 }: StreamChatViaClaudeCodeArgs): Promise<void> {
@@ -1392,6 +1403,7 @@ async function streamChatViaClaudeCode({
     : undefined;
   const mcpAllowed = toolDefs.map((def) => `mcp__mastercontrol__${def.name}`);
   const builtinTools = enabledToolNames.has('web_search') ? ['WebSearch'] : [];
+  const m365Allowed = m365ClaudeCodeEnabled ? M365_CLAUDE_CODE_ALLOWED_TOOLS : [];
 
   const historyText = historyMessages.length
     ? historyMessages
@@ -1412,7 +1424,7 @@ async function streamChatViaClaudeCode({
         model: agentConfig.model,
         maxTurns: 4,
         tools: builtinTools,
-        allowedTools: [...builtinTools, ...mcpAllowed],
+        allowedTools: [...builtinTools, ...mcpAllowed, ...m365Allowed],
         permissionMode: 'dontAsk',
         persistSession: false,
         settingSources: ['user'],
