@@ -15,14 +15,27 @@
 
 import { noteMentionModel } from '../models/noteMention.model.js';
 import { organizationModel } from '../models/organization.model.js';
+import { settingsModel } from '../models/settings.model.js';
 import {
   extractOrgMentions,
   extractPrimaryOrgAndMentions,
 } from './claude.service.js';
 import type { Organization } from '../models/organization.model.js';
 
-/** Confidence threshold below which a mention is discarded. */
-const CONFIDENCE_THRESHOLD = 0.5;
+/** Default model and threshold — overridden by settings at call time. */
+const DEFAULT_MODEL = 'claude-haiku-4-5';
+const DEFAULT_THRESHOLD = 0.5;
+
+/** Read mention extraction settings from the DB at call time. */
+function getMentionSettings(): { model: string; threshold: number } {
+  const model = settingsModel.get('mention_extraction_model') ?? DEFAULT_MODEL;
+  const thresholdRaw = settingsModel.get('mention_extraction_threshold');
+  const threshold = thresholdRaw !== null ? parseFloat(thresholdRaw) : DEFAULT_THRESHOLD;
+  return {
+    model,
+    threshold: Number.isFinite(threshold) ? threshold : DEFAULT_THRESHOLD,
+  };
+}
 
 export interface ExtractedOrgMention {
   org: Organization;
@@ -64,12 +77,13 @@ function loadOrgs(): Organization[] {
 function resolveMentionCandidates(
   orgs: Organization[],
   mentions: Array<{ name: string; confidence: number }>,
+  threshold: number = DEFAULT_THRESHOLD,
 ): ExtractedOrgMention[] {
   const candidates: ExtractedOrgMention[] = [];
   const seen = new Set<number>();
 
   for (const { name, confidence } of mentions) {
-    if (confidence < CONFIDENCE_THRESHOLD) continue;
+    if (confidence < threshold) continue;
 
     const org = orgs.find((o) => o.name.toLowerCase() === name.toLowerCase());
     if (!org || seen.has(org.id)) continue;
@@ -90,9 +104,10 @@ export async function extractMentionCandidates(content: string): Promise<Extract
   const orgs = loadOrgs();
   if (orgs.length === 0) return [];
 
+  const { model, threshold } = getMentionSettings();
   const candidateNames = orgs.map((o) => o.name);
-  const mentions = await extractOrgMentions(content, candidateNames);
-  return resolveMentionCandidates(orgs, mentions);
+  const mentions = await extractOrgMentions(content, candidateNames, model);
+  return resolveMentionCandidates(orgs, mentions, threshold);
 }
 
 export async function extractPrimaryOrgCandidates(
@@ -101,11 +116,12 @@ export async function extractPrimaryOrgCandidates(
   const orgs = loadOrgs();
   if (orgs.length === 0) return { primary: null, mentions: [] };
 
+  const { model, threshold } = getMentionSettings();
   const candidateNames = orgs.map((o) => o.name);
-  const extracted = await extractPrimaryOrgAndMentions(content, candidateNames);
+  const extracted = await extractPrimaryOrgAndMentions(content, candidateNames, model);
   const primary =
     extracted.primary_org_name !== null &&
-    (extracted.primary_confidence ?? 0) >= CONFIDENCE_THRESHOLD
+    (extracted.primary_confidence ?? 0) >= threshold
       ? orgs.find(
           (org) => org.name.toLowerCase() === extracted.primary_org_name!.toLowerCase(),
         ) ?? null
@@ -119,7 +135,7 @@ export async function extractPrimaryOrgCandidates(
             org: primary,
             confidence: extracted.primary_confidence ?? 1,
           },
-    mentions: resolveMentionCandidates(orgs, extracted.mentions),
+    mentions: resolveMentionCandidates(orgs, extracted.mentions, threshold),
   };
 }
 
