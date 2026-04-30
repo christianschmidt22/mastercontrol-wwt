@@ -43,6 +43,32 @@ const listForDayStmt = db.prepare<[string, string], CalendarEvent>(`
   ORDER BY start_at ASC
 `);
 
+const listVisibleStmt = db.prepare<[string, string, string], CalendarEvent>(`
+  SELECT e.* FROM calendar_events e
+  WHERE e.start_at >= ? AND e.start_at < ?
+    AND NOT EXISTS (
+      SELECT 1 FROM calendar_event_hides h
+      WHERE h.uid = e.uid AND h.hide_date = ?
+    )
+  ORDER BY e.start_at ASC
+`);
+
+const listHiddenStmt = db.prepare<[string, string, string], CalendarEvent>(`
+  SELECT e.* FROM calendar_events e
+  INNER JOIN calendar_event_hides h ON h.uid = e.uid AND h.hide_date = ?
+  WHERE e.start_at >= ? AND e.start_at < ?
+  ORDER BY e.start_at ASC
+`);
+
+const insertHideStmt = db.prepare<[string, string]>(`
+  INSERT OR IGNORE INTO calendar_event_hides (uid, hide_date)
+  VALUES (?, ?)
+`);
+
+const deleteHideStmt = db.prepare<[string, string]>(`
+  DELETE FROM calendar_event_hides WHERE uid = ? AND hide_date = ?
+`);
+
 const deleteBeforeStmt = db.prepare<[string]>(`
   DELETE FROM calendar_events WHERE end_at < ?
 `);
@@ -67,10 +93,29 @@ export const calendarEventModel = {
     upsertMany(events);
   },
 
+  /** Returns all events for a day regardless of hide status. */
   listForDay(dateStr: string): CalendarEvent[] {
     const start = `${dateStr}T00:00:00.000Z`;
     const end = `${dateStr}T23:59:59.999Z`;
     return listForDayStmt.all(start, end);
+  },
+
+  /** Returns events partitioned into visible (not hidden) and hidden lists. */
+  listForDayPartitioned(dateStr: string): { visible: CalendarEvent[]; hidden: CalendarEvent[] } {
+    const start = `${dateStr}T00:00:00.000Z`;
+    const end   = `${dateStr}T23:59:59.999Z`;
+    return {
+      visible: listVisibleStmt.all(start, end, dateStr),
+      hidden:  listHiddenStmt.all(dateStr, start, end),
+    };
+  },
+
+  hideForDate(uid: string, dateStr: string): void {
+    insertHideStmt.run(uid, dateStr);
+  },
+
+  unhideForDate(uid: string, dateStr: string): void {
+    deleteHideStmt.run(uid, dateStr);
   },
 
   pruneOlderThan(dateStr: string): number {
