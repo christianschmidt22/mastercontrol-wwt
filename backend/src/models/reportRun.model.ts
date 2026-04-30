@@ -1,4 +1,5 @@
 import { db } from '../db/database.js';
+import { logAlert } from './systemAlert.model.js';
 
 /**
  * Phase 2 / Step 5a — reportRun model.
@@ -141,8 +142,14 @@ export const reportRunModel = {
     const existing = findByKeyStmt.get(input.schedule_id, input.fire_time);
     if (!existing) {
       // Should be unreachable: INSERT OR IGNORE returned nothing yet no
-      // existing row was found. Surface a clear error rather than an
-      // implicit undefined.
+      // existing row was found. This is a data integrity bug — raise an alert
+      // so it surfaces in the UI before throwing.
+      logAlert(
+        'error',
+        'reportRun',
+        'reportRun.create: INSERT OR IGNORE fired but no existing row found — possible data corruption',
+        JSON.stringify({ schedule_id: input.schedule_id, fire_time: input.fire_time }),
+      );
       throw new Error(
         `reportRunModel.create: insert ignored but no existing row found for schedule=${input.schedule_id} fire_time=${input.fire_time}`,
       );
