@@ -4,6 +4,7 @@ export interface CalendarEvent {
   start_at: string;
   end_at: string;
   location: string | null;
+  meeting_url: string | null;
   organizer: string | null;
   attendee_count: number;
   is_all_day: number;

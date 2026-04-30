@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { RefreshCw, MapPin, Users, X } from 'lucide-react';
+import { RefreshCw, MapPin, Users, Video, X } from 'lucide-react';
 import { Tile } from '../Tile';
 import { TileEmptyState } from '../TileEmptyState';
 import { useCalendarToday, useCalendarSync, useHideEvent, useUnhideEvent } from '../../../api/useCalendar';
@@ -24,6 +24,22 @@ function formatLastSync(iso: string | null): string {
   }).format(d)}`;
 }
 
+/**
+ * Returns true when `location` is just a generic meeting-platform placeholder
+ * (e.g. "Microsoft Teams Meeting") or is itself a URL — both cases where the
+ * Join link already conveys the same information more usefully.
+ */
+function isMeetingPlaceholder(location: string | null, meetingUrl: string | null): boolean {
+  if (!location || !meetingUrl) return false;
+  const lower = location.toLowerCase().trim();
+  return lower === 'microsoft teams meeting'
+      || lower === 'teams meeting'
+      || lower === 'zoom meeting'
+      || lower === 'google meet'
+      || lower === 'webex meeting'
+      || lower.startsWith('http://') || lower.startsWith('https://');
+}
+
 interface EventRowProps {
   event: CalendarEvent;
   onHide: (uid: string) => void;
@@ -34,6 +50,8 @@ interface EventRowProps {
 function EventRow({ event, onHide, isHidden = false, onUnhide }: EventRowProps) {
   const isAllDay = event.is_all_day === 1;
   const time = formatTime(event.start_at, isAllDay);
+
+  const showLocation = Boolean(event.location) && !isMeetingPlaceholder(event.location, event.meeting_url);
 
   return (
     <li
@@ -64,9 +82,9 @@ function EventRow({ event, onHide, isHidden = false, onUnhide }: EventRowProps) 
         <span style={{ fontSize: 14, color: 'var(--ink-1)', lineHeight: 1.4 }}>
           {event.title}
         </span>
-        {(event.location || event.attendee_count > 0) && (
+        {(showLocation || event.meeting_url || event.attendee_count > 0) && (
           <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-            {event.location && (
+            {showLocation && (
               <span
                 style={{
                   display: 'flex', alignItems: 'center', gap: 3,
@@ -76,6 +94,28 @@ function EventRow({ event, onHide, isHidden = false, onUnhide }: EventRowProps) 
                 <MapPin size={10} aria-hidden="true" />
                 {event.location}
               </span>
+            )}
+            {event.meeting_url && (
+              <a
+                href={event.meeting_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label={`Join meeting for ${event.title}`}
+                className="agenda-join-link"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 3,
+                  fontSize: 11,
+                  color: 'var(--accent)',
+                  textDecoration: 'none',
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.textDecoration = 'underline'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.textDecoration = 'none'; }}
+              >
+                <Video size={10} aria-hidden="true" />
+                Join
+              </a>
             )}
             {event.attendee_count > 0 && (
               <span
@@ -167,6 +207,11 @@ export function TodayAgendaTile() {
         }
         .agenda-hide-btn:focus-visible {
           outline: 2px solid var(--ink-1);
+          outline-offset: 2px;
+          border-radius: 2px;
+        }
+        a.agenda-join-link:focus-visible {
+          outline: 2px solid var(--accent);
           outline-offset: 2px;
           border-radius: 2px;
         }
