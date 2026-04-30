@@ -1,6 +1,6 @@
-import { useState, type CSSProperties, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
-import { LayoutGrid } from 'lucide-react';
+import { LayoutGrid, Settings } from 'lucide-react';
 import { TileGrid, type TileGridItem } from '../components/tiles/TileGrid';
 import { useTileLayout, type TileLayout } from '../components/tiles/useTileLayout';
 import { ChatTile } from '../components/tiles/customer/ChatTile';
@@ -10,7 +10,158 @@ import { OemDocsTile } from '../components/tiles/oem/OemDocsTile';
 import { OemPageHeader } from '../components/oem/OemPageHeader';
 import { OemCrossRefsPanel } from '../components/oem/OemCrossRefsPanel';
 import type { Organization } from '../types';
-import { useOrganizations } from '../api/useOrganizations';
+import { useOrganizations, useUpdateOrganization } from '../api/useOrganizations';
+
+// ── OEM settings popover styles ──────────────────────────────────────────────
+
+const oemFieldLabelStyle: CSSProperties = {
+  fontFamily: 'var(--body)',
+  fontSize: 11,
+  fontWeight: 600,
+  textTransform: 'uppercase' as const,
+  letterSpacing: '0.06em',
+  color: 'var(--ink-3)',
+  display: 'block',
+  marginBottom: 6,
+};
+
+const oemFieldStyle: CSSProperties = {
+  fontFamily: 'var(--body)',
+  fontSize: 13,
+  color: 'var(--ink-1)',
+  background: 'var(--bg)',
+  border: '1px solid var(--rule)',
+  borderRadius: 4,
+  padding: '6px 8px',
+  width: '100%',
+  boxSizing: 'border-box' as const,
+  outline: 'none',
+};
+
+// ── OEM settings popover ─────────────────────────────────────────────────────
+
+function OemSettingsPopover({ org }: { org: Organization }) {
+  const [open, setOpen] = useState(false);
+  const [folder, setFolder] = useState(
+    typeof org.metadata?.onedrive_folder === 'string' ? org.metadata.onedrive_folder : '',
+  );
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const updateOrg = useUpdateOrganization();
+
+  // Sync local state when org changes (tab switch)
+  useEffect(() => {
+    setFolder(
+      typeof org.metadata?.onedrive_folder === 'string' ? org.metadata.onedrive_folder : '',
+    );
+  }, [org.id, org.metadata]);
+
+  // Close on outside click
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (
+        panelRef.current && !panelRef.current.contains(e.target as Node) &&
+        btnRef.current && !btnRef.current.contains(e.target as Node)
+      ) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
+  // Close on Escape
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setOpen(false); btnRef.current?.focus(); }
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [open]);
+
+  const currentFolder = typeof org.metadata?.onedrive_folder === 'string'
+    ? org.metadata.onedrive_folder
+    : '';
+  const isDirty = folder !== currentFolder;
+
+  const handleSave = () => {
+    updateOrg.mutate(
+      { id: org.id, metadata: { ...org.metadata, onedrive_folder: folder || null } },
+      { onSuccess: () => setOpen(false) },
+    );
+  };
+
+  return (
+    <div style={{ position: 'relative' }}>
+      <button
+        ref={btnRef}
+        type="button"
+        aria-label="OEM settings"
+        aria-expanded={open}
+        aria-haspopup="dialog"
+        onClick={() => setOpen((v) => !v)}
+        style={iconBtnStyle}
+      >
+        <Settings size={14} strokeWidth={1.5} aria-hidden="true" />
+      </button>
+
+      {open && (
+        <div
+          ref={panelRef}
+          role="dialog"
+          aria-label="OEM settings"
+          style={{
+            position: 'absolute',
+            top: 36,
+            right: 0,
+            width: 300,
+            background: 'var(--bg)',
+            border: '1px solid var(--rule)',
+            borderRadius: 8,
+            padding: 18,
+            zIndex: 200,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 14,
+          }}
+        >
+          <div>
+            <label style={oemFieldLabelStyle} htmlFor="oem-cfg-folder">
+              OneDrive Folder
+            </label>
+            <input
+              id="oem-cfg-folder"
+              value={folder}
+              placeholder={`C:\\Users\\...\\OneDrive\\Documents\\...`}
+              onChange={(e) => setFolder(e.target.value)}
+              style={{ ...oemFieldStyle, fontFamily: 'var(--mono, monospace)', fontSize: 12 }}
+            />
+          </div>
+
+          <button
+            type="button"
+            disabled={!isDirty || updateOrg.isPending}
+            onClick={handleSave}
+            style={{
+              fontFamily: 'var(--body)',
+              fontSize: 12,
+              fontWeight: 500,
+              padding: '7px 12px',
+              borderRadius: 6,
+              cursor: isDirty && !updateOrg.isPending ? 'pointer' : 'not-allowed',
+              border: '1px solid var(--rule)',
+              background: isDirty ? 'var(--bg-2)' : 'var(--bg)',
+              color: isDirty ? 'var(--ink-1)' : 'var(--ink-3)',
+              width: '100%',
+            }}
+          >
+            {updateOrg.isPending ? 'Saving…' : 'Save changes'}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
 
 /**
  * Default OEM tile layout.
@@ -135,15 +286,18 @@ function OemDashboard({ org, tabs }: OemDashboardProps) {
             </button>
           </>
         ) : (
-          <button
-            type="button"
-            onClick={() => setEditMode(true)}
-            aria-label="Customize OEM tile layout"
-            title="Customize layout"
-            style={iconBtnStyle}
-          >
-            <LayoutGrid size={14} strokeWidth={1.5} aria-hidden="true" />
-          </button>
+          <>
+            <OemSettingsPopover org={org} />
+            <button
+              type="button"
+              onClick={() => setEditMode(true)}
+              aria-label="Customize OEM tile layout"
+              title="Customize layout"
+              style={iconBtnStyle}
+            >
+              <LayoutGrid size={14} strokeWidth={1.5} aria-hidden="true" />
+            </button>
+          </>
         )}
       </div>
 
