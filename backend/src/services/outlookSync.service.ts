@@ -18,7 +18,7 @@ import { fileURLToPath } from 'node:url';
 import { db } from '../db/database.js';
 import { logAlert } from '../models/systemAlert.model.js';
 import { saveMessageAttachments, type OutlookMessage, type OrgLink } from './outlookAttachment.service.js';
-import { ensureOutlookRunning } from './outlook.service.js';
+import { ensureOutlookRunning, closeOutlookIfWeStartedIt } from './outlook.service.js';
 
 // ---------------------------------------------------------------------------
 // PS1 path — same pattern as other services that shell out to PowerShell
@@ -196,91 +196,97 @@ export interface OutlookSyncResult {
 
 export async function syncOutlook(): Promise<OutlookSyncResult> {
   // Ensure Outlook is running (auto-launch if needed, wait up to 30s).
-  const ready = await ensureOutlookRunning();
+  // weStartedIt tracks whether WE launched Outlook so we can close it when done.
+  const { ready, weStartedIt } = await ensureOutlookRunning();
   if (!ready) {
     console.warn('[outlookSync] Outlook not accessible — skipping sync');
     return { messages_upserted: 0, org_links: 0, attachment_jobs: 0 };
   }
 
-  let rawMessages: RawMessage[];
-
   try {
-    rawMessages = runFetchPs1();
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    // Outlook not running is expected on non-Windows or when the app is closed.
-    console.warn(`[outlookSync] fetch skipped: ${msg}`);
-    return { messages_upserted: 0, org_links: 0, attachment_jobs: 0 };
-  }
+    let rawMessages: RawMessage[];
 
-  if (rawMessages.length === 0) {
-    return { messages_upserted: 0, org_links: 0, attachment_jobs: 0 };
-  }
-
-  let messagesUpserted = 0;
-  let orgLinksTotal = 0;
-  let attachmentJobs = 0;
-
-  for (const raw of rawMessages) {
-    if (!raw.internet_message_id) continue;
-
-    // Upsert the message row.
-    const attachmentsMeta = JSON.stringify(raw.attachments ?? []);
-
-    const msgRow = upsertMessageStmt.get(
-      raw.internet_message_id,
-      raw.subject ?? '',
-      raw.sender ?? null,
-      raw.sent_at ?? null,
-      raw.body_preview ?? null,
-      raw.has_attachments ?? 0,
-      attachmentsMeta,
-    );
-
-    if (!msgRow) continue;
-    const dbMsgId = msgRow.id;
-    messagesUpserted++;
-
-    // Match to orgs and upsert links.
-    const orgMatches = matchOrgs(raw);
-    for (const match of orgMatches) {
-      upsertOrgLinkStmt.run(dbMsgId, match.org_id, match.confidence);
-      orgLinksTotal++;
+    try {
+      rawMessages = runFetchPs1();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      // Outlook not running is expected on non-Windows or when the app is closed.
+      console.warn(`[outlookSync] fetch skipped: ${msg}`);
+      return { messages_upserted: 0, org_links: 0, attachment_jobs: 0 };
     }
 
-    // Save attachments if the message has any.
-    if (raw.has_attachments) {
-      // Build the OutlookMessage shape expected by saveMessageAttachments.
-      const dbMsg: OutlookMessage = {
-        id: dbMsgId,
-        internet_message_id: raw.internet_message_id,
-        subject: raw.subject ?? '',
-        sent_at: raw.sent_at ?? null,
-        has_attachments: 1,
-        attachments_meta: attachmentsMeta,
-      };
+    if (rawMessages.length === 0) {
+      return { messages_upserted: 0, org_links: 0, attachment_jobs: 0 };
+    }
 
-      // Query org links with org name and type for path construction.
-      const orgLinks = listMsgOrgLinksStmt.all(dbMsgId);
+    let messagesUpserted = 0;
+    let orgLinksTotal = 0;
+    let attachmentJobs = 0;
 
-      try {
-        await saveMessageAttachments(dbMsg, orgLinks);
-        attachmentJobs++;
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        console.warn(`[outlookSync] attachment save failed for message ${dbMsgId}: ${msg}`);
-        logAlert('warn', 'outlookSync', 'Attachment save failed', err);
+    for (const raw of rawMessages) {
+      if (!raw.internet_message_id) continue;
+
+      // Upsert the message row.
+      const attachmentsMeta = JSON.stringify(raw.attachments ?? []);
+
+      const msgRow = upsertMessageStmt.get(
+        raw.internet_message_id,
+        raw.subject ?? '',
+        raw.sender ?? null,
+        raw.sent_at ?? null,
+        raw.body_preview ?? null,
+        raw.has_attachments ?? 0,
+        attachmentsMeta,
+      );
+
+      if (!msgRow) continue;
+      const dbMsgId = msgRow.id;
+      messagesUpserted++;
+
+      // Match to orgs and upsert links.
+      const orgMatches = matchOrgs(raw);
+      for (const match of orgMatches) {
+        upsertOrgLinkStmt.run(dbMsgId, match.org_id, match.confidence);
+        orgLinksTotal++;
+      }
+
+      // Save attachments if the message has any.
+      if (raw.has_attachments) {
+        // Build the OutlookMessage shape expected by saveMessageAttachments.
+        const dbMsg: OutlookMessage = {
+          id: dbMsgId,
+          internet_message_id: raw.internet_message_id,
+          subject: raw.subject ?? '',
+          sent_at: raw.sent_at ?? null,
+          has_attachments: 1,
+          attachments_meta: attachmentsMeta,
+        };
+
+        // Query org links with org name and type for path construction.
+        const orgLinks = listMsgOrgLinksStmt.all(dbMsgId);
+
+        try {
+          await saveMessageAttachments(dbMsg, orgLinks);
+          attachmentJobs++;
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          console.warn(`[outlookSync] attachment save failed for message ${dbMsgId}: ${msg}`);
+          logAlert('warn', 'outlookSync', 'Attachment save failed', err);
+        }
       }
     }
+
+    console.info(
+      `[outlookSync] messages=${messagesUpserted} org_links=${orgLinksTotal} attachment_jobs=${attachmentJobs}`,
+    );
+
+    return {
+      messages_upserted: messagesUpserted,
+      org_links: orgLinksTotal,
+      attachment_jobs: attachmentJobs,
+    };
+  } finally {
+    // Close classic Outlook only if we launched it — leave user's session alone.
+    await closeOutlookIfWeStartedIt(weStartedIt);
   }
-
-  console.info(
-    `[outlookSync] messages=${messagesUpserted} org_links=${orgLinksTotal} attachment_jobs=${attachmentJobs}`,
-  );
-
-  return {
-    messages_upserted: messagesUpserted,
-    org_links: orgLinksTotal,
-    attachment_jobs: attachmentJobs,
-  };
 }
