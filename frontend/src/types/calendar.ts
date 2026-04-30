@@ -13,6 +13,7 @@ export interface CalendarEvent {
 export interface CalendarTodayResponse {
   date: string;
   events: CalendarEvent[];
+  hidden_events: CalendarEvent[];
   last_sync: string | null;
 }
 

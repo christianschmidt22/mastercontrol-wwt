@@ -3,6 +3,7 @@ import { calendarEventModel } from '../models/calendarEvent.model.js';
 import { settingsModel } from '../models/settings.model.js';
 import { syncCalendar } from '../services/calendarSync.service.js';
 import { HttpError } from '../middleware/errorHandler.js';
+import { HideEventParamsSchema, HideEventQuerySchema } from '../schemas/calendar.schema.js';
 
 export const calendarRouter = Router();
 
@@ -17,9 +18,36 @@ calendarRouter.get('/today', (req, res, next) => {
     return next(new HttpError(400, 'date must be YYYY-MM-DD'));
   }
 
-  const events = calendarEventModel.listForDay(dateStr);
+  const { visible, hidden } = calendarEventModel.listForDayPartitioned(dateStr);
   const lastSync = settingsModel.get('calendar_last_sync') ?? null;
-  res.json({ date: dateStr, events, last_sync: lastSync });
+  res.json({
+    date: dateStr,
+    events: visible,
+    hidden_events: hidden,
+    last_sync: lastSync,
+  });
+});
+
+// POST /api/calendar/events/:uid/hide?date=YYYY-MM-DD
+calendarRouter.post('/events/:uid/hide', (req, res, next) => {
+  const params = HideEventParamsSchema.safeParse(req.params);
+  if (!params.success) return next(new HttpError(400, 'invalid uid'));
+  const query = HideEventQuerySchema.safeParse(req.query);
+  if (!query.success) return next(new HttpError(400, 'date must be YYYY-MM-DD'));
+
+  calendarEventModel.hideForDate(params.data.uid, query.data.date);
+  res.json({ ok: true });
+});
+
+// POST /api/calendar/events/:uid/unhide?date=YYYY-MM-DD
+calendarRouter.post('/events/:uid/unhide', (req, res, next) => {
+  const params = HideEventParamsSchema.safeParse(req.params);
+  if (!params.success) return next(new HttpError(400, 'invalid uid'));
+  const query = HideEventQuerySchema.safeParse(req.query);
+  if (!query.success) return next(new HttpError(400, 'date must be YYYY-MM-DD'));
+
+  calendarEventModel.unhideForDate(params.data.uid, query.data.date);
+  res.json({ ok: true });
 });
 
 // POST /api/calendar/sync — on-demand sync triggered from the UI refresh button.

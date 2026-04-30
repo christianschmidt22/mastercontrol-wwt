@@ -37,6 +37,60 @@ export function useCalendarToday(dateStr?: string) {
   });
 }
 
+export function useHideEvent() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ uid, date }: { uid: string; date: string }) =>
+      request<{ ok: boolean }>('POST', `/api/calendar/events/${encodeURIComponent(uid)}/hide?date=${date}`),
+    onMutate: async ({ uid, date }) => {
+      await qc.cancelQueries({ queryKey: calendarKeys.today(date) });
+      const previous = qc.getQueryData<CalendarTodayResponse>(calendarKeys.today(date));
+      if (previous) {
+        const moved = previous.events.find((e) => e.uid === uid);
+        qc.setQueryData<CalendarTodayResponse>(calendarKeys.today(date), {
+          ...previous,
+          events: previous.events.filter((e) => e.uid !== uid),
+          hidden_events: moved ? [...previous.hidden_events, moved] : previous.hidden_events,
+        });
+      }
+      return { previous };
+    },
+    onError: (_err, { date }, ctx) => {
+      if (ctx?.previous) qc.setQueryData(calendarKeys.today(date), ctx.previous);
+    },
+    onSettled: (_data, _err, { date }) => {
+      void qc.invalidateQueries({ queryKey: calendarKeys.today(date) });
+    },
+  });
+}
+
+export function useUnhideEvent() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ uid, date }: { uid: string; date: string }) =>
+      request<{ ok: boolean }>('POST', `/api/calendar/events/${encodeURIComponent(uid)}/unhide?date=${date}`),
+    onMutate: async ({ uid, date }) => {
+      await qc.cancelQueries({ queryKey: calendarKeys.today(date) });
+      const previous = qc.getQueryData<CalendarTodayResponse>(calendarKeys.today(date));
+      if (previous) {
+        const moved = previous.hidden_events.find((e) => e.uid === uid);
+        qc.setQueryData<CalendarTodayResponse>(calendarKeys.today(date), {
+          ...previous,
+          hidden_events: previous.hidden_events.filter((e) => e.uid !== uid),
+          events: moved ? [...previous.events, moved] : previous.events,
+        });
+      }
+      return { previous };
+    },
+    onError: (_err, { date }, ctx) => {
+      if (ctx?.previous) qc.setQueryData(calendarKeys.today(date), ctx.previous);
+    },
+    onSettled: (_data, _err, { date }) => {
+      void qc.invalidateQueries({ queryKey: calendarKeys.today(date) });
+    },
+  });
+}
+
 export function useCalendarSync() {
   const qc = useQueryClient();
   return useMutation({
