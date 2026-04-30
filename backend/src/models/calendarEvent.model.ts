@@ -6,6 +6,7 @@ export interface CalendarEvent {
   start_at: string;
   end_at: string;
   location: string | null;
+  meeting_url: string | null;
   organizer: string | null;
   attendee_count: number;
   is_all_day: number;
@@ -18,19 +19,21 @@ export interface CalendarEventInsert {
   start_at: string;
   end_at: string;
   location?: string | null;
+  meeting_url?: string | null;
   organizer?: string | null;
   attendee_count?: number;
   is_all_day?: number;
 }
 
 const upsertStmt = db.prepare<CalendarEventInsert>(`
-  INSERT INTO calendar_events (uid, title, start_at, end_at, location, organizer, attendee_count, is_all_day, synced_at)
-  VALUES (@uid, @title, @start_at, @end_at, @location, @organizer, @attendee_count, @is_all_day, datetime('now'))
+  INSERT INTO calendar_events (uid, title, start_at, end_at, location, meeting_url, organizer, attendee_count, is_all_day, synced_at)
+  VALUES (@uid, @title, @start_at, @end_at, @location, @meeting_url, @organizer, @attendee_count, @is_all_day, datetime('now'))
   ON CONFLICT(uid) DO UPDATE SET
     title          = excluded.title,
     start_at       = excluded.start_at,
     end_at         = excluded.end_at,
     location       = excluded.location,
+    meeting_url    = excluded.meeting_url,
     organizer      = excluded.organizer,
     attendee_count = excluded.attendee_count,
     is_all_day     = excluded.is_all_day,
@@ -81,6 +84,7 @@ const upsertMany = db.transaction((events: CalendarEventInsert[]) => {
       start_at: e.start_at,
       end_at: e.end_at,
       location: e.location ?? null,
+      meeting_url: e.meeting_url ?? null,
       organizer: e.organizer ?? null,
       attendee_count: e.attendee_count ?? 0,
       is_all_day: e.is_all_day ?? 0,
