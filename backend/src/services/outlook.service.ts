@@ -7,8 +7,10 @@
  *   - No Azure app registration, no OAuth, no tokens.
  *   - Node.js spawns powershell.exe with the outlook-fetch.ps1 script;
  *     stdout is a JSON blob parsed here.
- *   - If Outlook is not running or spawn fails, returns an empty result
- *     rather than throwing — the sync scheduler treats it as a no-op.
+ *   - If Outlook is not running, ensureOutlookRunning() launches it and waits
+ *     up to 30s for COM to become accessible before proceeding with fetch.
+ *   - If Outlook fails to become accessible or spawn fails, returns an empty
+ *     result rather than throwing — the sync scheduler treats it as a no-op.
  *
  * R-013: Errors are never logged with raw process output or request bodies.
  *        Use structured log messages (counts, status codes, safe metadata).
@@ -39,12 +41,22 @@ interface Ps1Result {
   messages: RawOutlookMessage[];
 }
 
+interface LaunchResult {
+  launched: boolean;
+  ready: boolean;
+  error: string | null;
+}
+
 // ---------------------------------------------------------------------------
-// PS1 path — resolved once at module load time (ESM import.meta.url)
+// PS1 paths — resolved once at module load time (ESM import.meta.url)
 // ---------------------------------------------------------------------------
 
 const PS1_PATH = fileURLToPath(
   new URL('../scripts/outlook-fetch.ps1', import.meta.url),
+);
+
+const LAUNCH_PS1_PATH = fileURLToPath(
+  new URL('../scripts/outlook-launch.ps1', import.meta.url),
 );
 
 // ---------------------------------------------------------------------------
@@ -114,11 +126,57 @@ async function runPs1(limit: number): Promise<Ps1Result> {
 // ---------------------------------------------------------------------------
 
 /**
+ * Ensures Outlook is running and COM-accessible.
+ * Launches Outlook if it isn't running and waits up to 30s.
+ * Returns whether Outlook is ready for COM access.
+ * Never throws.
+ */
+export async function ensureOutlookRunning(): Promise<boolean> {
+  return new Promise((resolve) => {
+    let stdout = '';
+
+    const child = spawn('powershell.exe', [
+      '-NonInteractive',
+      '-NoProfile',
+      '-ExecutionPolicy',
+      'Bypass',
+      '-File',
+      LAUNCH_PS1_PATH,
+      '-TimeoutSeconds',
+      '30',
+    ]);
+
+    child.stdout.on('data', (chunk: Buffer) => {
+      stdout += chunk.toString('utf8');
+    });
+
+    child.on('close', () => {
+      try {
+        const result = JSON.parse(stdout.trim()) as LaunchResult;
+        resolve(result.ready);
+      } catch {
+        resolve(false);
+      }
+    });
+
+    child.on('error', () => resolve(false));
+  });
+}
+
+/**
  * Fetch messages by spawning the PowerShell script.
+ * Auto-launches Outlook if it is not already running, waiting up to 30s
+ * for COM to become accessible before proceeding.
  * Returns an array of raw message objects.
  * Never throws — returns [] on any failure.
  */
 export async function fetchOutlookMessages(limit = 50): Promise<RawOutlookMessage[]> {
+  const ready = await ensureOutlookRunning();
+  if (!ready) {
+    console.warn('[outlook.service] Outlook not accessible, skipping fetch');
+    return [];
+  }
+
   const result = await runPs1(limit);
   if (result.error) {
     console.warn('[outlook.service] fetch failed', { error: result.error });
@@ -130,6 +188,8 @@ export async function fetchOutlookMessages(limit = 50): Promise<RawOutlookMessag
 /**
  * Check if Outlook is accessible (running + COM available).
  * Returns status object compatible with GET /api/outlook/status.
+ * Does NOT auto-launch — reports current state only.
+ * Auto-launch happens in fetchOutlookMessages(), called by the sync job.
  */
 export async function getOutlookStatus(): Promise<{
   connected: boolean;
