@@ -263,6 +263,19 @@ export async function runReport(
     reportRunModel.updateStatus(run.id, 'failed', {
       error: `schedule ${scheduleId} not found`,
     });
+    // severity='error' (not 'warn'): a missing schedule row mid-run means
+    // a row got deleted out from under a scheduled tick. That's a
+    // data-integrity issue worth surfacing loudly via the bell, not a
+    // recoverable transient like an Anthropic hiccup.
+    logAlert(
+      'error',
+      'reportRun',
+      `Scheduled report run failed (schedule #${scheduleId} not found)`,
+      {
+        schedule_id: scheduleId,
+        fire_time: fireTime,
+      },
+    );
     throw new Error(`schedule ${scheduleId} not found`);
   }
   const report = reportModel.get(schedule.report_id);
@@ -270,6 +283,17 @@ export async function runReport(
     reportRunModel.updateStatus(run.id, 'failed', {
       error: `report ${schedule.report_id} not found`,
     });
+    // See note above — same data-integrity rationale.
+    logAlert(
+      'error',
+      'reportRun',
+      `Scheduled report run failed (report #${schedule.report_id} not found)`,
+      {
+        schedule_id: scheduleId,
+        report_id: schedule.report_id,
+        fire_time: fireTime,
+      },
+    );
     throw new Error(`report ${schedule.report_id} not found`);
   }
 

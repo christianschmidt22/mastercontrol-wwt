@@ -286,6 +286,74 @@ describe('runReport — Anthropic failure', () => {
 });
 
 // ---------------------------------------------------------------------------
+// runReport — data-integrity early failures (R-013-adjacent: surface loudly)
+// ---------------------------------------------------------------------------
+
+describe('runReport — data-integrity early failures', () => {
+  it('raises an error alert when the schedule row is missing', async () => {
+    const { scheduleId } = makeReportAndSchedule({ name: 'Schedule vanishes' });
+    // Pretend the schedule got deleted between run-row creation and lookup.
+    // We can't actually DELETE it without ON DELETE CASCADE wiping the run
+    // row, so spy on the lookup instead.
+    const getSpy = vi.spyOn(reportScheduleModel, 'get').mockReturnValue(undefined);
+
+    const fireTime = 1700_060_000;
+    await expect(runReport(scheduleId, fireTime)).rejects.toThrow(
+      `schedule ${scheduleId} not found`,
+    );
+
+    const alerts = db
+      .prepare<[], { severity: string; source: string; message: string; detail: string | null }>(
+        `SELECT severity, source, message, detail FROM system_alerts WHERE source = 'reportRun' ORDER BY id DESC LIMIT 1`,
+      )
+      .all();
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0].severity).toBe('error');
+    expect(alerts[0].source).toBe('reportRun');
+    expect(alerts[0].message).toContain(`#${scheduleId}`);
+    const detail = JSON.parse(alerts[0].detail!) as {
+      schedule_id: number;
+      fire_time: number;
+    };
+    expect(detail.schedule_id).toBe(scheduleId);
+    expect(detail.fire_time).toBe(fireTime);
+
+    getSpy.mockRestore();
+  });
+
+  it('raises an error alert when the report row is missing', async () => {
+    const { reportId, scheduleId } = makeReportAndSchedule({ name: 'Report vanishes' });
+    // Schedule resolves but the underlying report row is gone.
+    const getReportSpy = vi.spyOn(reportModel, 'get').mockReturnValue(undefined);
+
+    const fireTime = 1700_070_000;
+    await expect(runReport(scheduleId, fireTime)).rejects.toThrow(
+      `report ${reportId} not found`,
+    );
+
+    const alerts = db
+      .prepare<[], { severity: string; source: string; message: string; detail: string | null }>(
+        `SELECT severity, source, message, detail FROM system_alerts WHERE source = 'reportRun' ORDER BY id DESC LIMIT 1`,
+      )
+      .all();
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0].severity).toBe('error');
+    expect(alerts[0].source).toBe('reportRun');
+    expect(alerts[0].message).toContain(`#${reportId}`);
+    const detail = JSON.parse(alerts[0].detail!) as {
+      schedule_id: number;
+      report_id: number;
+      fire_time: number;
+    };
+    expect(detail.schedule_id).toBe(scheduleId);
+    expect(detail.report_id).toBe(reportId);
+    expect(detail.fire_time).toBe(fireTime);
+
+    getReportSpy.mockRestore();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // buildPrompt — sanity check on template var expansion
 // ---------------------------------------------------------------------------
 
