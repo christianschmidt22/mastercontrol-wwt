@@ -22,6 +22,7 @@ import { projectResourcesRouter } from './routes/projectResources.route.js';
 import { masterNotesRouter } from './routes/masterNotes.route.js';
 import { backlogItemsRouter } from './routes/backlogItems.route.js';
 import { outlookRouter } from './routes/outlook.route.js';
+import { m365Router } from './routes/m365.route.js';
 import { seedDailyTaskReview } from './services/reports.service.js';
 import {
   runMissedJobs,
@@ -95,6 +96,7 @@ app.use('/api/projects/:projectId/resources', projectResourcesRouter);
 app.use('/api/master-notes', masterNotesRouter);
 app.use('/api/backlog-items', backlogItemsRouter);
 app.use('/api/outlook', outlookRouter);
+app.use('/api/m365', m365Router);
 
 app.use(errorHandler);
 

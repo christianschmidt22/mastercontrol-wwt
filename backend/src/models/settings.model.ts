@@ -27,6 +27,9 @@ export const SECRET_KEYS: ReadonlySet<string> = new Set([
   // ICS subscription URL for M365 calendar sync. Contains an embedded auth
   // token so treat it with the same care as an API key.
   'calendar_ics_url',
+  // Authorization token for the Anthropic-managed M365 MCP connector.
+  // Copied from the user's Anthropic account connector settings.
+  'm365_mcp_token',
 ]);
 
 const ENC_PREFIX = 'enc:';

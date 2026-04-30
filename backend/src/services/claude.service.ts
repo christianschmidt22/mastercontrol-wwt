@@ -53,6 +53,7 @@ import {
   hasClaudeCodeCredentials,
   resolveClaudeExecutable,
 } from './subagentSdk.service.js';
+import { buildM365Mcp } from '../lib/m365Mcp.js';
 
 // ---------------------------------------------------------------------------
 // Model imports (Agent 1 parallel build — these types are assumed; adjust if
@@ -926,12 +927,37 @@ export async function streamChat({
   const volatile = await buildVolatileBlock(orgId, m);
 
   // ------------------------------------------------------------------
-  // 4. Resolve record_insight allowlist for this turn (R-002)
+  // 4. Load M365 MCP config (R-021: suppress record_insight when active)
+  // ------------------------------------------------------------------
+  const m365McpUrl = settingsModel.get('m365_mcp_url') ?? '';
+  const m365McpEnabledRaw = settingsModel.get('m365_mcp_enabled') ?? '0';
+  const m365McpName = settingsModel.get('m365_mcp_name') ?? 'm365';
+  // Token: plaintext getter is allowed in service-layer code (R-003).
+  const m365McpToken = settingsModel.get('m365_mcp_token') ?? '';
+
+  const m365Result = buildM365Mcp({
+    enabled: m365McpEnabledRaw === '1' || m365McpEnabledRaw === 'true',
+    url: m365McpUrl,
+    token: m365McpToken,
+    name: m365McpName,
+  });
+
+  // Append pagination guidance to the stable block when MCP is active.
+  // This is done after the cache read/write so the cache stores the base
+  // stable block without the M365 block; M365 config can change independently
+  // of org data and the token is not stored in the cache.
+  const stableWithMcp =
+    m365Result.systemPromptBlock
+      ? `${stable}\n\n${m365Result.systemPromptBlock}`
+      : stable;
+
+  // ------------------------------------------------------------------
+  // 5. Resolve record_insight allowlist for this turn (R-002)
   // ------------------------------------------------------------------
   const allowlist = await resolveAllowlist(orgId, content, m);
 
   // ------------------------------------------------------------------
-  // 5. Load thread history for the messages array
+  // 6. Load thread history for the messages array
   // ------------------------------------------------------------------
   const history = m.agentMessageModel.listByThread(threadId);
   // Convert DB rows to Anthropic message format. We include all turns up to
@@ -951,7 +977,7 @@ export async function streamChat({
   ];
 
   // ------------------------------------------------------------------
-  // 6. Open Anthropic stream
+  // 7. Open Anthropic stream
   // ------------------------------------------------------------------
   const enabledToolNames = parseEnabledTools(agentConfig.tools_enabled);
   const webSearchTool = buildWebSearchTool(agentConfig.tools_enabled);
@@ -959,6 +985,9 @@ export async function streamChat({
   // R-021: filter the tool list against agent_configs.tools_enabled. A tool
   // not in the enabled set is omitted from the SDK call entirely so the model
   // can't invoke it.
+  // When M365 MCP is active, record_insight is additionally suppressed (R-021):
+  // external email/file/chat content is untrusted and write tools must not
+  // be enabled in the same call.
   const allTools: Array<{ name: string; spec: Anthropic.Tool }> = [
     { name: 'web_search', spec: webSearchTool },
     { name: 'record_insight', spec: RECORD_INSIGHT_TOOL },
@@ -969,6 +998,8 @@ export async function streamChat({
   ];
   const filteredTools = allTools
     .filter((t) => enabledToolNames.has(t.name))
+    // R-021: suppress record_insight when M365 MCP is active.
+    .filter((t) => !(m365Result.suppressRecordInsight && t.name === 'record_insight'))
     .map((t) => t.spec);
 
   let fullText = '';
@@ -994,7 +1025,9 @@ export async function streamChat({
   const systemBlocks: CachedTextBlock[] = [
     {
       type: 'text',
-      text: stable,
+      // stableWithMcp: the base stable block (cached org data) plus optional
+      // M365 MCP pagination guidance appended when the connector is active.
+      text: stableWithMcp,
       // Stable block: cached. Contains playbook + org profile + contacts +
       // projects + documents inventory. Rebuilt only when org data changes.
       cache_control: { type: 'ephemeral' },
@@ -1016,12 +1049,13 @@ export async function streamChat({
       content,
       sse,
       m,
-      stable,
+      stable: stableWithMcp,
       volatile,
       historyMessages,
       agentConfig,
       allowlist,
       enabledToolNames,
+      suppressRecordInsight: m365Result.suppressRecordInsight,
       fullTextRef: {
         get: () => fullText,
         append: (delta: string) => {
@@ -1040,8 +1074,19 @@ export async function streamChat({
     const maxToolTurns = 4;
     let finalNoToolsConversation: Array<Anthropic.MessageParam> | null = null;
 
+    // Build the MCP/beta options to pass to every stream call in this turn loop.
+    // The mcp_servers field is not yet in the SDK types; we inject it via the
+    // body override and pass the beta header in RequestOptions. Safe to remove
+    // the cast when the SDK types catch up with mcp_servers support.
+    const mcpStreamBody = m365Result.serverEntry
+      ? { mcp_servers: [m365Result.serverEntry] }
+      : {};
+    const mcpStreamOptions = m365Result.betaHeader
+      ? { headers: { 'anthropic-beta': m365Result.betaHeader } }
+      : {};
+
     for (let turn = 0; turn < maxToolTurns; turn += 1) {
-      const stream = client.messages.stream({
+      const streamParams = {
         model: agentConfig.model,
         max_tokens: 4096,
         // Cast: CachedTextBlock is structurally compatible with TextBlockParam;
@@ -1050,7 +1095,9 @@ export async function streamChat({
         system: systemBlocks,
         messages: conversation,
         tools: filteredTools,
-      });
+        ...mcpStreamBody,
+      };
+      const stream = client.messages.stream(streamParams, mcpStreamOptions);
 
       const streamDone = (async () => {
         for await (const event of stream) {
@@ -1122,13 +1169,15 @@ export async function streamChat({
     }
 
     if (finalNoToolsConversation) {
-      const stream = client.messages.stream({
+      const noToolsParams = {
         model: agentConfig.model,
         max_tokens: 4096,
         system: systemBlocks,
         messages: finalNoToolsConversation,
         tools: [],
-      });
+        ...mcpStreamBody,
+      };
+      const stream = client.messages.stream(noToolsParams, mcpStreamOptions);
 
       const streamDone = (async () => {
         for await (const event of stream) {
@@ -1188,6 +1237,8 @@ interface StreamChatViaClaudeCodeArgs {
   agentConfig: AgentConfig;
   allowlist: Map<string, number>;
   enabledToolNames: Set<string>;
+  /** R-021: when true, record_insight is excluded from the tool list. */
+  suppressRecordInsight: boolean;
   fullTextRef: {
     get: () => string;
     append: (delta: string) => void;
@@ -1219,6 +1270,7 @@ async function streamChatViaClaudeCode({
   agentConfig,
   allowlist,
   enabledToolNames,
+  suppressRecordInsight,
   fullTextRef,
   toolCallsAccumulated,
 }: StreamChatViaClaudeCodeArgs): Promise<void> {
@@ -1240,7 +1292,8 @@ async function streamChatViaClaudeCode({
   const addTool = (definition: unknown): void => {
     toolDefs.push(definition as SdkMcpToolDefinition);
   };
-  if (enabledToolNames.has('record_insight')) {
+  // R-021: suppress record_insight when M365 MCP is active.
+  if (enabledToolNames.has('record_insight') && !suppressRecordInsight) {
     addTool(sdkTool(
       'record_insight',
       RECORD_INSIGHT_TOOL.description ?? 'Persist a CRM insight for future conversations.',
