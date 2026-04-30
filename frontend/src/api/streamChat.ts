@@ -5,6 +5,7 @@ export interface StreamChatArgs {
   threadId?: number;
   content: string;
   onText: (delta: string) => void;
+  onActivity?: (e: { message: string; kind?: 'status' | 'tool' | 'success' | 'error' }) => void;
   onToolUse?: (e: { tool: string; input: unknown }) => void;
   onToolResult?: (e: { tool: string; ok: boolean; message?: string }) => void;
   onThread?: (threadId: number) => void;
@@ -30,7 +31,18 @@ export interface StreamChatArgs {
  * network error (DESIGN.md § States stream-failure pattern).
  */
 export async function streamChat(args: StreamChatArgs): Promise<void> {
-  const { orgId, threadId, content, onText, onToolUse, onToolResult, onThread, onDone, signal } = args;
+  const {
+    orgId,
+    threadId,
+    content,
+    onText,
+    onActivity,
+    onToolUse,
+    onToolResult,
+    onThread,
+    onDone,
+    signal,
+  } = args;
 
   const body: { content: string; thread_id?: number } = { content };
   if (threadId !== undefined) body.thread_id = threadId;
@@ -90,6 +102,9 @@ export async function streamChat(args: StreamChatArgs): Promise<void> {
         throw new Error(chunk.message);
       case 'thread':
         onThread?.(chunk.thread_id);
+        break;
+      case 'activity':
+        onActivity?.({ message: chunk.message, kind: chunk.kind });
         break;
       case 'tool_use':
         onToolUse?.({ tool: chunk.tool, input: chunk.input });

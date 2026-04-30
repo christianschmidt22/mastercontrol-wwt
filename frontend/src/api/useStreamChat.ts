@@ -14,6 +14,15 @@ export interface StreamChatMessage {
   content: string;
 }
 
+export type StreamActivityKind = 'status' | 'tool' | 'success' | 'error';
+
+export interface StreamActivity {
+  id: string;
+  message: string;
+  kind: StreamActivityKind;
+  at: number;
+}
+
 export interface UseStreamChat {
   /** Persisted thread history from agent_messages plus any in-flight assistant text. */
   messages: StreamChatMessage[];
@@ -24,6 +33,8 @@ export interface UseStreamChat {
     partial: string;
     /** Error message if the stream failed mid-response; null on success. */
     failed: string | null;
+    /** Short status/tool breadcrumbs for the current in-flight agent turn. */
+    activities: StreamActivity[];
   };
   /** Send a new user message; opens an SSE stream against the backend. */
   send: (content: string) => void;
@@ -52,6 +63,7 @@ export function useStreamChat(orgId: number, threadId?: number): UseStreamChat {
   const abortControllerRef = useRef<AbortController | null>(null);
   // Track accumulated partial across the entire stream so onDone can read it
   const accumulatedRef = useRef<string>('');
+  const activitySeqRef = useRef(0);
 
   // Optimistic messages added locally until the persisted query catches up
   const [optimisticPending, setOptimisticPending] = useState<StreamChatMessage[]>([]);
@@ -60,6 +72,19 @@ export function useStreamChat(orgId: number, threadId?: number): UseStreamChat {
   const [streaming, setStreaming] = useState(false);
   const [partialText, setPartialText] = useState('');
   const [failed, setFailed] = useState<string | null>(null);
+  const [activities, setActivities] = useState<StreamActivity[]>([]);
+
+  const pushActivity = useCallback((message: string, kind: StreamActivityKind = 'status') => {
+    const trimmed = message.trim();
+    if (!trimmed) return;
+    const activity: StreamActivity = {
+      id: `activity-${++activitySeqRef.current}`,
+      message: trimmed,
+      kind,
+      at: Date.now(),
+    };
+    setActivities((prev) => [...prev.slice(-5), activity]);
+  }, []);
 
   useEffect(() => {
     const orgChanged = orgIdRef.current !== orgId;
@@ -73,6 +98,7 @@ export function useStreamChat(orgId: number, threadId?: number): UseStreamChat {
     setOptimisticPending([]);
     setPartialText('');
     accumulatedRef.current = '';
+    setActivities([]);
     setStreaming(false);
     setFailed(null);
   }, [orgId, threadId]);
@@ -101,6 +127,8 @@ export function useStreamChat(orgId: number, threadId?: number): UseStreamChat {
       setPartialText('');
       setStreaming(true);
       setFailed(null);
+      setActivities([]);
+      pushActivity('Submitting message to agent');
 
       // Capture in a local so the .catch closure checks THIS call's signal,
       // not abortControllerRef.current (which may already point to a newer ctrl
@@ -122,6 +150,15 @@ export function useStreamChat(orgId: number, threadId?: number): UseStreamChat {
           accumulatedRef.current += delta;
           setPartialText((prev) => prev + delta);
         },
+        onActivity: ({ message, kind }) => {
+          pushActivity(message, kind ?? 'status');
+        },
+        onToolUse: ({ tool }) => {
+          pushActivity(`Using ${formatToolName(tool)}`, 'tool');
+        },
+        onToolResult: ({ tool, ok }) => {
+          pushActivity(`${ok ? 'Finished' : 'Issue with'} ${formatToolName(tool)}`, ok ? 'success' : 'error');
+        },
         onDone: () => {
           // B-12: append the assembled assistant message to optimisticPending
           // so the UI shows the completed turn immediately (the persisted
@@ -136,6 +173,7 @@ export function useStreamChat(orgId: number, threadId?: number): UseStreamChat {
           // Reset stream UI
           setStreaming(false);
           setPartialText('');
+          pushActivity('Agent response complete', 'success');
           // Invalidate persisted queries so TanStack Query syncs from backend
           const threadForInvalidation = activeThreadIdRef.current;
           if (threadForInvalidation !== undefined) {
@@ -153,11 +191,12 @@ export function useStreamChat(orgId: number, threadId?: number): UseStreamChat {
         } else {
           const message = err instanceof Error ? err.message : 'Stream failed';
           setFailed(message);
+          pushActivity(message, 'error');
         }
         setStreaming(false);
       });
     },
-    [orgId, qc],
+    [orgId, pushActivity, qc],
   );
 
   const stop = useCallback(() => {
@@ -211,9 +250,16 @@ export function useStreamChat(orgId: number, threadId?: number): UseStreamChat {
 
   return {
     messages,
-    stream: { streaming, partial: partialText, failed },
+    stream: { streaming, partial: partialText, failed, activities },
     send,
     stop,
     retry,
   };
+}
+
+function formatToolName(tool: string): string {
+  return tool
+    .replace(/^mcp__claude_ai_Microsoft_365__/, 'Microsoft 365 ')
+    .replace(/^mcp__mastercontrol__/, '')
+    .replace(/_/g, ' ');
 }

@@ -8,7 +8,7 @@ import {
 } from 'react';
 import { Send, Square, Copy, BookmarkPlus } from 'lucide-react';
 import { Tile } from '../Tile';
-import { useStreamChat, type UseStreamChat } from '../../../api/useStreamChat';
+import { useStreamChat, type StreamActivity, type UseStreamChat } from '../../../api/useStreamChat';
 import { useCreateNote } from '../../../api/useNotes';
 import type { NoteCreate } from '../../../types';
 
@@ -69,6 +69,78 @@ type UseCreateNoteFn = () => {
   ) => void;
 };
 
+function ActivityFeed({
+  activities,
+  streaming,
+}: {
+  activities: StreamActivity[];
+  streaming: boolean;
+}) {
+  const visibleActivities = activities.length > 0
+    ? activities
+    : [{ id: 'waiting', message: 'Waiting for Claude Code', kind: 'status' as const, at: 0 }];
+
+  return (
+    <div
+      aria-label="Agent activity"
+      style={{
+        display: 'grid',
+        gridTemplateColumns: '60px 1fr',
+        gap: 14,
+        alignItems: 'start',
+      }}
+    >
+      <time style={{ fontSize: 10, color: 'var(--ink-3)', paddingTop: 2 }}>
+        Now
+      </time>
+      <ol
+        style={{
+          listStyle: 'none',
+          margin: 0,
+          padding: 0,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 5,
+        }}
+      >
+        {visibleActivities.map((activity, idx) => {
+          const isLatest = idx === visibleActivities.length - 1;
+          const dotColor = activity.kind === 'error'
+            ? 'var(--accent)'
+            : 'var(--ink-3)';
+          return (
+            <li
+              key={activity.id}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                minHeight: 18,
+                color: isLatest ? 'var(--ink-2)' : 'var(--ink-3)',
+                fontSize: 12,
+                lineHeight: 1.4,
+              }}
+            >
+              <span
+                aria-hidden="true"
+                className={streaming && isLatest ? 'activity-dot-active' : undefined}
+                style={{
+                  width: 6,
+                  height: 6,
+                  borderRadius: '50%',
+                  background: dotColor,
+                  flex: '0 0 auto',
+                }}
+              />
+              <span>{activity.message}</span>
+            </li>
+          );
+        })}
+      </ol>
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
@@ -112,12 +184,12 @@ export function ChatTile({
   // Single live-region string for a11y announcements (Saved / Copied)
   const [liveMsg, setLiveMsg] = useState('');
 
-  // Auto-scroll feed to bottom when messages or stream partial changes
+  // Auto-scroll feed to bottom when messages or stream state changes
   useEffect(() => {
     if (feedRef.current) {
       feedRef.current.scrollTop = feedRef.current.scrollHeight;
     }
-  }, [messages, stream.partial]);
+  }, [messages, stream.partial, stream.activities]);
 
   useEffect(() => {
     function handleReadDocument(event: Event) {
@@ -467,30 +539,9 @@ export function ChatTile({
             );
           })}
 
-          {/* Visible waiting state before the first assistant token arrives. */}
+          {/* Visible activity state before the first assistant token arrives. */}
           {stream.streaming && !stream.partial && (
-            <div
-              aria-label="Agent is working"
-              style={{
-                display: 'grid',
-                gridTemplateColumns: '60px 1fr',
-                gap: 14,
-                alignItems: 'baseline',
-              }}
-            >
-              <time style={{ fontSize: 10, color: 'var(--ink-3)' }}>Now</time>
-              <p
-                style={{
-                  fontSize: 13,
-                  lineHeight: 1.55,
-                  color: 'var(--ink-2)',
-                  margin: 0,
-                  fontStyle: 'italic',
-                }}
-              >
-                Working...
-              </p>
-            </div>
+            <ActivityFeed activities={stream.activities} streaming={stream.streaming} />
           )}
 
           {/* Streaming partial text + caret */}
@@ -691,6 +742,13 @@ export function ChatTile({
       <style>{`
         @keyframes blink { to { background: transparent; } }
         @keyframes spin { to { transform: rotate(360deg); } }
+        @keyframes activity-pulse {
+          0%, 100% { opacity: 0.35; transform: scale(0.85); }
+          50% { opacity: 1; transform: scale(1); }
+        }
+        .activity-dot-active {
+          animation: activity-pulse 1.1s ease-in-out infinite;
+        }
         .sr-only {
           position: absolute;
           width: 1px;
@@ -705,6 +763,7 @@ export function ChatTile({
         @media (prefers-reduced-motion: reduce) {
           .msg-toolbar { transition: none !important; }
           .stream-caret { animation: none !important; }
+          .activity-dot-active { animation: none !important; }
         }
       `}</style>
     </Tile>

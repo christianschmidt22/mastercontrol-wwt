@@ -288,6 +288,29 @@ function textFromSdkAssistantMessage(event: Extract<SDKMessage, { type: 'assista
   return text;
 }
 
+function emitActivity(
+  sse: ReturnType<typeof openSse>,
+  message: string,
+  kind: 'status' | 'tool' | 'success' | 'error' = 'status',
+): void {
+  sse.send({ type: 'activity', message, kind });
+}
+
+function emitToolUse(
+  sse: ReturnType<typeof openSse>,
+  toolName: string,
+  input: unknown,
+): void {
+  sse.send({ type: 'tool_use', tool: toolName, input });
+}
+
+function displayToolName(toolName: string): string {
+  return toolName
+    .replace(/^mcp__claude_ai_Microsoft_365__/, 'Microsoft 365 ')
+    .replace(/^mcp__mastercontrol__/, '')
+    .replace(/_/g, ' ');
+}
+
 async function runClaudeCodePrompt(options: {
   prompt: string;
   systemPrompt: string | string[];
@@ -548,7 +571,8 @@ async function buildVolatileBlock(
   const insightsText = insights.length
     ? insights
         .map((n) => {
-          const prov = n.provenance ? JSON.parse(n.provenance) as Record<string, unknown> : null;
+          const rawProvenance = n.provenance as unknown;
+          const prov = parseProvenance(rawProvenance);
           const toStr = (v: unknown): string => {
             if (v === null || v === undefined) return '?';
             if (typeof v === 'string') return v;
@@ -570,6 +594,20 @@ ${userNotesText}
 <insights>
 ${insightsText}
 </insights>`;
+}
+
+function parseProvenance(raw: unknown): Record<string, unknown> | null {
+  if (!raw) return null;
+  if (typeof raw === 'object' && raw !== null && !Array.isArray(raw)) return raw as Record<string, unknown>;
+  if (typeof raw !== 'string') return null;
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? parsed as Record<string, unknown>
+      : null;
+  } catch {
+    return null;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -884,6 +922,7 @@ export async function streamChat({
   res,
 }: StreamChatOptions): Promise<void> {
   const sse = openSse(req, res);
+  emitActivity(sse, 'Loading agent context');
   const m = await models();
 
   // ------------------------------------------------------------------
@@ -1049,6 +1088,7 @@ export async function streamChat({
   ];
 
   sse.send({ type: 'thread', thread_id: threadId });
+  emitActivity(sse, 'Thread ready');
 
   if (authMode === 'subscription') {
     await streamChatViaClaudeCode({
@@ -1133,6 +1173,7 @@ export async function streamChat({
       for (const block of finalMessage.content) {
         if (block.type !== 'tool_use') continue;
         toolCallsAccumulated.push(block);
+        emitToolUse(sse, block.name, block.input);
 
         if (block.name === 'web_search') {
           // web_search is Anthropic-managed; results stream through the SDK
@@ -1416,8 +1457,22 @@ async function streamChatViaClaudeCode({
 
   let sawPartialText = false;
   let sawAssistantText = false;
+  const emittedToolUseIds = new Set<string>();
+  const emitSdkToolUse = (toolName: string, input: unknown, toolUseId?: string): void => {
+    if (toolUseId) {
+      if (emittedToolUseIds.has(toolUseId)) return;
+      emittedToolUseIds.add(toolUseId);
+    }
+    emitToolUse(sse, toolName, input);
+    emitActivity(sse, `Using ${displayToolName(toolName)}`, 'tool');
+  };
 
   try {
+    emitActivity(sse, 'Contacting Claude Code enterprise');
+    if (m365ClaudeCodeEnabled) {
+      emitActivity(sse, 'Microsoft 365 tools available');
+    }
+
     const stream = queryClaudeCode({
       prompt,
       options: {
@@ -1449,7 +1504,10 @@ async function streamChatViaClaudeCode({
           throw new HttpError(503, AUTH_ACTION_MESSAGE);
         }
         for (const block of event.message.content) {
-          if (block.type === 'tool_use') toolCallsAccumulated.push(block);
+          if (block.type === 'tool_use') {
+            toolCallsAccumulated.push(block);
+            emitSdkToolUse(block.name, block.input, block.id);
+          }
         }
         if (!sawPartialText) {
           const text = textFromSdkAssistantMessage(event);
@@ -1459,6 +1517,12 @@ async function streamChatViaClaudeCode({
             sse.send({ type: 'text', delta: text });
           }
         }
+      } else if (event.type === 'tool_progress') {
+        emitSdkToolUse(event.tool_name, {}, event.tool_use_id);
+        const elapsed = Math.max(1, Math.round(event.elapsed_time_seconds));
+        emitActivity(sse, `Still using ${displayToolName(event.tool_name)} (${elapsed}s)`, 'tool');
+      } else if (event.type === 'tool_use_summary') {
+        emitActivity(sse, event.summary || 'Tool use complete');
       } else if (event.type === 'result') {
         recordUsageFromSdkResult('chat', agentConfig.model, event);
         if (event.subtype !== 'success') {

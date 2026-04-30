@@ -121,6 +121,35 @@ describe('useStreamChat — happy path', () => {
 
     expect(result.current.stream.failed).toBeNull();
     expect(result.current.stream.partial).toBe('');
+    expect(result.current.stream.activities.at(-1)?.message).toBe('Agent response complete');
+  });
+
+  it('collects activity and tool breadcrumbs during a stream', async () => {
+    const chunks = [
+      sseFrame({ type: 'activity', message: 'Contacting Claude Code enterprise', kind: 'status' }),
+      sseFrame({ type: 'tool_use', tool: 'mcp__claude_ai_Microsoft_365__outlook_email_search', input: {} }),
+      sseFrame({ type: 'tool_result', tool: 'mcp__claude_ai_Microsoft_365__outlook_email_search', ok: true }),
+      'data: [DONE]\n\n',
+    ];
+
+    vi.mocked(fetch).mockResolvedValueOnce(fakeOkResponse(chunks));
+
+    const { result } = renderHook(() => useStreamChat(1, 10), {
+      wrapper: makeWrapper(),
+    });
+
+    act(() => {
+      result.current.send('what is happening?');
+    });
+
+    await waitFor(() => {
+      expect(result.current.stream.streaming).toBe(false);
+    });
+
+    const messages = result.current.stream.activities.map((activity) => activity.message);
+    expect(messages).toContain('Contacting Claude Code enterprise');
+    expect(messages).toContain('Using Microsoft 365 outlook email search');
+    expect(messages).toContain('Finished Microsoft 365 outlook email search');
   });
 
   it('partial text accumulates during streaming', async () => {

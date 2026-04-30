@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Per-org chat now shows live activity breadcrumbs while an agent is working,
+  including Claude Code connection status and tool-use progress before the
+  first answer token arrives.
+- Fixed a C.H. Robinson chat crash when recent agent-insight provenance was
+  already hydrated as an object instead of raw JSON text.
 - Customer/OEM agent chat now keeps in-flight messages visible when the URL
   catches up to a newly-created thread during layout resize/rerender, surfaces
   backend SSE error frames as real failures, and shows a visible working state

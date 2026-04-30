@@ -91,6 +91,24 @@ describe('streamChat', () => {
     expect(onText).not.toHaveBeenCalled();
   });
 
+  it('calls onActivity for activity frames', async () => {
+    const chunks = [
+      sseFrame({ type: 'activity', message: 'Contacting Claude Code enterprise', kind: 'status' }),
+      'data: [DONE]\n\n',
+    ];
+
+    vi.mocked(fetch).mockResolvedValueOnce(fakeResponse(chunks));
+
+    const onActivity = vi.fn();
+
+    await streamChat({ orgId: 1, content: 'hi', onText: vi.fn(), onActivity });
+
+    expect(onActivity).toHaveBeenCalledWith({
+      message: 'Contacting Claude Code enterprise',
+      kind: 'status',
+    });
+  });
+
   it('calls onThread for thread frames', async () => {
     const chunks = [
       sseFrame({ type: 'thread', thread_id: 42 }),

@@ -6,6 +6,11 @@ export interface ChatRequest {
 export type ChatStreamChunk =
   | { type: 'text'; delta: string }
   | { type: 'thread'; thread_id: number }
+  | {
+      type: 'activity';
+      message: string;
+      kind?: 'status' | 'tool' | 'success' | 'error';
+    }
   | { type: 'error'; message: string }
   | { type: 'tool_use'; tool: string; input: unknown }
   | {

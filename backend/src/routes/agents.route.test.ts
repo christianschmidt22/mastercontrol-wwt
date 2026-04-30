@@ -576,6 +576,37 @@ describe('POST /api/agents/:org_id/chat', () => {
     expect(noteCount.n).toBe(0);
   });
 
+  it('does not crash when recent insight provenance is already hydrated', async () => {
+    const org = makeOrg({ type: 'customer', name: 'Hydrated Provenance Org' });
+    const thread = makeThread(org.id, 'Hydrated Provenance Thread');
+
+    db.prepare(`
+      INSERT INTO notes
+        (organization_id, content, role, thread_id, provenance, confirmed)
+      VALUES (?, ?, 'agent_insight', ?, ?, 0)
+    `).run(
+      org.id,
+      'Hydrated provenance should not crash prompt construction.',
+      thread.id,
+      JSON.stringify({ tool: 'record_insight', source_thread_id: thread.id, source_org_id: org.id }),
+    );
+
+    configureFakeStream(
+      [{ type: 'content_block_delta', delta: { type: 'text_delta', text: 'Still works.' } }],
+      { content: [{ type: 'text', text: 'Still works.' }] },
+    );
+
+    const res = await request(app)
+      .post(`/api/agents/${org.id}/chat`)
+      .send({ thread_id: thread.id, content: 'Test hydrated provenance' });
+
+    expect(res.status).toBe(200);
+    const events = parseSseBody(res.text);
+    const errorEvents = events.filter((e) => (e as { type: string }).type === 'error');
+    expect(errorEvents).toHaveLength(0);
+    expect(events.some((e) => (e as { type: string }).type === 'text')).toBe(true);
+  });
+
   it('handles record_insight tool call for an allowed org — writes note + audit row', async () => {
     const org = makeOrg({ type: 'customer', name: 'Insight Target Org' });
     const thread = makeThread(org.id);

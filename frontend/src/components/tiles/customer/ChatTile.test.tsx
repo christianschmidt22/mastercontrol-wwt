@@ -30,7 +30,7 @@ function makeStreamHook(
 ): (_orgId: number, _threadId?: number) => UseStreamChat {
   return () => ({
     messages,
-    stream: { streaming: false, partial: '', failed, ...streamOverride },
+    stream: { streaming: false, partial: '', failed, activities: [], ...streamOverride },
     send: vi.fn(),
     stop: vi.fn(),
     retry: vi.fn(),
@@ -208,7 +208,7 @@ describe('ChatTile — textarea auto-resize', () => {
 });
 
 describe('ChatTile — streaming state', () => {
-  it('shows a visible waiting row before the first assistant token arrives', () => {
+  it('shows visible agent activity before the first assistant token arrives', () => {
     render(
       <ChatTile
         orgId={10}
@@ -222,9 +222,44 @@ describe('ChatTile — streaming state', () => {
       />,
     );
 
-    expect(screen.getByLabelText(/agent is working/i)).toBeInTheDocument();
-    expect(screen.getByText(/working\.\.\./i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/agent activity/i)).toBeInTheDocument();
+    expect(screen.getByText(/waiting for claude code/i)).toBeInTheDocument();
     expect(screen.getByText('What is the status?')).toBeInTheDocument();
+  });
+
+  it('shows streamed status and tool activity messages', () => {
+    render(
+      <ChatTile
+        orgId={10}
+        orgName="Acme"
+        _useStreamChat={makeStreamHook(
+          [userMsg],
+          null,
+          {
+            streaming: true,
+            partial: '',
+            activities: [
+              {
+                id: 'a1',
+                message: 'Contacting Claude Code enterprise',
+                kind: 'status',
+                at: 1,
+              },
+              {
+                id: 'a2',
+                message: 'Using Microsoft 365 outlook email search',
+                kind: 'tool',
+                at: 2,
+              },
+            ],
+          },
+        )}
+        _useCreateNote={makeCreateNoteHook()}
+      />,
+    );
+
+    expect(screen.getByText('Contacting Claude Code enterprise')).toBeInTheDocument();
+    expect(screen.getByText('Using Microsoft 365 outlook email search')).toBeInTheDocument();
   });
 });
 
