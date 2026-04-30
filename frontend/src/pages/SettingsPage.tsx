@@ -1,13 +1,10 @@
 /**
  * SettingsPage — Phase 1
  *
- * Sections:
- *   1. Anthropic API Key          — masked display, Edit toggle, Save / Cancel
- *   2. Delegation Authentication  — subscription-login status + API-key fallback
- *                                   (rendered via AuthModeSection)
- *   3. Default Model              — <select>, saves immediately on change
- *   4. Theme                      — Light / Dark / System radios, syncs Zustand + DOM + backend
- *   5. Paths                      — editable WorkVault + OneDrive roots
+ * Tabs:
+ *   1. Enterprise Claude - core app auth, model, API-key fallback, M365 connector
+ *   2. Delegated LLM - personal Max-plan delegation authentication
+ *   3. General - theme and filesystem paths
  *
  * Design: DESIGN.md "Field Notes" aesthetic. Fraunces h1/h2, Switzer body.
  * A11y: explicit <label htmlFor> on every input, <fieldset>/<legend> for radios,
@@ -79,6 +76,76 @@ const ERROR_STYLE: CSSProperties = {
   lineHeight: 1.5,
   margin: '6px 0 0',
 };
+
+type SettingsTabId = 'enterprise' | 'delegation' | 'general';
+
+const SETTINGS_TABS: Array<{ id: SettingsTabId; label: string }> = [
+  { id: 'enterprise', label: 'Enterprise Claude' },
+  { id: 'delegation', label: 'Delegated LLM' },
+  { id: 'general', label: 'General' },
+];
+
+const SECTION_STACK_STYLE: CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 40,
+};
+
+function tabButtonStyle(isActive: boolean): CSSProperties {
+  return {
+    fontFamily: 'var(--body)',
+    fontSize: 13,
+    fontWeight: isActive ? 600 : 500,
+    color: isActive ? 'var(--ink-1)' : 'var(--ink-2)',
+    background: isActive ? 'var(--bg-2)' : 'transparent',
+    border: '1px solid var(--rule)',
+    borderBottomColor: isActive ? 'var(--accent)' : 'var(--rule)',
+    borderRadius: 6,
+    padding: '8px 14px',
+    cursor: 'pointer',
+    minHeight: 38,
+    transition: 'background 150ms var(--ease), color 150ms var(--ease), border-color 150ms var(--ease)',
+  };
+}
+
+function SettingsTabs({
+  activeTab,
+  onChange,
+}: {
+  activeTab: SettingsTabId;
+  onChange: (tab: SettingsTabId) => void;
+}) {
+  return (
+    <div
+      role="tablist"
+      aria-label="Settings sections"
+      style={{
+        display: 'flex',
+        flexWrap: 'wrap',
+        gap: 8,
+        margin: '0 0 28px',
+      }}
+    >
+      {SETTINGS_TABS.map((tab) => {
+        const isActive = tab.id === activeTab;
+        return (
+          <button
+            key={tab.id}
+            id={`settings-tab-${tab.id}`}
+            type="button"
+            role="tab"
+            aria-selected={isActive}
+            aria-controls={`settings-panel-${tab.id}`}
+            onClick={() => onChange(tab.id)}
+            style={tabButtonStyle(isActive)}
+          >
+            {tab.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
 
 // ─── useBeforeUnloadGuard ─────────────────────────────────────────────────────
 
@@ -817,6 +884,8 @@ function PathsSection() {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export function SettingsPage() {
+  const [activeTab, setActiveTab] = useState<SettingsTabId>('enterprise');
+
   return (
     <div style={{ maxWidth: 640 }}>
       {/* Eyebrow — matches CustomerPageHeader convention */}
@@ -855,28 +924,46 @@ export function SettingsPage() {
         style={{ height: 1, background: 'var(--rule)', margin: '20px 0 32px' }}
       />
 
-      {/* Sections — 40px gap */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 40 }}>
-        <CoreClaudeAuthSection />
+      {/* Tabs */}
+      <SettingsTabs activeTab={activeTab} onChange={setActiveTab} />
 
-        <MaskedKeySection
-          settingKey="anthropic_api_key"
-          sectionId="section-anthropic-api-key"
-          title="Anthropic API Key"
-          inputId="anthropic_api_key"
-          helperText="Stored encrypted via Windows DPAPI. Never logged. Never returned in plaintext from the server."
-          saveLabel="Save API Key"
-        />
+      <div
+        id={`settings-panel-${activeTab}`}
+        role="tabpanel"
+        aria-labelledby={`settings-tab-${activeTab}`}
+      >
+        {activeTab === 'enterprise' && (
+          <div style={SECTION_STACK_STYLE}>
+            <CoreClaudeAuthSection />
 
-        <AuthModeSection />
+            <MaskedKeySection
+              settingKey="anthropic_api_key"
+              sectionId="section-anthropic-api-key"
+              title="Anthropic API Key"
+              inputId="anthropic_api_key"
+              helperText="Stored encrypted via Windows DPAPI. Never logged. Never returned in plaintext from the server."
+              saveLabel="Save API Key"
+            />
 
-        <DefaultModelSection />
+            <DefaultModelSection />
 
-        <ThemeSection />
+            <M365McpSection />
+          </div>
+        )}
 
-        <PathsSection />
+        {activeTab === 'delegation' && (
+          <div style={SECTION_STACK_STYLE}>
+            <AuthModeSection />
+          </div>
+        )}
 
-        <M365McpSection />
+        {activeTab === 'general' && (
+          <div style={SECTION_STACK_STYLE}>
+            <ThemeSection />
+
+            <PathsSection />
+          </div>
+        )}
       </div>
     </div>
   );

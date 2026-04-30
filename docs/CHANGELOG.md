@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Settings now uses three tabs: Enterprise Claude for core app auth/model/M365,
+  Delegated LLM for the personal Max-plan agent auth, and General for theme and
+  local paths.
 - Microsoft 365 connector can now run through the local Claude Code enterprise
   login instead of requiring an Anthropic API key, connector URL, or pasted
   connector token. Settings test now reports the Claude Code connector status,

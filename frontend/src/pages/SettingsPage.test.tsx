@@ -9,7 +9,7 @@
  *   2.  Clicking Edit reveals password input
  *   3.  Save calls mutation with entered value
  *   4.  Cancel reverts to masked display
- *   5.  AuthModeSection renders (delegation auth surface)
+ *   5.  Settings tabs separate enterprise, delegated LLM, and general settings
  *   6.  Model select calls mutation immediately on change (no separate Save)
  *   7.  Theme radio updates document.documentElement class + mutation
  *   8.  Paths inputs save the backend root keys
@@ -38,7 +38,10 @@ vi.mock('../api/useSettings', () => ({
         key: 'personal_anthropic_api_key',
         value: 'sk-ant-...EFGH',
       },
+      claude_auth_mode: { key: 'claude_auth_mode', value: 'subscription' },
       default_model: { key: 'default_model', value: 'claude-sonnet-4-6' },
+      m365_mcp_enabled: { key: 'm365_mcp_enabled', value: '1' },
+      m365_mcp_name: { key: 'm365_mcp_name', value: 'm365' },
       mastercontrol_root: {
         key: 'mastercontrol_root',
         value: 'C:\\Users\\test\\mastercontrol',
@@ -58,6 +61,21 @@ vi.mock('../api/useSettings', () => ({
     mutateAsync: mutateMock,
     isPending: false,
   })),
+}));
+
+vi.mock('../api/useSubagent', () => ({
+  useAuthStatus: vi.fn(() => ({
+    data: {
+      subscription_authenticated: true,
+      api_key_configured: true,
+      core_api_key_configured: true,
+      core_auth_mode: 'subscription',
+    },
+    isLoading: false,
+  })),
+  subagentKeys: {
+    authStatus: () => ['subagent', 'auth-status'],
+  },
 }));
 
 const setThemeMock = vi.fn();
@@ -174,12 +192,45 @@ describe('SettingsPage', () => {
   });
 
   // 5 ──────────────────────────────────────────────────────────────────────────
-  it('renders the AuthModeSection (subscription login + API-key fallback)', () => {
+  it('groups settings into enterprise, delegated LLM, and general tabs', async () => {
+    const user = userEvent.setup();
     renderPage();
-    // AuthModeSection has its own h2 'Delegation Authentication'.
+
+    expect(
+      screen.getByRole('tab', { name: /enterprise claude/i }),
+    ).toHaveAttribute('aria-selected', 'true');
+    expect(
+      screen.getByRole('heading', { name: /core claude authentication/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { name: /microsoft 365 connector/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('heading', { name: /delegation authentication/i }),
+    ).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('tab', { name: /delegated llm/i }));
+
+    expect(
+      screen.getByRole('tab', { name: /delegated llm/i }),
+    ).toHaveAttribute('aria-selected', 'true');
     expect(
       screen.getByRole('heading', { name: /delegation authentication/i }),
     ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('heading', { name: /microsoft 365 connector/i }),
+    ).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('tab', { name: /general/i }));
+
+    expect(
+      screen.getByRole('tab', { name: /general/i }),
+    ).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('heading', { name: /^theme$/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /^paths$/i })).toBeInTheDocument();
+    expect(
+      screen.queryByRole('heading', { name: /delegation authentication/i }),
+    ).not.toBeInTheDocument();
   });
 
   // 6 ──────────────────────────────────────────────────────────────────────────
@@ -208,6 +259,8 @@ describe('SettingsPage', () => {
     const user = userEvent.setup();
     renderPage();
 
+    await user.click(screen.getByRole('tab', { name: /general/i }));
+
     await user.click(screen.getByRole('radio', { name: /^light$/i }));
 
     // Synchronous DOM update
@@ -230,6 +283,8 @@ describe('SettingsPage', () => {
   it('paths save the backend root keys', async () => {
     const user = userEvent.setup();
     renderPage();
+
+    await user.click(screen.getByRole('tab', { name: /general/i }));
 
     const mastercontrol = screen.getByDisplayValue('C:\\Users\\test\\mastercontrol');
     const workvault = screen.getByDisplayValue('C:\\Users\\test\\WorkVault');
