@@ -17,6 +17,7 @@ import cron from 'node-cron';
 import { settingsModel } from '../models/settings.model.js';
 import { calendarEventModel, type CalendarEventInsert } from '../models/calendarEvent.model.js';
 import { logAlert } from '../models/systemAlert.model.js';
+import { extractMeetingUrl } from '../lib/meetingUrl.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -91,6 +92,13 @@ export async function syncCalendar(): Promise<{ upserted: number; pruned: number
       ? event.summary
       : String((event.summary as { val: string }).val ?? '');
 
+    // Extract meeting URL from description first, fall back to location field.
+    const description = typeof event.description === 'string'
+      ? event.description
+      : (event.description as { val?: string } | undefined)?.val ?? null;
+    const locationStr = parameterValueToString(event.location);
+    const meetingUrl = extractMeetingUrl(description) ?? extractMeetingUrl(locationStr);
+
     if (event.rrule) {
       // Recurring: expand into discrete instances within the sync window.
       const instances = ical.expandRecurringEvent(event, {
@@ -110,7 +118,8 @@ export async function syncCalendar(): Promise<{ upserted: number; pruned: number
           title,
           start_at: startIso,
           end_at: endIso,
-          location: parameterValueToString(event.location),
+          location: locationStr,
+          meeting_url: meetingUrl,
           organizer,
           attendee_count: attendeeCount,
           is_all_day: inst.isFullDay ? 1 : 0,
@@ -126,7 +135,8 @@ export async function syncCalendar(): Promise<{ upserted: number; pruned: number
         title,
         start_at: toIso(start),
         end_at: toIso(end),
-        location: parameterValueToString(event.location),
+        location: locationStr,
+        meeting_url: meetingUrl,
         organizer,
         attendee_count: attendeeCount,
         is_all_day: start.dateOnly ? 1 : 0,
