@@ -48,22 +48,8 @@ if (Test-ClassicOutlookProcess) {
     Stop-ZombieClassicOutlook
 }
 
-# 3. New Outlook is the only thing running → we CANNOT launch classic. Windows
-#    silently terminates the classic process when new Outlook is already running.
-#    Classic CAN coexist with new Outlook, but only if classic was opened FIRST.
-#    Tell the user to open classic Outlook manually (it will stay open alongside
-#    new Outlook), then sync will use the running instance via COM.
-if ([bool](Get-Process -Name olk -ErrorAction SilentlyContinue)) {
-    @{
-        launched    = $false
-        ready       = $false
-        weStartedIt = $false
-        error       = 'New Outlook (olk.exe) is running and classic Outlook is not. Windows prevents auto-launching classic alongside new Outlook. Open classic Outlook manually first, then sync will use it automatically.'
-    } | ConvertTo-Json
-    exit 0
-}
-
-# 4. Nothing classic running → launch MINIMIZED.
+# 3. Nothing classic running → launch MINIMIZED. New Outlook (olk.exe) may
+#    also be running; classic and new Outlook can coexist.
 try {
     # Outlook does NOT accept /min as a switch — it returns "command line argument
     # is not valid". Rely solely on -WindowStyle Minimized which routes through
