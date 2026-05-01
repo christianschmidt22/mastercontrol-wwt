@@ -323,7 +323,7 @@ function Dialog({ open, onClose, titleId, title, children, wide }: DialogProps) 
         aria-labelledby={titleId}
         onClick={(e) => e.stopPropagation()}
         style={{
-          background: 'var(--bg-2)',
+          background: 'var(--surface)',
           border: '1px solid var(--rule)',
           borderRadius: 8,
           maxWidth: wide ? 720 : 520,
@@ -471,7 +471,7 @@ function ReportForm({
     borderRadius: 4,
     padding: '6px 8px',
     fontSize: 13,
-    background: 'transparent',
+    background: 'var(--bg)',
     color: 'var(--ink-1)',
     fontFamily: 'var(--body)',
     width: '100%',
@@ -1312,7 +1312,15 @@ export function ReportsPage() {
         </button>
       </div>
 
-      <div style={{ maxWidth: '70ch' }}>
+      <div
+        style={{
+          maxWidth: '70ch',
+          background: 'var(--surface)',
+          border: '1px solid var(--rule)',
+          borderRadius: 8,
+          padding: 16,
+        }}
+      >
         {reportsQuery.isLoading && (
           <p style={{ fontSize: 13, color: 'var(--ink-3)' }}>Loading…</p>
         )}

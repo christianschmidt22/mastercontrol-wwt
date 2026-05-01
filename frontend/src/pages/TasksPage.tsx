@@ -436,7 +436,15 @@ export function TasksPage() {
         </button>
       </div>
 
-      <div style={{ marginTop: 22 }}>
+      <div
+        style={{
+          marginTop: 22,
+          background: 'var(--surface)',
+          border: '1px solid var(--rule)',
+          borderRadius: 8,
+          padding: 16,
+        }}
+      >
         {showAddForm && (
           <AddTaskForm
             customers={customersQuery.data ?? []}
@@ -462,7 +470,7 @@ export function TasksPage() {
         )}
 
         {!tasksQuery.isError && (
-          <div style={{ overflowX: 'auto', borderTop: '1px solid var(--rule)' }}>
+          <div style={{ overflowX: 'auto' }}>
             <table
               style={{
                 width: '100%',

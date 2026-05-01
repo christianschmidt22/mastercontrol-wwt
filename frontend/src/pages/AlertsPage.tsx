@@ -180,7 +180,15 @@ export function AlertsPage() {
         {activeCount} unread unresolved
       </p>
 
-      <div style={{ overflowX: 'auto', borderTop: '1px solid var(--rule)' }}>
+      <div
+        style={{
+          background: 'var(--surface)',
+          border: '1px solid var(--rule)',
+          borderRadius: 8,
+          padding: 16,
+          overflowX: 'auto',
+        }}
+      >
         <table style={{ width: '100%', minWidth: 960, borderCollapse: 'collapse', fontFamily: 'var(--body)' }}>
           <thead>
             <tr>
