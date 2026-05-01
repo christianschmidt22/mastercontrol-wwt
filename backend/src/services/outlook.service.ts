@@ -136,15 +136,31 @@ async function runPs1(limit: number): Promise<Ps1Result> {
 // Public API
 // ---------------------------------------------------------------------------
 
+// Module-level mutex: if two sync calls overlap, the second waits on the
+// first instead of racing to spawn a duplicate Outlook. Cleared once the
+// in-flight launch resolves, so subsequent calls (after Outlook is closed)
+// can re-launch normally.
+let inFlightEnsure: Promise<EnsureResult> | null = null;
+
 /**
  * Ensures Outlook is running and COM-accessible.
  * - If classic Outlook (OUTLOOK.EXE) is already running, uses it as-is.
  * - If it is not running, launches it minimized and waits up to 30s.
+ * - Concurrent calls share a single in-flight launch (mutex below) so we
+ *   never spawn two OUTLOOK.EXE processes from overlapping syncs.
  * Returns { ready, weStartedIt } so the caller can close Outlook when done
  * if and only if this call was the one that started it.
  * Never throws.
  */
 export async function ensureOutlookRunning(): Promise<EnsureResult> {
+  if (inFlightEnsure) return inFlightEnsure;
+  inFlightEnsure = runEnsureOutlookRunning().finally(() => {
+    inFlightEnsure = null;
+  });
+  return inFlightEnsure;
+}
+
+function runEnsureOutlookRunning(): Promise<EnsureResult> {
   return new Promise((resolve) => {
     let stdout = '';
 

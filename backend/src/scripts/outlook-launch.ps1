@@ -32,20 +32,27 @@ if (Test-OutlookCom) {
     exit 0
 }
 
-# 2. Classic process exists but COM not yet ready → wait briefly. If it never
-#    becomes accessible it's a zombie from a previous failed launch — kill and
-#    relaunch.
+# 2. Classic process exists but COM not yet ready → wait the FULL timeout for
+#    it to come up. Cold-start with new Outlook also running can take 20-30s.
+#    Killing too early causes us to murder our own still-booting instance and
+#    spawn a duplicate. If it really is hung after the full timeout, return
+#    error rather than thrashing.
 if (Test-ClassicOutlookProcess) {
-    $shortDeadline = (Get-Date).AddSeconds([Math]::Min(10, $TimeoutSeconds))
-    while ((Get-Date) -lt $shortDeadline) {
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    while ((Get-Date) -lt $deadline) {
         Start-Sleep -Milliseconds 500
         if (Test-OutlookCom) {
             @{ launched = $false; ready = $true; weStartedIt = $false; error = $null } | ConvertTo-Json
             exit 0
         }
     }
-    # Hung. Kill it and fall through to launch fresh.
-    Stop-ZombieClassicOutlook
+    @{
+        launched    = $false
+        ready       = $false
+        weStartedIt = $false
+        error       = "Classic Outlook process is running but COM did not become accessible within ${TimeoutSeconds}s. It may be stuck on a dialog (profile picker, password prompt, etc)."
+    } | ConvertTo-Json
+    exit 0
 }
 
 # 3. Nothing classic running → launch MINIMIZED. New Outlook (olk.exe) may
