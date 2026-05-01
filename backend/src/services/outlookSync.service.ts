@@ -197,9 +197,15 @@ export interface OutlookSyncResult {
 export async function syncOutlook(): Promise<OutlookSyncResult> {
   // Ensure Outlook is running (auto-launch if needed, wait up to 30s).
   // weStartedIt tracks whether WE launched Outlook so we can close it when done.
-  const { ready, weStartedIt } = await ensureOutlookRunning();
+  const { ready, weStartedIt, error } = await ensureOutlookRunning();
   if (!ready) {
-    console.warn('[outlookSync] Outlook not accessible — skipping sync');
+    const reason = error ?? 'Outlook not accessible';
+    console.warn(`[outlookSync] sync skipped: ${reason}`);
+    // Surface the blocker as a system alert if it's the new-Outlook conflict —
+    // the user needs to act (close olk.exe). Non-actionable errors stay quiet.
+    if (error && error.toLowerCase().includes('new outlook')) {
+      logAlert('warn', 'outlook-sync', 'Outlook sync blocked by New Outlook', error);
+    }
     return { messages_upserted: 0, org_links: 0, attachment_jobs: 0 };
   }
 

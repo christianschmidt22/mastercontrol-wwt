@@ -51,6 +51,7 @@ interface LaunchResult {
 export interface EnsureResult {
   ready: boolean;
   weStartedIt: boolean;
+  error: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -165,13 +166,21 @@ export async function ensureOutlookRunning(): Promise<EnsureResult> {
     child.on('close', () => {
       try {
         const result = JSON.parse(stdout.trim()) as LaunchResult;
-        resolve({ ready: result.ready, weStartedIt: result.weStartedIt });
+        resolve({
+          ready: result.ready,
+          weStartedIt: result.weStartedIt,
+          error: result.error,
+        });
       } catch {
-        resolve({ ready: false, weStartedIt: false });
+        resolve({ ready: false, weStartedIt: false, error: 'PowerShell launch script returned non-JSON output' });
       }
     });
 
-    child.on('error', () => resolve({ ready: false, weStartedIt: false }));
+    child.on('error', (err) => resolve({
+      ready: false,
+      weStartedIt: false,
+      error: `Failed to spawn PowerShell: ${err.message}`,
+    }));
   });
 }
 
