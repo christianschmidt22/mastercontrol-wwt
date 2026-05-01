@@ -74,14 +74,22 @@ const filterControl: CSSProperties = {
   padding: '5px 7px',
 };
 
+function localDateStr(d: Date): string {
+  // LOCAL date — toISOString() rolls to next day in evening hours west of UTC.
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
+
 function todayStr(): string {
-  return new Date().toISOString().slice(0, 10);
+  return localDateStr(new Date());
 }
 
 function weekEndStr(): string {
   const d = new Date();
   d.setDate(d.getDate() + 7);
-  return d.toISOString().slice(0, 10);
+  return localDateStr(d);
 }
 
 function dateKey(value: string | null): string {

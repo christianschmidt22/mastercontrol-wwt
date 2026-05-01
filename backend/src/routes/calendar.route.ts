@@ -12,7 +12,13 @@ export const calendarRouter = Router();
 // server clock, but the client should always pass ?date= to avoid timezone drift).
 calendarRouter.get('/today', (req, res, next) => {
   const dateParam = typeof req.query['date'] === 'string' ? req.query['date'] : null;
-  const dateStr = dateParam ?? new Date().toISOString().slice(0, 10);
+  // Use LOCAL date components for fallback — toISOString() returns UTC.
+  const now = new Date();
+  const localToday =
+    `${now.getFullYear()}-` +
+    `${String(now.getMonth() + 1).padStart(2, '0')}-` +
+    `${String(now.getDate()).padStart(2, '0')}`;
+  const dateStr = dateParam ?? localToday;
 
   if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
     return next(new HttpError(400, 'date must be YYYY-MM-DD'));

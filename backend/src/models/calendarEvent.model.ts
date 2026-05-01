@@ -92,6 +92,31 @@ const upsertMany = db.transaction((events: CalendarEventInsert[]) => {
   }
 });
 
+/**
+ * Compute UTC ISO bounds for a given LOCAL date.
+ *
+ * The input dateStr "YYYY-MM-DD" represents a date in the user's local
+ * timezone. Events are stored as absolute UTC timestamps. We need the
+ * UTC range that maps to local-midnight → next-local-midnight so events
+ * at 8 PM local on date X don't leak into date X+1 (or vice versa for
+ * early-morning events). The Node process and the user share a machine
+ * (and therefore a TZ), so `new Date(y, m-1, d)` gives midnight local.
+ */
+function localDayBoundsUtc(dateStr: string): [string, string] {
+  const [year, month, day] = dateStr.split('-').map(Number);
+  if (
+    !Number.isFinite(year) ||
+    !Number.isFinite(month) ||
+    !Number.isFinite(day)
+  ) {
+    // Fallback: treat the string as UTC bounds (legacy behavior).
+    return [`${dateStr}T00:00:00.000Z`, `${dateStr}T23:59:59.999Z`];
+  }
+  const startLocal = new Date(year, month - 1, day, 0, 0, 0, 0);
+  const endLocal = new Date(year, month - 1, day + 1, 0, 0, 0, 0);
+  return [startLocal.toISOString(), endLocal.toISOString()];
+}
+
 export const calendarEventModel = {
   upsertMany(events: CalendarEventInsert[]): void {
     upsertMany(events);
@@ -99,15 +124,13 @@ export const calendarEventModel = {
 
   /** Returns all events for a day regardless of hide status. */
   listForDay(dateStr: string): CalendarEvent[] {
-    const start = `${dateStr}T00:00:00.000Z`;
-    const end = `${dateStr}T23:59:59.999Z`;
+    const [start, end] = localDayBoundsUtc(dateStr);
     return listForDayStmt.all(start, end);
   },
 
   /** Returns events partitioned into visible (not hidden) and hidden lists. */
   listForDayPartitioned(dateStr: string): { visible: CalendarEvent[]; hidden: CalendarEvent[] } {
-    const start = `${dateStr}T00:00:00.000Z`;
-    const end   = `${dateStr}T23:59:59.999Z`;
+    const [start, end] = localDayBoundsUtc(dateStr);
     return {
       visible: listVisibleStmt.all(start, end, dateStr),
       hidden:  listHiddenStmt.all(dateStr, start, end),

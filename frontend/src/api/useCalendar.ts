@@ -4,7 +4,14 @@ import type { CalendarTodayResponse, AlertsResponse } from '../types';
 import type { SystemAlert } from '../types';
 
 function todayDateStr(): string {
-  return new Date().toISOString().slice(0, 10);
+  // Use LOCAL date components — toISOString() returns UTC, which rolls to
+  // the next day in evening hours west of UTC and produces "tomorrow" in
+  // the user's perception (Today's Agenda timezone bug).
+  const d = new Date();
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
 }
 
 // ---------------------------------------------------------------------------
