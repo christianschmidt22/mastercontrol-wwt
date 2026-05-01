@@ -1,0 +1,68 @@
+export const PONDERING_PROMPT = 'Pinky, are you pondering what I\'m pondering?';
+
+export const PONDERING_RESPONSES = [
+  'I think so, Brain, but where do we find a waffle with pockets?',
+  'I think so, Brain, but the stapler already looks suspicious.',
+  'I think so, Brain, but should the moon get a name tag?',
+  'I think so, Brain, but socks are hardly qualified for leadership.',
+  'I think so, Brain, but the pudding may have other plans.',
+  'I think so, Brain, but who will alphabetize the clouds?',
+  'I think so, Brain, but the rubber bands unionized yesterday.',
+  'I think so, Brain, but tiny hats make every meeting longer.',
+  'I think so, Brain, but the toast has not been briefed.',
+  'I think so, Brain, but do magnets enjoy strategy sessions?',
+  'I think so, Brain, but the clipboard keeps blinking at me.',
+  'I think so, Brain, but triangles rarely answer email.',
+  'I think so, Brain, but the elevator music knows too much.',
+  'I think so, Brain, but who audits the cheese?',
+  'I think so, Brain, but the calendar is wearing Tuesday again.',
+  'I think so, Brain, but we forgot the ceremonial spoon.',
+  'I think so, Brain, but can a spreadsheet feel ambition?',
+  'I think so, Brain, but the lamps are already in formation.',
+  'I think so, Brain, but the pretzel has structural concerns.',
+  'I think so, Brain, but ducks make terrible passwords.',
+  'I think so, Brain, but do we invoice the comet or the sky?',
+  'I think so, Brain, but the keyboard only speaks lowercase today.',
+  'I think so, Brain, but the plan needs more elbows.',
+  'I think so, Brain, but the mailbox looks emotionally unavailable.',
+  'I think so, Brain, but who brings confetti to a takeover?',
+  'I think so, Brain, but the biscuits demand representation.',
+  'I think so, Brain, but gravity never signs the minutes.',
+  'I think so, Brain, but the cactus is already chairing a committee.',
+  'I think so, Brain, but the printer has trust issues.',
+  'I think so, Brain, but should we laminate the prophecy?',
+  'I think so, Brain, but the hallway is humming in Morse code.',
+  'I think so, Brain, but a kazoo budget seems optimistic.',
+  'I think so, Brain, but the croutons may defect.',
+  'I think so, Brain, but the sticky notes formed a choir.',
+  'I think so, Brain, but that banana has executive presence.',
+  'I think so, Brain, but the omelet refuses to be roadmap-driven.',
+  'I think so, Brain, but shoelaces dislike quarterly planning.',
+  'I think so, Brain, but the swivel chair has diplomatic immunity.',
+  'I think so, Brain, but we need a permit for that much glitter.',
+  'I think so, Brain, but the muffin is clearly in charge.',
+  'I think so, Brain, but can a paperclip keep a secret?',
+  'I think so, Brain, but the doorbell has a counterproposal.',
+  'I think so, Brain, but the teacup insists on legal review.',
+  'I think so, Brain, but the umbrella wants a speaking role.',
+  'I think so, Brain, but we only have decaf blueprints.',
+  'I think so, Brain, but the barcode looks lonely.',
+  'I think so, Brain, but the rug has already escalated.',
+  'I think so, Brain, but do we have enough ceremonial tape?',
+  'I think so, Brain, but the moon owes us a status update.',
+  'I think so, Brain, but the calculator keeps rounding toward chaos.',
+] as const;
+
+export function getDailyPonderingResponse(date = new Date()): string {
+  const dayKey = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Chicago',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(date);
+  const hash = Array.from(dayKey).reduce(
+    (total, char) => total + char.charCodeAt(0),
+    0,
+  );
+  return PONDERING_RESPONSES[hash % PONDERING_RESPONSES.length] ?? PONDERING_RESPONSES[0];
+}

@@ -920,7 +920,8 @@ export function CustomerPage() {
             alignItems: 'flex-end',
             justifyContent: 'space-between',
             gap: 24,
-            marginBottom: 28,
+            marginTop: -10,
+            marginBottom: 32,
             maxWidth: 1500,
           }}
         >
@@ -942,10 +943,10 @@ export function CustomerPage() {
               style={{
                 fontFamily: 'var(--display)',
                 fontWeight: 500,
-                fontSize: 56,
+                fontSize: 'clamp(18px, 2.8vw, 42px)',
                 lineHeight: 1.02,
                 letterSpacing: '-0.02em',
-                marginLeft: -6,
+                marginLeft: -3,
                 textWrap: 'balance',
               }}
             >

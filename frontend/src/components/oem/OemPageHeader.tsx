@@ -221,7 +221,7 @@ export function OemPageHeader({
   );
 
   return (
-    <div>
+    <div style={{ marginTop: -10 }}>
       <div
         style={{
           display: 'flex',
@@ -238,11 +238,11 @@ export function OemPageHeader({
             style={{
               fontFamily: 'var(--display)',
               fontWeight: 500,
-              fontSize: 'clamp(36px, 4vw, 56px)',
+              fontSize: 'clamp(18px, 2.8vw, 42px)',
               lineHeight: 1.02,
               letterSpacing: '-0.02em',
               textWrap: 'balance',
-              margin: '0 0 12px -6px',
+              margin: '0 0 8px -3px',
               color: 'var(--ink-1)',
             }}
           >

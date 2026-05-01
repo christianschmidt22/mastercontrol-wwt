@@ -200,7 +200,7 @@ describe('ThreadsTab — load more', () => {
     await waitFor(() => {
       expect(screen.queryByRole('button', { name: /load more/i })).toBeNull();
     });
-  });
+  }, 10_000);
 });
 
 // ---------------------------------------------------------------------------

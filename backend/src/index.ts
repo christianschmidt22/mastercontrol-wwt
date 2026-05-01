@@ -23,6 +23,8 @@ import { masterNotesRouter } from './routes/masterNotes.route.js';
 import { backlogItemsRouter } from './routes/backlogItems.route.js';
 import { outlookRouter } from './routes/outlook.route.js';
 import { m365Router } from './routes/m365.route.js';
+import { captureActionRouter } from './routes/captureAction.route.js';
+import { heartbeatRouter } from './routes/heartbeat.route.js';
 import { seedDailyTaskReview } from './services/reports.service.js';
 import {
   runMissedJobs,
@@ -55,7 +57,7 @@ app.use(
   })
 );
 
-app.use(express.json());
+app.use(express.json({ limit: '16mb' }));
 
 // R-013: belt-and-braces Origin check on every mutating request. Drive-by
 // CSRF from any malicious page the user happens to visit while the backend
@@ -97,6 +99,8 @@ app.use('/api/master-notes', masterNotesRouter);
 app.use('/api/backlog-items', backlogItemsRouter);
 app.use('/api/outlook', outlookRouter);
 app.use('/api/m365', m365Router);
+app.use('/api/capture-action', captureActionRouter);
+app.use('/api/heartbeat', heartbeatRouter);
 
 app.use(errorHandler);
 

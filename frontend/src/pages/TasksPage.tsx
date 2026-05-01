@@ -389,7 +389,7 @@ export function TasksPage() {
   }, []);
 
   return (
-    <div>
+    <div style={{ marginTop: -10 }}>
       <p
         style={{
           fontSize: 11,
@@ -407,15 +407,15 @@ export function TasksPage() {
           <h1
             style={{
               fontFamily: 'var(--display)',
-              fontSize: 48,
+              fontSize: 'clamp(18px, 2.8vw, 42px)',
               fontWeight: 500,
-              lineHeight: 1.04,
+              lineHeight: 1.02,
               margin: 0,
             }}
           >
             Tasks
           </h1>
-          <p style={{ margin: '6px 0 0', color: 'var(--ink-2)', fontSize: 14 }}>
+          <p style={{ margin: '8px 0 0', color: 'var(--ink-2)', fontSize: 16 }}>
             {openCount} open{dueTodayCount > 0 ? ` · ${dueTodayCount} due today` : ''}
           </p>
         </div>
@@ -446,7 +446,7 @@ export function TasksPage() {
 
       <div
         style={{
-          marginTop: 22,
+          marginTop: 32,
           background: 'var(--surface)',
           border: '1px solid var(--rule)',
           borderRadius: 8,

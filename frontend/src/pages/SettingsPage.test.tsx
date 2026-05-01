@@ -29,6 +29,7 @@ import { SettingsPage } from './SettingsPage';
 // ─── Module mocks ─────────────────────────────────────────────────────────────
 
 const mutateMock = vi.fn();
+const updateHeartbeatMutate = vi.fn();
 
 vi.mock('../api/useSettings', () => ({
   useSetting: vi.fn((key: string) => {
@@ -87,6 +88,36 @@ vi.mock('../store/useUiStore', () => ({
   })),
 }));
 
+vi.mock('../api/useHeartbeat', () => {
+  const heartbeatConfig = {
+    check_interval_minutes: 15,
+    timezone: 'America/Chicago',
+    jobs: [
+      {
+        id: 'outlook-com-sync',
+        label: 'Outlook COM sync',
+        enabled: true,
+        deleted: false,
+        windows: [
+          { id: 'morning', label: 'Morning', not_before: '05:00', last_run_at: null },
+          { id: 'afternoon', label: 'Afternoon', not_before: '12:00', last_run_at: null },
+        ],
+      },
+    ],
+  };
+
+  return {
+    useHeartbeatConfig: vi.fn(() => ({
+      data: heartbeatConfig,
+      isLoading: false,
+    })),
+    useUpdateHeartbeatConfig: vi.fn(() => ({
+      mutate: updateHeartbeatMutate,
+      isPending: false,
+    })),
+  };
+});
+
 // AuthModeSection has its own behaviour test; stub it here so SettingsPage
 // tests don't need to mock useSubagent / useAuthStatus / fetch.
 vi.mock('../components/agents/AuthModeSection', () => ({
@@ -116,6 +147,7 @@ describe('SettingsPage', () => {
   beforeEach(() => {
     mutateMock.mockClear();
     mutateMock.mockResolvedValue(undefined);
+    updateHeartbeatMutate.mockReset();
     setThemeMock.mockReset();
     document.documentElement.classList.remove('light', 'dark');
   });
@@ -227,6 +259,7 @@ describe('SettingsPage', () => {
       screen.getByRole('tab', { name: /general/i }),
     ).toHaveAttribute('aria-selected', 'true');
     expect(screen.getByRole('heading', { name: /^theme$/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /^heartbeat$/i })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: /^paths$/i })).toBeInTheDocument();
     expect(
       screen.queryByRole('heading', { name: /delegation authentication/i }),

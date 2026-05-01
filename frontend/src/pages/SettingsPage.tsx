@@ -18,6 +18,7 @@ import { useAuthStatus } from '../api/useSubagent';
 import { useUiStore, type Theme } from '../store/useUiStore';
 import { AuthModeSection } from '../components/agents/AuthModeSection';
 import { M365McpSection } from '../components/settings/M365McpSection';
+import { HeartbeatConfigSection } from '../components/schedules/HeartbeatConfigSection';
 
 // ─── Style tokens ──────────────────────────────────────────────────────────────
 
@@ -887,7 +888,7 @@ export function SettingsPage() {
   const [activeTab, setActiveTab] = useState<SettingsTabId>('enterprise');
 
   return (
-    <div style={{ maxWidth: 640 }}>
+    <div style={{ maxWidth: 640, marginTop: -10 }}>
       {/* Eyebrow — matches CustomerPageHeader convention */}
       <p
         style={{
@@ -907,7 +908,7 @@ export function SettingsPage() {
       <h1
         style={{
           fontFamily: 'var(--display)',
-          fontSize: 56,
+          fontSize: 'clamp(18px, 2.8vw, 42px)',
           fontWeight: 500,
           lineHeight: 1.02,
           letterSpacing: '-0.02em',
@@ -959,6 +960,8 @@ export function SettingsPage() {
 
         {activeTab === 'general' && (
           <div style={SECTION_STACK_STYLE}>
+            <HeartbeatConfigSection />
+
             <ThemeSection />
 
             <PathsSection />

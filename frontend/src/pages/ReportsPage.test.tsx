@@ -47,6 +47,7 @@ vi.mock('../api/useReports', () => ({
 vi.mock('../api/useReportRuns', () => ({
   useReportRuns: vi.fn(),
   useReportRunOutput: vi.fn(),
+  useRunContent: vi.fn(),
 }));
 
 vi.mock('../api/useOrganizations', () => ({
@@ -54,8 +55,8 @@ vi.mock('../api/useOrganizations', () => ({
 }));
 
 import { useReports } from '../api/useReports';
-import { useReportRuns, useReportRunOutput } from '../api/useReportRuns';
-import type { ReportRunOutput } from '../api/useReportRuns';
+import { useReportRuns, useRunContent } from '../api/useReportRuns';
+import type { ReportRunContent } from '../api/useReportRuns';
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -109,10 +110,8 @@ function renderWithClient(ui: React.ReactElement) {
   );
 }
 
-const sampleOutput: ReportRunOutput = {
+const sampleOutput: ReportRunContent = {
   content: '# Daily Review\n\nToday at a glance: things are fine.',
-  output_path: 'C:\\mastercontrol\\reports\\1\\7.md',
-  output_sha256: 'abc',
 };
 
 beforeEach(() => {
@@ -134,13 +133,12 @@ beforeEach(() => {
     isSuccess: true,
   } as unknown as ReturnType<typeof useReportRuns>);
 
-  vi.mocked(useReportRunOutput).mockReturnValue({
+  vi.mocked(useRunContent).mockReturnValue({
     data: sampleOutput,
     isLoading: false,
     isError: false,
     isSuccess: true,
-    refetch: vi.fn(),
-  } as unknown as ReturnType<typeof useReportRunOutput>);
+  } as unknown as ReturnType<typeof useRunContent>);
 });
 
 afterEach(() => {
@@ -268,9 +266,8 @@ describe('ReportsPage — History drawer', () => {
     expect(
       screen.getByRole('heading', { level: 2, name: /run history/i }),
     ).toBeInTheDocument();
-    // Output path from sampleRun is rendered in the drawer.
     expect(
-      screen.getByText(/C:\\mastercontrol\\reports\\1\\7\.md/i),
+      screen.getByRole('button', { name: /preview report output/i }),
     ).toBeInTheDocument();
   });
 });
@@ -319,13 +316,16 @@ describe('ReportsPage — History drawer preview expansion', () => {
 
     await waitFor(() => {
       expect(
-        screen.getByRole('region', { name: /report output for/i }),
+        screen.getByRole('region', { name: /report output/i }),
       ).toBeInTheDocument();
     });
 
     // Content from sampleOutput is rendered.
     expect(
       screen.getByRole('heading', { level: 1, name: /daily review/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/C:\\mastercontrol\\reports\\1\\7\.md/i),
     ).toBeInTheDocument();
 
     // The button label should now say Collapse.

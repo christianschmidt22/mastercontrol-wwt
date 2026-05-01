@@ -30,7 +30,7 @@ import { runReport } from './reports.service.js';
 import { getMostRecentCronTime } from '../lib/cronUtils.js';
 import { scanExternalMasterNoteEdits } from './masterNote.service.js';
 import { logAlert } from '../models/systemAlert.model.js';
-import { syncOutlook } from './outlookSync.service.js';
+import { getHeartbeatConfig, runHeartbeatOnce } from './heartbeat.service.js';
 
 interface RegisteredSchedule {
   cronExpr: string;
@@ -40,7 +40,9 @@ interface RegisteredSchedule {
 let schedulerStarted = false;
 const registered = new Map<number, RegisteredSchedule>();
 let masterNoteScanTask: ScheduledTask | null = null;
-let outlookSyncTask: ScheduledTask | null = null;
+let heartbeatTask: ScheduledTask | null = null;
+let heartbeatCronExpr: string | null = null;
+let heartbeatRunning = false;
 
 /** Hourly cron expression: top of every hour. */
 const MASTER_NOTE_SCAN_CRON = '0 * * * *';
@@ -89,7 +91,7 @@ export function startInProcessScheduler(): void {
   schedulerStarted = true;
   refreshInProcessScheduler();
   registerMasterNoteScanJob();
-  registerOutlookSyncJob();
+  registerHeartbeatJob();
 }
 
 /**
@@ -97,14 +99,34 @@ export function startInProcessScheduler(): void {
  * Fetches inbox + sentItems from Microsoft Graph, upserts into
  * outlook_messages, and runs org mention matching. No-ops if not connected.
  */
-function registerOutlookSyncJob(): void {
-  if (outlookSyncTask) return;
-  outlookSyncTask = cron.schedule('*/15 * * * *', () => {
-    syncOutlook().catch((err) => {
-      const message = err instanceof Error ? err.message : String(err);
-      logAlert('warn', 'outlookSync', `Outlook sync job failed: ${message}`);
-    });
+function registerHeartbeatJob(): void {
+  const { check_interval_minutes: interval } = getHeartbeatConfig();
+  const cronExpr = interval === 60 ? '0 * * * *' : `*/${interval} * * * *`;
+
+  if (heartbeatTask && heartbeatCronExpr === cronExpr) return;
+  if (heartbeatTask) {
+    heartbeatTask.stop();
+    heartbeatTask = null;
+  }
+
+  heartbeatCronExpr = cronExpr;
+  heartbeatTask = cron.schedule(cronExpr, () => {
+    void runHeartbeatSafely();
   });
+  void runHeartbeatSafely();
+}
+
+async function runHeartbeatSafely(): Promise<void> {
+  if (heartbeatRunning) return;
+  heartbeatRunning = true;
+  try {
+    await runHeartbeatOnce();
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    logAlert('warn', 'heartbeat', `Heartbeat job failed: ${message}`);
+  } finally {
+    heartbeatRunning = false;
+  }
 }
 
 /**
@@ -141,11 +163,18 @@ export function stopInProcessScheduler(): void {
     masterNoteScanTask.stop();
     masterNoteScanTask = null;
   }
-  if (outlookSyncTask) {
-    outlookSyncTask.stop();
-    outlookSyncTask = null;
+  if (heartbeatTask) {
+    heartbeatTask.stop();
+    heartbeatTask = null;
   }
+  heartbeatCronExpr = null;
+  heartbeatRunning = false;
   schedulerStarted = false;
+}
+
+export function notifyHeartbeatConfigChanged(): void {
+  if (!schedulerStarted) return;
+  registerHeartbeatJob();
 }
 
 export function refreshInProcessScheduler(): void {

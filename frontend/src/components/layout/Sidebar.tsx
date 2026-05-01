@@ -1,9 +1,17 @@
-import type { ReactNode, KeyboardEvent } from 'react';
-import { useCallback, useRef } from 'react';
-import { NavLink } from 'react-router-dom';
+import type { ReactNode, KeyboardEvent, DragEvent } from 'react';
+import { useCallback, useRef, useState } from 'react';
+import { NavLink, useLocation } from 'react-router-dom';
 import { Home, CheckSquare, BarChart2, Bot, Settings, Package, Bell } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useOrganizations, useOrgLastTouched } from '../../api/useOrganizations';
+import { useCaptureAction } from '../../api/useCaptureAction';
+import { CaptureActionModal } from '../capture/CaptureActionModal';
+import {
+  captureScreenToAttachment,
+  fileToCaptureAttachment,
+  type CaptureAttachmentDraft,
+} from '../../utils/captureActionFiles';
+import type { CaptureActionResult } from '../../types';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -41,6 +49,16 @@ function isWithin48h(iso: string | undefined): boolean {
   const ts = new Date(iso).getTime();
   if (Number.isNaN(ts)) return false;
   return Date.now() - ts < 48 * 60 * 60 * 1000;
+}
+
+const DEFAULT_CAPTURE_PROMPT =
+  'Read the attached screenshot or file and create the right reminder/task. If there is no action to take, summarize what it says.';
+
+function orgIdFromPath(pathname: string): number | null {
+  const match = pathname.match(/^\/(?:customers|oem)\/(\d+)/);
+  if (!match) return null;
+  const id = Number(match[1]);
+  return Number.isInteger(id) && id > 0 ? id : null;
 }
 
 // ---------------------------------------------------------------------------
@@ -219,6 +237,14 @@ function orderSidebarCustomers<T extends { name: string }>(customers: T[]): T[] 
 
 export function Sidebar() {
   const navRef = useRef<HTMLElement | null>(null);
+  const location = useLocation();
+  const { mutateAsync: runCaptureAction, isPending: captureIsPending } = useCaptureAction();
+  const [captureOpen, setCaptureOpen] = useState(false);
+  const [captureDragging, setCaptureDragging] = useState(false);
+  const [captureAttachments, setCaptureAttachments] = useState<CaptureAttachmentDraft[]>([]);
+  const [capturePrompt, setCapturePrompt] = useState(DEFAULT_CAPTURE_PROMPT);
+  const [captureError, setCaptureError] = useState<string | null>(null);
+  const [captureResult, setCaptureResult] = useState<CaptureActionResult | null>(null);
 
   // Customer list + activity map
   const {
@@ -229,6 +255,74 @@ export function Sidebar() {
   } = useOrganizations('customer');
 
   const { data: customerLastTouched } = useOrgLastTouched('customer');
+
+  const openCapture = useCallback((attachments: CaptureAttachmentDraft[]) => {
+    setCaptureAttachments(attachments);
+    setCapturePrompt(DEFAULT_CAPTURE_PROMPT);
+    setCaptureError(null);
+    setCaptureResult(null);
+    setCaptureOpen(true);
+  }, []);
+
+  const addCaptureAttachments = useCallback((attachments: CaptureAttachmentDraft[]) => {
+    setCaptureAttachments((current) => [...current, ...attachments].slice(0, 3));
+    setCaptureError(null);
+    setCaptureResult(null);
+  }, []);
+
+  const handleCaptureClick = useCallback(async () => {
+    try {
+      const attachment = await captureScreenToAttachment();
+      openCapture([attachment]);
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'NotAllowedError') return;
+      setCaptureAttachments([]);
+      setCapturePrompt(DEFAULT_CAPTURE_PROMPT);
+      setCaptureResult(null);
+      setCaptureError(err instanceof Error ? err.message : 'Could not capture the screen');
+      setCaptureOpen(true);
+    }
+  }, [openCapture]);
+
+  const handleCaptureDrop = useCallback(async (event: DragEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    setCaptureDragging(false);
+    const files = Array.from(event.dataTransfer.files).slice(0, 3);
+    if (files.length === 0) return;
+    try {
+      openCapture(await Promise.all(files.map(fileToCaptureAttachment)));
+    } catch (err) {
+      setCaptureAttachments([]);
+      setCaptureResult(null);
+      setCaptureError(err instanceof Error ? err.message : 'Could not read dropped file');
+      setCaptureOpen(true);
+    }
+  }, [openCapture]);
+
+  const closeCapture = useCallback(() => {
+    setCaptureOpen(false);
+    setCaptureAttachments([]);
+    setCaptureError(null);
+    setCaptureResult(null);
+  }, []);
+
+  const submitCapture = useCallback(async () => {
+    setCaptureError(null);
+    try {
+      const result = await runCaptureAction({
+        prompt: capturePrompt,
+        organization_id: orgIdFromPath(location.pathname),
+        attachments: captureAttachments.map(({ name, mime_type, data_base64 }) => ({
+          name,
+          mime_type,
+          data_base64,
+        })),
+      });
+      setCaptureResult(result);
+    } catch (err) {
+      setCaptureError(err instanceof Error ? err.message : 'Capture action failed');
+    }
+  }, [captureAttachments, capturePrompt, location.pathname, runCaptureAction]);
 
   /**
    * Global keydown handler mounted on <window> so pressing "/" from anywhere
@@ -339,14 +433,39 @@ export function Sidebar() {
           color: 'var(--ink-1)',
         }}
       >
-        <img
-          src="/brand/sidebar-mcp.png"
-          alt=""
-          aria-hidden="true"
-          width={32}
-          height={32}
-          style={{ flexShrink: 0, display: 'block' }}
-        />
+        <button
+          type="button"
+          aria-label="Capture with MasterControl"
+          title="Capture with MasterControl"
+          onClick={() => void handleCaptureClick()}
+          onDragOver={(event) => {
+            event.preventDefault();
+            setCaptureDragging(true);
+          }}
+          onDragLeave={() => setCaptureDragging(false)}
+          onDrop={(event) => void handleCaptureDrop(event)}
+          style={{
+            width: 36,
+            height: 36,
+            flexShrink: 0,
+            display: 'grid',
+            placeItems: 'center',
+            borderRadius: 8,
+            border: captureDragging ? '1px solid var(--accent)' : '1px solid transparent',
+            background: captureDragging ? 'var(--bg-2)' : 'transparent',
+            cursor: 'pointer',
+            padding: 2,
+          }}
+        >
+          <img
+            src="/brand/sidebar-mcp.png"
+            alt=""
+            aria-hidden="true"
+            width={32}
+            height={32}
+            style={{ display: 'block' }}
+          />
+        </button>
         <div
           style={{
             fontFamily: 'var(--display)',
@@ -373,6 +492,19 @@ export function Sidebar() {
           </span>
         </div>
       </div>
+
+      <CaptureActionModal
+        open={captureOpen}
+        attachments={captureAttachments}
+        prompt={capturePrompt}
+        isRunning={captureIsPending}
+        error={captureError}
+        result={captureResult}
+        onPromptChange={setCapturePrompt}
+        onAttachmentsAdd={addCaptureAttachments}
+        onClose={closeCapture}
+        onSubmit={() => void submitCapture()}
+      />
 
       {/* Top nav */}
       <Section>

@@ -5,12 +5,17 @@ import { Tile } from '../components/tiles/Tile';
 import { NoteApprovalsTile } from '../components/notes/NoteApprovalsTile';
 import { TodayAgendaTile } from '../components/tiles/home/TodayAgendaTile';
 import { TaskEditDialog } from '../components/tasks/TaskEditDialog';
+import { PageHeader } from '../components/layout/PageHeader';
 import { useTasks, useCompleteTask } from '../api/useTasks';
 import { useOrganizations } from '../api/useOrganizations';
 import { noteKeys } from '../api/useNotes';
 import { BacklogTile } from '../components/backlog/BacklogTile';
 import { useQueries } from '@tanstack/react-query';
 import { request } from '../api/http';
+import {
+  getDailyPonderingResponse,
+  PONDERING_PROMPT,
+} from '../data/ponderingResponses';
 import type { Task, Note, Organization } from '../types';
 
 // ---------------------------------------------------------------------------
@@ -461,6 +466,7 @@ const longDate = new Intl.DateTimeFormat('en-US', {
 export function HomePage() {
   const now = new Date();
   const dateStr = longDate.format(now);
+  const ponderingResponse = getDailyPonderingResponse(now);
 
   const customersQuery = useOrganizations('customer');
   const oemsQuery = useOrganizations('oem');
@@ -474,44 +480,12 @@ export function HomePage() {
 
   return (
     <div>
-      {/* Page header */}
-      <p
-        style={{
-          fontSize: 11,
-          fontWeight: 600,
-          letterSpacing: '0.08em',
-          textTransform: 'uppercase',
-          color: 'var(--ink-3)',
-          fontFamily: 'var(--body)',
-          marginBottom: 8,
-        }}
-      >
-        HOME
-      </p>
-      <h1
-        style={{
-          fontFamily: 'var(--display)',
-          fontSize: 56,
-          fontWeight: 500,
-          lineHeight: 1.02,
-          letterSpacing: '-0.02em',
-          marginLeft: -3,
-          marginBottom: 6,
-          textWrap: 'balance',
-        }}
-      >
-        Today.
-      </h1>
-      <p
-        style={{
-          fontSize: 16,
-          color: 'var(--ink-2)',
-          fontFamily: 'var(--body)',
-          marginBottom: 28,
-        }}
-      >
-        {dateStr}
-      </p>
+      <PageHeader
+        eyebrow={PONDERING_PROMPT}
+        title={ponderingResponse}
+        subtitle={dateStr}
+        titleSingleLine
+      />
 
       {/* 2-column widget grid */}
       <div

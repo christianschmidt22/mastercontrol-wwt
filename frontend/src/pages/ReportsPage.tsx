@@ -1247,7 +1247,7 @@ export function ReportsPage() {
   const isSaving = createMutation.isPending || updateMutation.isPending;
 
   return (
-    <div>
+    <div style={{ marginTop: -10 }}>
       {/* Page header */}
       <p
         style={{
@@ -1268,14 +1268,14 @@ export function ReportsPage() {
           alignItems: 'baseline',
           justifyContent: 'space-between',
           gap: 12,
-          marginBottom: 16,
+          marginBottom: 32,
         }}
       >
         <h1
           style={
             {
               fontFamily: 'var(--display)',
-              fontSize: 56,
+              fontSize: 'clamp(18px, 2.8vw, 42px)',
               fontWeight: 500,
               lineHeight: 1.02,
               letterSpacing: '-0.02em',

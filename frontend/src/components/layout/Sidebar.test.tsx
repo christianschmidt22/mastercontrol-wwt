@@ -6,11 +6,19 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import React from 'react';
-import type { UseQueryResult } from '@tanstack/react-query';
+import type { UseMutationResult, UseQueryResult } from '@tanstack/react-query';
+import type { CaptureActionRequest, CaptureActionResult } from '../../types';
+
+const captureActionMocks = vi.hoisted(() => ({
+  mutateAsync: vi.fn(),
+  captureScreenToAttachment: vi.fn(),
+  fileToCaptureAttachment: vi.fn(),
+  clipboardImagesToCaptureAttachments: vi.fn(),
+}));
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -63,6 +71,16 @@ vi.mock('../../api/useOrganizations', () => ({
   useOrgLastTouched: vi.fn(),
 }));
 
+vi.mock('../../api/useCaptureAction', () => ({
+  useCaptureAction: vi.fn(),
+}));
+
+vi.mock('../../utils/captureActionFiles', () => ({
+  captureScreenToAttachment: captureActionMocks.captureScreenToAttachment,
+  fileToCaptureAttachment: captureActionMocks.fileToCaptureAttachment,
+  clipboardImagesToCaptureAttachments: captureActionMocks.clipboardImagesToCaptureAttachments,
+}));
+
 // ThemeToggle renders a button we don't want to worry about here — stub it out
 // so we have a predictable set of focusables.
 vi.mock('./ThemeToggle', () => ({
@@ -70,6 +88,7 @@ vi.mock('./ThemeToggle', () => ({
 }));
 
 import { useOrganizations, useOrgLastTouched } from '../../api/useOrganizations';
+import { useCaptureAction } from '../../api/useCaptureAction';
 import { Sidebar } from './Sidebar';
 
 // ---------------------------------------------------------------------------
@@ -89,6 +108,43 @@ function setupDefaultMocks() {
     isLoading: false,
     isError: false,
   } as unknown as UseQueryResult<Record<string, string>>);
+
+  captureActionMocks.mutateAsync.mockResolvedValue({
+    summary: 'Created a reminder.',
+    created_tasks: [],
+    created_notes: [],
+    model_notes: [],
+  });
+  captureActionMocks.fileToCaptureAttachment.mockImplementation((file: File) =>
+    Promise.resolve({
+      id: 'dropped-file',
+      name: file.name,
+      mime_type: file.type || 'application/octet-stream',
+      data_base64: 'ZHJvcHBlZA==',
+      preview_url: null,
+    }),
+  );
+  captureActionMocks.captureScreenToAttachment.mockResolvedValue({
+    id: 'screen-capture',
+    name: 'screen-capture.png',
+    mime_type: 'image/png',
+    data_base64: 'c2NyZWVu',
+    preview_url: 'data:image/png;base64,c2NyZWVu',
+  });
+  captureActionMocks.clipboardImagesToCaptureAttachments.mockResolvedValue([
+    {
+      id: 'clipboard-image',
+      name: 'clipboard.png',
+      mime_type: 'image/png',
+      data_base64: 'Y2xpcGJvYXJk',
+      preview_url: 'data:image/png;base64,Y2xpcGJvYXJk',
+    },
+  ]);
+
+  vi.mocked(useCaptureAction).mockReturnValue({
+    mutateAsync: captureActionMocks.mutateAsync,
+    isPending: false,
+  } as unknown as UseMutationResult<CaptureActionResult, Error, CaptureActionRequest>);
 }
 
 // ---------------------------------------------------------------------------
@@ -126,6 +182,110 @@ afterEach(() => {
 });
 
 // ---------------------------------------------------------------------------
+// Capture intake
+// ---------------------------------------------------------------------------
+
+describe('Sidebar — capture intake', () => {
+  it('opens the prompt modal from a dropped file and submits it with org context', async () => {
+    const user = userEvent.setup();
+    renderSidebar('/customers/2');
+
+    const captureButton = screen.getByRole('button', {
+      name: /capture with mastercontrol/i,
+    });
+    const file = new File(['Pat says follow up Monday'], 'pat-follow-up.txt', {
+      type: 'text/plain',
+    });
+
+    fireEvent.drop(captureButton, { dataTransfer: { files: [file] } });
+
+    expect(await screen.findByText('pat-follow-up.txt')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Run' }));
+
+    await waitFor(() => {
+      expect(captureActionMocks.mutateAsync).toHaveBeenCalledWith({
+        prompt: expect.stringContaining('Read the attached screenshot or file'),
+        organization_id: 2,
+        attachments: [
+          {
+            name: 'pat-follow-up.txt',
+            mime_type: 'text/plain',
+            data_base64: 'ZHJvcHBlZA==',
+          },
+        ],
+      });
+    });
+  });
+
+  it('opens the prompt modal from a screen capture and submits the image', async () => {
+    const user = userEvent.setup();
+    renderSidebar('/customers/2');
+
+    await user.click(screen.getByRole('button', { name: /capture with mastercontrol/i }));
+
+    expect(await screen.findByText('screen-capture.png')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Run' }));
+
+    await waitFor(() => {
+      expect(captureActionMocks.captureScreenToAttachment).toHaveBeenCalledTimes(1);
+      expect(captureActionMocks.mutateAsync).toHaveBeenCalledWith({
+        prompt: expect.stringContaining('Read the attached screenshot or file'),
+        organization_id: 2,
+        attachments: [
+          {
+            name: 'screen-capture.png',
+            mime_type: 'image/png',
+            data_base64: 'c2NyZWVu',
+          },
+        ],
+      });
+    });
+  });
+
+  it('accepts a pasted screenshot from the clipboard and submits it', async () => {
+    const user = userEvent.setup();
+    captureActionMocks.captureScreenToAttachment.mockRejectedValueOnce(
+      new Error('Screen capture unavailable'),
+    );
+    renderSidebar('/customers/2');
+
+    await user.click(screen.getByRole('button', { name: /capture with mastercontrol/i }));
+
+    const pastedImage = new File(['clipboard image'], 'clipboard.png', {
+      type: 'image/png',
+    });
+    const prompt = await screen.findByLabelText(/prompt/i);
+    fireEvent.paste(prompt, {
+      clipboardData: {
+        items: [
+          {
+            kind: 'file',
+            getAsFile: () => pastedImage,
+          },
+        ],
+      },
+    });
+
+    expect(await screen.findByText('clipboard.png')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Run' }));
+
+    await waitFor(() => {
+      expect(captureActionMocks.mutateAsync).toHaveBeenCalledWith({
+        prompt: expect.stringContaining('Read the attached screenshot or file'),
+        organization_id: 2,
+        attachments: [
+          {
+            name: 'clipboard.png',
+            mime_type: 'image/png',
+            data_base64: 'ZHJvcHBlZA==',
+          },
+        ],
+      });
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Rendering smoke test
 // ---------------------------------------------------------------------------
 
@@ -151,6 +311,13 @@ describe('Sidebar — rendering', () => {
     renderSidebar();
     expect(
       screen.getByRole('button', { name: /add customer/i }),
+    ).toBeInTheDocument();
+  });
+
+  it('renders the MasterControl capture button', () => {
+    renderSidebar();
+    expect(
+      screen.getByRole('button', { name: /capture with mastercontrol/i }),
     ).toBeInTheDocument();
   });
 

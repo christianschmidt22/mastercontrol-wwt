@@ -312,13 +312,13 @@ describe('AgentsPage — tools toggles', () => {
 describe('AgentsPage — model picker', () => {
   it('model picker shows the current model', () => {
     renderPage();
-    const select = screen.getByRole('combobox');
+    const select = screen.getByLabelText(/^model$/i);
     expect((select as HTMLSelectElement).value).toBe('claude-sonnet-4-6');
   });
 
   it('changing the model enables Save and calls mutation on save', async () => {
     renderPage();
-    const select = screen.getByRole('combobox');
+    const select = screen.getByLabelText(/^model$/i);
     await userEvent.selectOptions(select, 'claude-opus-4-7');
 
     const saveBtn = screen.getByRole('button', { name: /save agent config/i });

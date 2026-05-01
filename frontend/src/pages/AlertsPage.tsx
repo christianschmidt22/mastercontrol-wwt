@@ -152,11 +152,11 @@ export function AlertsPage() {
   };
 
   return (
-    <div>
+    <div style={{ marginTop: -10 }}>
       <p
         style={{
           fontSize: 11,
-          fontWeight: 700,
+          fontWeight: 600,
           letterSpacing: '0.08em',
           textTransform: 'uppercase',
           color: 'var(--ink-3)',
@@ -168,15 +168,15 @@ export function AlertsPage() {
       <h1
         style={{
           fontFamily: 'var(--display)',
-          fontSize: 48,
+          fontSize: 'clamp(18px, 2.8vw, 42px)',
           fontWeight: 500,
-          lineHeight: 1.04,
+          lineHeight: 1.02,
           margin: 0,
         }}
       >
         Alerts
       </h1>
-      <p style={{ margin: '6px 0 22px', color: 'var(--ink-2)', fontSize: 14 }}>
+      <p style={{ margin: '8px 0 32px', color: 'var(--ink-2)', fontSize: 16 }}>
         {activeCount} unread unresolved
       </p>
 

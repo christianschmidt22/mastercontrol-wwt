@@ -146,7 +146,7 @@ function NameEditor({ initial, onSave, onCancel }: NameEditorProps) {
         style={{
           fontFamily: 'var(--display)',
           fontWeight: 500,
-          fontSize: 'clamp(36px, 4vw, 56px)',
+          fontSize: 'clamp(18px, 2.8vw, 42px)',
           lineHeight: 1.02,
           letterSpacing: '-0.02em',
           color: 'var(--ink-1)',
@@ -295,12 +295,12 @@ export interface CustomerPageHeaderProps {
 const NAME_DISPLAY_STYLE: CSSProperties = {
   fontFamily: 'var(--display)',
   fontWeight: 500,
-  fontSize: 'clamp(36px, 4vw, 56px)',
+  fontSize: 'clamp(18px, 2.8vw, 42px)',
   lineHeight: 1.02,
   letterSpacing: '-0.02em',
-  marginLeft: -6,
+  marginLeft: -3,
   textWrap: 'balance',
-  margin: '0 0 12px -6px',
+  margin: '0 0 8px -3px',
   color: 'var(--ink-1)',
   cursor: 'pointer',
   display: 'inline-flex',
@@ -358,7 +358,7 @@ export function CustomerPageHeader({
   );
 
   return (
-    <div style={{ width: '100%' }}>
+    <div style={{ width: '100%', marginTop: -10 }}>
       <div
         style={{
           display: 'flex',

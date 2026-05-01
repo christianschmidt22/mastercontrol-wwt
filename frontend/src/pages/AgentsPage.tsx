@@ -347,7 +347,7 @@ export function AgentsPage() {
   }, []);
 
   return (
-    <div style={{ maxWidth: 1100, margin: '0 auto', padding: '40px 32px' }}>
+    <div style={{ maxWidth: 1100, marginTop: -10 }}>
       {/* Page header */}
       <header style={{ marginBottom: 32 }}>
         <p
@@ -366,7 +366,7 @@ export function AgentsPage() {
         <h1
           style={{
             fontFamily: 'var(--display)',
-            fontSize: 'clamp(36px, 4.5vw, 56px)',
+          fontSize: 'clamp(18px, 2.8vw, 42px)',
             fontWeight: 500,
             lineHeight: 1.02,
             letterSpacing: '-0.02em',
@@ -381,7 +381,7 @@ export function AgentsPage() {
         <p
           style={{
             fontFamily: 'var(--body)',
-            fontSize: 15,
+            fontSize: 16,
             color: 'var(--ink-2)',
             margin: 0,
           }}

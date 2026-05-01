@@ -12,10 +12,10 @@
  *   2. Last sync time + "Sync Now" button.
  */
 
-import { Mail } from 'lucide-react';
 import { useOutlookStatus, useOutlookSyncNow } from '../api/useOutlook';
 import { useQueryClient } from '@tanstack/react-query';
 import { outlookKeys } from '../api/useOutlook';
+import { PageHeader } from '../components/layout/PageHeader';
 
 function formatDateTime(iso: string | null): string {
   if (!iso) return 'Never';
@@ -47,24 +47,10 @@ export function OutlookPage() {
     <main
       style={{
         maxWidth: 600,
-        margin: '40px auto',
-        padding: '0 24px',
+        marginTop: -10,
       }}
     >
-      <header style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 32 }}>
-        <Mail size={20} strokeWidth={1.5} aria-hidden="true" style={{ color: 'var(--ink-2)' }} />
-        <h1
-          style={{
-            margin: 0,
-            fontSize: 22,
-            fontFamily: 'var(--display)',
-            fontWeight: 500,
-            color: 'var(--ink-1)',
-          }}
-        >
-          Outlook
-        </h1>
-      </header>
+      <PageHeader eyebrow="Outlook" title="Outlook" />
 
       {isLoading && (
         <p style={{ fontSize: 14, color: 'var(--ink-3)' }}>Loading…</p>

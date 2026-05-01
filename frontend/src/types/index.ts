@@ -92,3 +92,17 @@ export type {
   ProjectResource,
   ProjectResourceCreate,
 } from './projectResource';
+
+export type {
+  CaptureAttachmentInput,
+  CaptureActionRequest,
+  CaptureActionResult,
+  CaptureActionCreatedTask,
+  CaptureActionCreatedNote,
+} from './captureAction';
+
+export type {
+  HeartbeatConfig,
+  HeartbeatJob,
+  HeartbeatWindow,
+} from './heartbeat';

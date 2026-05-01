@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+- MasterControl's sidebar face is now a capture intake control: click it to
+  grab a browser screen/window screenshot, or drop files/images on it, then
+  send a prompt to the enterprise Claude Code session to create tasks/notes.
+- Capture intake now accepts clipboard screenshots with Ctrl+V, plus a Paste
+  screenshot button for clipboard images.
+- Home now rotates a local daily bank of original pondering responses in the
+  page header while keeping the date beneath the response.
+- Page headers now share Home's tighter vertical rhythm and smaller display
+  type across Tasks, Alerts, Reports, Agents, Settings, Outlook, OEM, and
+  customer screens.
+- Schedules now has a configurable heartbeat section. Outlook COM sync runs
+  through that heartbeat instead of every 15 minutes, with Central-time
+  morning/afternoon windows that can be moved, suspended, or deleted.
 - Agent chat answers now render sanitized Markdown so assistant lists, bold
   labels, and inline tool names are readable instead of flattened into one
   paragraph.
