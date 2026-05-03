@@ -1,11 +1,13 @@
 import { useState, useCallback, useId, type FormEvent, type CSSProperties } from 'react';
-import { Mail, MessageSquare, PhoneCall, Plus } from 'lucide-react';
+import { Mail, MessageSquare, PhoneCall, Plus, Trash2 } from 'lucide-react';
 import { Tile } from '../Tile';
 import { TileEmptyState } from '../TileEmptyState';
+import { ContactCardDialog } from '../../contacts/ContactCardDialog';
 import type { Contact, ContactCreate } from '../../../types';
 import {
   useContacts as useContactsReal,
   useCreateContact as useCreateContactReal,
+  useDeleteContact as useDeleteContactReal,
 } from '../../../api/useContacts';
 
 // ── Hook interfaces — narrower than UseMutationResult for inject-ability ──────
@@ -20,6 +22,11 @@ interface UseCreateContactResult {
   isPending: boolean;
 }
 
+interface UseDeleteContactResult {
+  mutate: (data: { id: number; orgId: number }, opts?: { onSuccess?: () => void }) => void;
+  isPending: boolean;
+}
+
 // ── Props ─────────────────────────────────────────────────────────────────────
 
 interface ContactsTileProps {
@@ -28,6 +35,7 @@ interface ContactsTileProps {
   editMode?: boolean;
   _useContacts?: (orgId: number) => UseContactsResult;
   _useCreateContact?: () => UseCreateContactResult;
+  _useDeleteContact?: () => UseDeleteContactResult;
 }
 
 // ── Style constants ───────────────────────────────────────────────────────────
@@ -56,14 +64,18 @@ const fieldLabelCss: CSSProperties = {
  * "+" header button expands an inline add-contact form.
  * Name (14px), title in --ink-2, email/phone behind hover.
  */
-export function ContactsTile({ orgId, _useContacts, _useCreateContact }: ContactsTileProps) {
+export function ContactsTile({ orgId, _useContacts, _useCreateContact, _useDeleteContact }: ContactsTileProps) {
   const useContacts = _useContacts ?? useContactsReal;
   const useCreateContact = _useCreateContact ?? useCreateContactReal;
+  const useDeleteContact = _useDeleteContact ?? useDeleteContactReal;
 
   const { data: contacts, isLoading } = useContacts(orgId);
   const { mutate: createContact, isPending } = useCreateContact();
+  const { mutate: deleteContact, isPending: isDeleting } = useDeleteContact();
 
   const [hoveredId, setHoveredId] = useState<number | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
+  const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
   const [adding, setAdding] = useState(false);
   const [optimisticContacts, setOptimisticContacts] = useState<Contact[]>([]);
 
@@ -113,6 +125,7 @@ export function ContactsTile({ orgId, _useContacts, _useCreateContact }: Contact
         email: emailVal.trim() || null,
         phone: phoneVal.trim() || null,
         role: roleVal || null,
+        details: null,
         created_at: new Date().toISOString(),
         assigned_org_ids: [],
       };
@@ -134,6 +147,21 @@ export function ContactsTile({ orgId, _useContacts, _useCreateContact }: Contact
       setAdding(false);
     },
     [nameVal, titleVal, emailVal, phoneVal, roleVal, orgId, createContact, resetForm],
+  );
+
+  const handleDelete = useCallback(
+    (contact: Contact) => {
+      if (contact.id < 0) {
+        setOptimisticContacts((prev) => prev.filter((item) => item.id !== contact.id));
+        setConfirmDeleteId(null);
+        return;
+      }
+      deleteContact(
+        { id: contact.id, orgId },
+        { onSuccess: () => setConfirmDeleteId(null) },
+      );
+    },
+    [deleteContact, orgId],
   );
 
   const contactList = [...(contacts ?? []), ...optimisticContacts];
@@ -345,18 +373,27 @@ export function ContactsTile({ orgId, _useContacts, _useCreateContact }: Contact
             >
               {/* Text info — always visible */}
               <div style={{ minWidth: 0, flex: 1 }}>
-                <div
+                <button
+                  type="button"
+                  onClick={() => setSelectedContact(contact)}
                   style={{
+                    border: 'none',
+                    background: 'transparent',
                     fontSize: 14,
                     fontWeight: 500,
                     color: 'var(--ink-1)',
+                    cursor: 'pointer',
+                    fontFamily: 'var(--body)',
                     overflow: 'hidden',
                     textOverflow: 'ellipsis',
                     whiteSpace: 'nowrap',
+                    padding: 0,
+                    textAlign: 'left',
+                    maxWidth: '100%',
                   }}
                 >
                   {contact.name}
-                </div>
+                </button>
                 {contact.title && (
                   <div
                     style={{
@@ -405,12 +442,52 @@ export function ContactsTile({ orgId, _useContacts, _useCreateContact }: Contact
                   gap: 4,
                   alignItems: 'center',
                   flexShrink: 0,
-                  opacity: hoveredId === contact.id ? 1 : 0,
+                  opacity: hoveredId === contact.id || confirmDeleteId === contact.id ? 1 : 0,
                   transition: 'opacity 150ms var(--ease)',
                 }}
-                aria-hidden={hoveredId !== contact.id}
+                aria-hidden={hoveredId !== contact.id && confirmDeleteId !== contact.id}
               >
-                {contact.email && (
+                {confirmDeleteId === contact.id ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => handleDelete(contact)}
+                      disabled={isDeleting}
+                      aria-label={`Confirm delete ${contact.name}`}
+                      style={{
+                        border: '1px solid var(--accent)',
+                        borderRadius: 4,
+                        background: 'transparent',
+                        color: 'var(--accent)',
+                        cursor: isDeleting ? 'not-allowed' : 'pointer',
+                        fontFamily: 'var(--body)',
+                        fontSize: 11,
+                        padding: '4px 7px',
+                      }}
+                    >
+                      Delete
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setConfirmDeleteId(null)}
+                      aria-label={`Cancel delete ${contact.name}`}
+                      style={{
+                        border: '1px solid var(--rule)',
+                        borderRadius: 4,
+                        background: 'transparent',
+                        color: 'var(--ink-2)',
+                        cursor: 'pointer',
+                        fontFamily: 'var(--body)',
+                        fontSize: 11,
+                        padding: '4px 7px',
+                      }}
+                    >
+                      Cancel
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    {contact.email && (
                   <a
                     href={`mailto:${contact.email}`}
                     aria-label={`Email ${contact.name}`}
@@ -469,11 +546,40 @@ export function ContactsTile({ orgId, _useContacts, _useCreateContact }: Contact
                   >
                     <PhoneCall size={12} strokeWidth={1.5} aria-hidden="true" />
                   </a>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setConfirmDeleteId(contact.id)}
+                      aria-label={`Delete ${contact.name}`}
+                      tabIndex={hoveredId === contact.id ? 0 : -1}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        width: 26,
+                        height: 26,
+                        borderRadius: 4,
+                        border: '1px solid var(--rule)',
+                        color: 'var(--accent)',
+                        background: 'transparent',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <Trash2 size={12} strokeWidth={1.5} aria-hidden="true" />
+                    </button>
+                  </>
                 )}
               </div>
             </li>
           ))}
         </ul>
+      )}
+      {selectedContact && (
+        <ContactCardDialog
+          contact={selectedContact}
+          onSaved={setSelectedContact}
+          onClose={() => setSelectedContact(null)}
+        />
       )}
     </Tile>
   );

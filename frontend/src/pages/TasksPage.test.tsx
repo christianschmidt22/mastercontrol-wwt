@@ -9,20 +9,28 @@ import type { Organization, Task } from '../types';
 const createMutate = vi.fn();
 const updateMutate = vi.fn();
 const completeMutate = vi.fn();
+const deleteMutate = vi.fn();
 
 vi.mock('../api/useTasks', () => ({
   useTasks: vi.fn(),
   useCreateTask: vi.fn(() => ({ mutate: createMutate, isPending: false })),
   useUpdateTask: vi.fn(() => ({ mutate: updateMutate, isPending: false })),
   useCompleteTask: vi.fn(() => ({ mutate: completeMutate, isPending: false })),
+  useDeleteTask: vi.fn(() => ({ mutate: deleteMutate, isPending: false })),
 }));
 
 vi.mock('../api/useOrganizations', () => ({
   useOrganizations: vi.fn(),
 }));
 
+vi.mock('../api/useContacts', () => ({
+  useAllContacts: vi.fn(),
+  useContacts: vi.fn(),
+}));
+
 import { useTasks } from '../api/useTasks';
 import { useOrganizations } from '../api/useOrganizations';
+import { useAllContacts, useContacts } from '../api/useContacts';
 
 function renderPage() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -50,6 +58,8 @@ const openTask: Task = {
   contact_id: null,
   project_id: 14,
   title: 'Schedule design review',
+  details: 'Confirm the pricing inputs and deployment owner.',
+  kind: 'task',
   due_date: '2026-05-01',
   status: 'open',
   created_at: '2026-04-29 00:35:23',
@@ -78,16 +88,29 @@ beforeEach(() => {
     isError: false,
   }) as unknown as ReturnType<typeof useOrganizations>);
 
+  vi.mocked(useAllContacts).mockReturnValue({
+    data: [],
+    isLoading: false,
+    isError: false,
+  } as unknown as ReturnType<typeof useAllContacts>);
+
+  vi.mocked(useContacts).mockReturnValue({
+    data: [],
+    isLoading: false,
+    isError: false,
+  } as unknown as ReturnType<typeof useContacts>);
+
   createMutate.mockReset();
   updateMutate.mockReset();
   completeMutate.mockReset();
+  deleteMutate.mockReset();
 });
 
 describe('TasksPage table', () => {
   it('renders tasks in a column table with header filters', () => {
     renderPage();
 
-    expect(screen.getByRole('table')).toBeInTheDocument();
+    expect(screen.getAllByRole('table')[0]).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^task$/i })).toBeInTheDocument();
     expect(screen.getByLabelText('Filter tasks by title')).toBeInTheDocument();
     expect(screen.getByLabelText('Filter tasks by organization')).toBeInTheDocument();
@@ -125,12 +148,13 @@ describe('TasksPage table', () => {
     await user.selectOptions(screen.getByLabelText('Filter tasks by status'), 'all');
     await user.click(screen.getByRole('button', { name: /^task$/i }));
 
-    const bodyRows = within(screen.getByRole('table')).getAllByRole('row').slice(2);
+    const taskTable = screen.getAllByRole('table')[0]!;
+    const bodyRows = within(taskTable).getAllByRole('row').slice(2);
     expect(bodyRows[0]).toHaveTextContent('Schedule design review');
     expect(bodyRows[1]).toHaveTextContent('Send recap');
 
     await user.click(screen.getByRole('button', { name: /^task$/i }));
-    const resortedRows = within(screen.getByRole('table')).getAllByRole('row').slice(2);
+    const resortedRows = within(taskTable).getAllByRole('row').slice(2);
     expect(resortedRows[0]).toHaveTextContent('Send recap');
   });
 
@@ -139,15 +163,45 @@ describe('TasksPage table', () => {
     renderPage();
 
     await user.keyboard('{Control>}n{/Control}');
-    await user.type(screen.getByLabelText('Task'), 'Call customer');
-    await user.selectOptions(screen.getByLabelText('Customer'), '2');
-    await user.click(screen.getByRole('button', { name: 'Add' }));
+    const taskInput = screen.getByLabelText('Task');
+    const addForm = taskInput.closest('form')!;
+    await user.type(taskInput, 'Call customer');
+    await user.type(within(addForm).getByLabelText('Details'), 'Capture prep notes');
+    await user.selectOptions(within(addForm).getByLabelText('Customer'), '2');
+    await user.click(within(addForm).getByRole('button', { name: 'Add' }));
 
     expect(createMutate).toHaveBeenCalledWith(
       {
         title: 'Call customer',
+        details: 'Capture prep notes',
+        kind: 'task',
         due_date: null,
         organization_id: 2,
+        status: 'open',
+      },
+      expect.any(Object),
+    );
+  });
+
+  it('saves task details from the edit dialog', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(screen.getByRole('button', { name: 'Schedule design review' }));
+    const dialog = screen.getByRole('dialog', { name: 'Edit task' });
+    const details = within(dialog).getByLabelText('Details');
+    await user.clear(details);
+    await user.type(details, 'Updated pricing notes and next step');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    expect(updateMutate).toHaveBeenCalledWith(
+      {
+        id: 7,
+        title: 'Schedule design review',
+        details: 'Updated pricing notes and next step',
+        organization_id: 2,
+        contact_id: null,
+        due_date: '2026-05-01',
         status: 'open',
       },
       expect.any(Object),

@@ -175,6 +175,7 @@ describe('taskModel.create', () => {
     const task = taskModel.create({
       title: 'Full task',
       organization_id: org.id,
+      details: 'Pricing notes and next action context',
       due_date: '2026-07-15',
       status: 'open',
     });
@@ -182,6 +183,8 @@ describe('taskModel.create', () => {
     expect(task.id).toBeTypeOf('number');
     expect(task.title).toBe('Full task');
     expect(task.organization_id).toBe(org.id);
+    expect(task.details).toBe('Pricing notes and next action context');
+    expect(task.kind).toBe('task');
     expect(task.due_date).toBe('2026-07-15');
     expect(task.status).toBe('open');
     expect(task.completed_at).toBeNull();
@@ -191,9 +194,28 @@ describe('taskModel.create', () => {
     const task = taskModel.create({ title: 'Default status task' });
     expect(task.status).toBe('open');
   });
+
+  it('creates and filters remembered questions separately from tasks', () => {
+    makeTask({ title: 'Normal follow-up', kind: 'task', status: 'open' });
+    const question = makeTask({ title: 'Ask Cory about budget owner', kind: 'question', status: 'open' });
+
+    const questions = taskModel.list({ kind: 'question' });
+
+    expect(questions.map((task) => task.id)).toContain(question.id);
+    expect(questions.every((task) => task.kind === 'question')).toBe(true);
+  });
 });
 
 describe('taskModel.update status transitions', () => {
+  it('updates task details independently of title and due date', () => {
+    const task = makeTask({ title: 'Track details', details: 'Initial notes' });
+
+    const updated = taskModel.update(task.id, { details: 'Expanded working notes' })!;
+
+    expect(updated.title).toBe('Track details');
+    expect(updated.details).toBe('Expanded working notes');
+  });
+
   it('clears completed_at when a completed task is reopened', () => {
     const task = makeTask({ title: 'Reopen task', status: 'open' });
     const completed = taskModel.complete(task.id)!;

@@ -19,6 +19,11 @@ export type TileLayoutKey =
   | 'layout.oem'
   | `layout.project.${number}`;
 
+function mergeWithDefaults(saved: TileLayout[], defaults: TileLayout[]): TileLayout[] {
+  const ids = new Set(saved.map((tile) => tile.id));
+  return [...saved, ...defaults.filter((tile) => !ids.has(tile.id))];
+}
+
 /**
  * Fetches and persists tile layout via the settings API.
  * Key: 'layout.customer', 'layout.oem', or 'layout.project.<id>'.
@@ -46,7 +51,7 @@ export function useTileLayout(
       const body: { key: string; value: string } = await res.json() as { key: string; value: string };
       try {
         const parsed = JSON.parse(body.value) as LayoutPayload;
-        return parsed.tiles ?? defaultLayout;
+        return parsed.tiles ? mergeWithDefaults(parsed.tiles, defaultLayout) : defaultLayout;
       } catch {
         return defaultLayout;
       }

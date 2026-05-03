@@ -2,11 +2,45 @@ import { describe, it, expect, beforeAll } from 'vitest';
 import request from 'supertest';
 import type { Express } from 'express';
 import { buildApp } from '../test/app.js';
-import { makeOrg, makeContact } from '../test/factories.js';
+import { makeOrg, makeContact, makeTask } from '../test/factories.js';
+import { taskModel } from '../models/task.model.js';
 
 let app: Express;
 beforeAll(async () => {
   app = await buildApp();
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/contacts
+// ---------------------------------------------------------------------------
+
+describe('GET /api/contacts', () => {
+  it('lists contacts across organizations for the canonical contacts page', async () => {
+    const orgA = makeOrg({ name: 'Contact List A' });
+    const orgB = makeOrg({ name: 'Contact List B' });
+    makeContact(orgA.id, { name: 'Alice Global' });
+    makeContact(orgB.id, { name: 'Bob Global' });
+
+    const res = await request(app).get('/api/contacts');
+
+    expect(res.status).toBe(200);
+    const names = (res.body as Array<{ name: string }>).map((contact) => contact.name);
+    expect(names).toContain('Alice Global');
+    expect(names).toContain('Bob Global');
+  });
+
+  it('filters contacts by search query', async () => {
+    const org = makeOrg();
+    makeContact(org.id, { name: 'Cory Degerstrom', email: 'cory@example.com' });
+    makeContact(org.id, { name: 'Someone Else' });
+
+    const res = await request(app).get('/api/contacts?q=Degerstrom');
+
+    expect(res.status).toBe(200);
+    const names = (res.body as Array<{ name: string }>).map((contact) => contact.name);
+    expect(names).toContain('Cory Degerstrom');
+    expect(names).not.toContain('Someone Else');
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -91,10 +125,15 @@ describe('PUT /api/contacts/:id', () => {
 
     const res = await request(app)
       .put(`/api/contacts/${contact.id}`)
-      .send({ name: 'New Name', title: 'New Title' });
+      .send({ name: 'New Name', title: 'New Title', details: 'Prefers concise follow-ups.' });
 
     expect(res.status).toBe(200);
-    expect(res.body).toMatchObject({ id: contact.id, name: 'New Name', title: 'New Title' });
+    expect(res.body).toMatchObject({
+      id: contact.id,
+      name: 'New Name',
+      title: 'New Title',
+      details: 'Prefers concise follow-ups.',
+    });
   });
 
   it('returns 404 for unknown id', async () => {
@@ -128,6 +167,24 @@ describe('DELETE /api/contacts/:id', () => {
 
     const res = await request(app).delete(`/api/contacts/${contact.id}`);
     expect(res.status).toBe(204);
+  });
+
+  it('keeps linked questions by unlinking contact_id before delete', async () => {
+    const org = makeOrg();
+    const contact = makeContact(org.id);
+    const question = makeTask({
+      organization_id: org.id,
+      contact_id: contact.id,
+      title: 'Ask about renewal timing',
+      kind: 'question',
+    });
+
+    const res = await request(app).delete(`/api/contacts/${contact.id}`);
+
+    expect(res.status).toBe(204);
+    const keptQuestion = taskModel.get(question.id);
+    expect(keptQuestion).toBeDefined();
+    expect(keptQuestion?.contact_id).toBeNull();
   });
 
   it('returns 404 for unknown id', async () => {

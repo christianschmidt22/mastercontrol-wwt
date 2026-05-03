@@ -1,6 +1,7 @@
 import { db } from '../db/database.js';
 
 export type TaskStatus = 'open' | 'done' | 'snoozed';
+export type TaskKind = 'task' | 'question';
 
 export interface Task {
   id: number;
@@ -8,6 +9,8 @@ export interface Task {
   contact_id: number | null;
   project_id: number | null;
   title: string;
+  details: string | null;
+  kind: TaskKind;
   due_date: string | null;
   status: TaskStatus;
   created_at: string;
@@ -19,6 +22,8 @@ export interface TaskInput {
   organization_id?: number | null;
   contact_id?: number | null;
   project_id?: number | null;
+  details?: string | null;
+  kind?: TaskKind;
   due_date?: string | null;
   status?: TaskStatus;
 }
@@ -27,24 +32,58 @@ export interface TaskFilters {
   status?: TaskStatus;
   due_before?: string;
   org_id?: number;
+  contact_id?: number;
   project_id?: number;
+  kind?: TaskKind;
 }
 
 export interface TaskUpdate {
   title?: string;
+  organization_id?: number | null;
+  contact_id?: number | null;
+  project_id?: number | null;
+  details?: string | null;
+  kind?: TaskKind;
   due_date?: string | null;
   status?: TaskStatus;
 }
 
 const getStmt = db.prepare<[number], Task>('SELECT * FROM tasks WHERE id = ?');
 
-const insertStmt = db.prepare<[string, number | null, number | null, number | null, string | null, TaskStatus]>(
-  'INSERT INTO tasks (title, organization_id, contact_id, project_id, due_date, status) VALUES (?, ?, ?, ?, ?, ?)'
+const insertStmt = db.prepare<[
+  string,
+  string | null,
+  TaskKind,
+  number | null,
+  number | null,
+  number | null,
+  string | null,
+  TaskStatus,
+]>(
+  `INSERT INTO tasks (title, details, kind, organization_id, contact_id, project_id, due_date, status)
+   VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
 );
 
-const updateStmt = db.prepare<[string, string | null, TaskStatus, TaskStatus, TaskStatus, number]>(
+const updateStmt = db.prepare<[
+  string,
+  string | null,
+  TaskKind,
+  number | null,
+  number | null,
+  number | null,
+  string | null,
+  TaskStatus,
+  TaskStatus,
+  TaskStatus,
+  number,
+]>(
   `UPDATE tasks
    SET title = ?,
+       details = ?,
+       kind = ?,
+       organization_id = ?,
+       contact_id = ?,
+       project_id = ?,
        due_date = ?,
        status = ?,
        completed_at = CASE
@@ -77,9 +116,17 @@ function buildListQuery(filters: TaskFilters): { sql: string; params: unknown[] 
     clauses.push('organization_id = ?');
     params.push(filters.org_id);
   }
+  if (filters.contact_id !== undefined) {
+    clauses.push('contact_id = ?');
+    params.push(filters.contact_id);
+  }
   if (filters.project_id !== undefined) {
     clauses.push('project_id = ?');
     params.push(filters.project_id);
+  }
+  if (filters.kind !== undefined) {
+    clauses.push('kind = ?');
+    params.push(filters.kind);
   }
 
   const where = clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : '';
@@ -100,6 +147,8 @@ export const taskModel = {
   create: (input: TaskInput): Task => {
     const result = insertStmt.run(
       input.title,
+      input.details ?? null,
+      input.kind ?? 'task',
       input.organization_id ?? null,
       input.contact_id ?? null,
       input.project_id ?? null,
@@ -115,6 +164,11 @@ export const taskModel = {
     const nextStatus = patch.status ?? current.status;
     updateStmt.run(
       patch.title ?? current.title,
+      patch.details !== undefined ? (patch.details ?? null) : current.details,
+      patch.kind ?? current.kind,
+      patch.organization_id !== undefined ? (patch.organization_id ?? null) : current.organization_id,
+      patch.contact_id !== undefined ? (patch.contact_id ?? null) : current.contact_id,
+      patch.project_id !== undefined ? (patch.project_id ?? null) : current.project_id,
       patch.due_date !== undefined ? (patch.due_date ?? null) : current.due_date,
       nextStatus,
       nextStatus,

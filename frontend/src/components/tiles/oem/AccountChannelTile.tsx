@@ -9,6 +9,7 @@ import {
 import { Mail, Phone, Plus } from 'lucide-react';
 import { Tile } from '../Tile';
 import { TileEmptyState } from '../TileEmptyState';
+import { ContactCardDialog } from '../../contacts/ContactCardDialog';
 import type { Contact, ContactCreate } from '../../../types';
 import {
   useContacts as useContactsReal,
@@ -63,7 +64,7 @@ function isValidEmail(val: string): boolean {
 /**
  * ContactRow — reusable compact row for a single contact.
  */
-function ContactRow({ contact }: { contact: Contact }) {
+function ContactRow({ contact, onOpen }: { contact: Contact; onOpen: (contact: Contact) => void }) {
   const [hovered, setHovered] = useState(false);
 
   return (
@@ -80,18 +81,27 @@ function ContactRow({ contact }: { contact: Contact }) {
       }}
     >
       <div style={{ minWidth: 0 }}>
-        <div
+        <button
+          type="button"
+          onClick={() => onOpen(contact)}
           style={{
+            border: 'none',
+            background: 'transparent',
             fontSize: 13,
             fontWeight: 500,
             color: 'var(--ink-1)',
+            cursor: 'pointer',
+            fontFamily: 'var(--body)',
             overflow: 'hidden',
             textOverflow: 'ellipsis',
             whiteSpace: 'nowrap',
+            padding: 0,
+            textAlign: 'left',
+            maxWidth: '100%',
           }}
         >
           {contact.name}
-        </div>
+        </button>
         {contact.title && (
           <div
             style={{
@@ -182,6 +192,7 @@ export function AccountChannelTile({
 
   const [adding, setAdding] = useState(false);
   const [optimisticContacts, setOptimisticContacts] = useState<Contact[]>([]);
+  const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
 
   // Form state
   const [nameVal, setNameVal] = useState('');
@@ -252,6 +263,7 @@ export function AccountChannelTile({
         email: email || null,
         phone: null,
         role: roleVal,
+        details: null,
         created_at: new Date().toISOString(),
         assigned_org_ids: [],
       };
@@ -467,7 +479,7 @@ export function AccountChannelTile({
               </h3>
               <ul role="list" style={{ listStyle: 'none', margin: 0, padding: 0 }}>
                 {accountTeam.map((c) => (
-                  <ContactRow key={c.id} contact={c} />
+                  <ContactRow key={c.id} contact={c} onOpen={setSelectedContact} />
                 ))}
               </ul>
             </section>
@@ -490,12 +502,19 @@ export function AccountChannelTile({
               </h3>
               <ul role="list" style={{ listStyle: 'none', margin: 0, padding: 0 }}>
                 {channelTeam.map((c) => (
-                  <ContactRow key={c.id} contact={c} />
+                  <ContactRow key={c.id} contact={c} onOpen={setSelectedContact} />
                 ))}
               </ul>
             </section>
           )}
         </div>
+      )}
+      {selectedContact && (
+        <ContactCardDialog
+          contact={selectedContact}
+          onSaved={setSelectedContact}
+          onClose={() => setSelectedContact(null)}
+        />
       )}
     </Tile>
   );

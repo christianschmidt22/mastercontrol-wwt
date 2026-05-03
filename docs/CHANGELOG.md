@@ -2,6 +2,26 @@
 
 ## Unreleased
 
+- Added a Tools area with a BOM Analyzer. Customer quote/config uploads are
+  stored in each customer's `quotes_configs` folder, listed/filterable in the
+  app, and can be selected for Claude Code-guided BOM analysis with dedicated
+  copy/paste output. Selected files can now be moved between customer folders,
+  the file table supports hideable/resizable columns, and analysis shows
+  live working-state updates while Claude Code is running. The analysis pane
+  now renders Markdown reports in a readable preview with a raw Markdown view
+  retained for troubleshooting and exact copying, and preserves the last
+  customer/prompt/report locally when the page remounts.
+- Tasks now have persisted free-form details for working notes, with the task
+  edit dialog exposing a larger Details section and the task table showing a
+  compact details preview.
+- Contacts now have a top-level source-of-truth page, global contacts API,
+  and a reviewable Microsoft 365 enrichment action powered by the enterprise
+  Claude Code connector.
+- Contact rows now open a reusable editable contact card with the main contact
+  fields, open questions, quick communication actions, and persistent details/notes.
+- Tasks now distinguish normal follow-ups from remembered customer questions.
+  The Tasks page has a dedicated Questions panel, and C.H. Robinson has a
+  contact-linked Cory questions tile on the customer landing page.
 - MasterControl's sidebar face is now a capture intake control: click it to
   grab a browser screen/window screenshot, or drop files/images on it, then
   send a prompt to the enterprise Claude Code session to create tasks/notes.

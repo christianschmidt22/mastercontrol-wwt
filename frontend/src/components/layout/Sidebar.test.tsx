@@ -331,8 +331,8 @@ describe('Sidebar — rendering', () => {
     renderSidebar();
     const nav = screen.getByRole('navigation', { name: /primary/i });
     const hrElements = nav.querySelectorAll('hr');
-    // Expect at least 3 dividers (after top-nav, after customers, after OEM, after AI)
-    expect(hrElements.length).toBeGreaterThanOrEqual(3);
+    // Top nav, customers, then the continuous OEM/Agents/Settings section.
+    expect(hrElements.length).toBe(2);
   });
 });
 

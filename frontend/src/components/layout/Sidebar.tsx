@@ -1,7 +1,7 @@
 import type { ReactNode, KeyboardEvent, DragEvent } from 'react';
 import { useCallback, useRef, useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
-import { Home, CheckSquare, BarChart2, Bot, Settings, Package, Bell } from 'lucide-react';
+import { Home, CheckSquare, BarChart2, Bot, Settings, Package, Bell, Users, Wrench } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useOrganizations, useOrgLastTouched } from '../../api/useOrganizations';
 import { useCaptureAction } from '../../api/useCaptureAction';
@@ -524,6 +524,16 @@ export function Sidebar() {
           icon={<BarChart2 size={16} strokeWidth={1.5} />}
           label="Reports"
         />
+        <NavItem
+          to="/contacts"
+          icon={<Users size={16} strokeWidth={1.5} />}
+          label="Contacts"
+        />
+        <NavItem
+          to="/tools"
+          icon={<Wrench size={16} strokeWidth={1.5} />}
+          label="Tools"
+        />
       </Section>
 
       <Divider />
@@ -584,25 +594,13 @@ export function Sidebar() {
           icon={<Package size={16} strokeWidth={1.5} />}
           label="OEM"
         />
-      </Section>
-
-      <Divider />
-
-      {/* AI */}
-      <Section heading="AI">
         <NavItem to="/agents" icon={<Bot size={16} strokeWidth={1.5} />} label="Agents" />
-      </Section>
-
-      <Divider />
-
-      {/* Bottom: Settings */}
-      <div className="mt-auto flex flex-col gap-0.5">
         <NavItem
           to="/settings"
           icon={<Settings size={16} strokeWidth={1.5} />}
           label="Settings"
         />
-      </div>
+      </Section>
     </nav>
   );
 }

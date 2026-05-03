@@ -18,7 +18,7 @@ interface UseTaskMutations {
 }
 
 function useTasksForTile(params: { orgId: number; status: string }): UseTasksResult {
-  return useTasksReal({ orgId: params.orgId, status: params.status as TaskStatus });
+  return useTasksReal({ orgId: params.orgId, status: params.status as TaskStatus, kind: 'task' });
 }
 
 function useTaskMutationsReal(): UseTaskMutations {
@@ -27,7 +27,7 @@ function useTaskMutationsReal(): UseTaskMutations {
   return {
     complete: (taskId) => completeTask(taskId),
     create: (title, orgId, dueDate) =>
-      createTask({ title, organization_id: orgId, due_date: dueDate ?? null, status: 'open' }),
+      createTask({ title, organization_id: orgId, due_date: dueDate ?? null, status: 'open', kind: 'task' }),
   };
 }
 

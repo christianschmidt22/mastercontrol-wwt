@@ -32,6 +32,7 @@ describe('POST /api/capture-action/run', () => {
         {
           id: 42,
           title: 'Follow up with Pat',
+          details: 'Visible screenshot context',
           organization_id: 2,
           due_date: '2026-05-04',
           status: 'open',

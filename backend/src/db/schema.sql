@@ -38,6 +38,7 @@ CREATE TABLE IF NOT EXISTS contacts (
   email TEXT,
   phone TEXT,
   role TEXT,
+  details TEXT,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_contacts_org ON contacts(organization_id);
@@ -191,7 +192,10 @@ CREATE TABLE IF NOT EXISTS tasks (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   organization_id INTEGER REFERENCES organizations(id) ON DELETE CASCADE,
   contact_id INTEGER REFERENCES contacts(id) ON DELETE CASCADE,
+  project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL,
   title TEXT NOT NULL,
+  details TEXT,
+  kind TEXT NOT NULL DEFAULT 'task',
   due_date DATETIME,
   status TEXT NOT NULL DEFAULT 'open' CHECK(status IN ('open', 'done', 'snoozed')),
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -199,6 +203,9 @@ CREATE TABLE IF NOT EXISTS tasks (
 );
 CREATE INDEX IF NOT EXISTS idx_tasks_status_due ON tasks(status, due_date);
 CREATE INDEX IF NOT EXISTS idx_tasks_org ON tasks(organization_id);
+CREATE INDEX IF NOT EXISTS idx_tasks_project ON tasks(project_id);
+CREATE INDEX IF NOT EXISTS idx_tasks_kind_status_due ON tasks(kind, status, due_date);
+CREATE INDEX IF NOT EXISTS idx_tasks_contact ON tasks(contact_id);
 
 CREATE TABLE IF NOT EXISTS agent_configs (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

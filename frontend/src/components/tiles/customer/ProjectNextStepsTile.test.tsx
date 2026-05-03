@@ -19,6 +19,8 @@ const openTask: Task = {
   contact_id: null,
   project_id: 14,
   title: 'Schedule pricing and design review',
+  details: null,
+  kind: 'task',
   due_date: '2026-05-01',
   status: 'open',
   created_at: '2026-04-29 00:35:23',

@@ -12,6 +12,8 @@ export type {
   Contact,
   ContactCreate,
   ContactUpdate,
+  ContactEnrichmentResponse,
+  ContactEnrichmentSuggestion,
 } from './contact';
 
 export type {
@@ -42,6 +44,7 @@ export type {
 } from './note';
 
 export type {
+  TaskKind,
   TaskStatus,
   Task,
   TaskCreate,
@@ -106,3 +109,14 @@ export type {
   HeartbeatJob,
   HeartbeatWindow,
 } from './heartbeat';
+
+export type {
+  BomToolFile,
+  BomToolFileList,
+  BomToolUploadFile,
+  BomToolUploadRequest,
+  BomToolAnalyzeRequest,
+  BomToolAnalyzeResponse,
+  BomToolMoveRequest,
+  BomToolMoveResponse,
+} from './bomTool';

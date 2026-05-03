@@ -1,6 +1,8 @@
 import { useEffect, useState, type CSSProperties } from 'react';
 import { Trash2, X } from 'lucide-react';
 import { useDeleteTask, useUpdateTask } from '../../api/useTasks';
+import { useContacts } from '../../api/useContacts';
+import { useOrganizations } from '../../api/useOrganizations';
 import type { Task, TaskStatus } from '../../types';
 
 interface TaskEditDialogProps {
@@ -52,14 +54,24 @@ export function TaskEditDialog({ task, onClose }: TaskEditDialogProps) {
   const deleteTask = useDeleteTask();
 
   const [title, setTitle] = useState(task.title);
+  const [details, setDetails] = useState(task.details ?? '');
+  const [organizationId, setOrganizationId] = useState(task.organization_id !== null ? String(task.organization_id) : '');
+  const [contactId, setContactId] = useState(task.contact_id !== null ? String(task.contact_id) : '');
   const [dueDate, setDueDate] = useState(task.due_date ?? '');
   const [status, setStatus] = useState<TaskStatus>(task.status);
+  const customersQuery = useOrganizations('customer');
+  const oemsQuery = useOrganizations('oem');
+  const selectedOrgId = organizationId ? Number(organizationId) : 0;
+  const contactsQuery = useContacts(selectedOrgId);
 
   useEffect(() => {
     setTitle(task.title);
+    setDetails(task.details ?? '');
+    setOrganizationId(task.organization_id !== null ? String(task.organization_id) : '');
+    setContactId(task.contact_id !== null ? String(task.contact_id) : '');
     setDueDate(task.due_date ?? '');
     setStatus(task.status);
-  }, [task.id, task.title, task.due_date, task.status]);
+  }, [task.id, task.title, task.details, task.organization_id, task.contact_id, task.due_date, task.status]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -70,9 +82,13 @@ export function TaskEditDialog({ task, onClose }: TaskEditDialogProps) {
   }, [onClose]);
 
   const trimmedTitle = title.trim();
+  const trimmedDetails = details.trim();
   const titleValid = trimmedTitle.length > 0;
   const isDirty =
     trimmedTitle !== task.title ||
+    (trimmedDetails || null) !== task.details ||
+    (organizationId ? Number(organizationId) : null) !== task.organization_id ||
+    (contactId ? Number(contactId) : null) !== task.contact_id ||
     (dueDate || null) !== task.due_date ||
     status !== task.status;
 
@@ -82,12 +98,18 @@ export function TaskEditDialog({ task, onClose }: TaskEditDialogProps) {
       {
         id: task.id,
         title: trimmedTitle,
+        details: trimmedDetails || null,
+        organization_id: organizationId ? Number(organizationId) : null,
+        contact_id: contactId ? Number(contactId) : null,
         due_date: dueDate || null,
         status,
       },
       { onSuccess: () => onClose() },
     );
   };
+
+  const orgs = [...(customersQuery.data ?? []), ...(oemsQuery.data ?? [])];
+  const contacts = contactsQuery.data ?? [];
 
   const handleDelete = () => {
     if (!confirm(`Delete task "${task.title}"?`)) return;
@@ -114,7 +136,7 @@ export function TaskEditDialog({ task, onClose }: TaskEditDialogProps) {
     >
       <section
         style={{
-          width: 'min(520px, 100%)',
+          width: 'min(650px, 100%)',
           border: '1px solid var(--rule)',
           borderRadius: 8,
           background: 'var(--bg)',
@@ -169,6 +191,61 @@ export function TaskEditDialog({ task, onClose }: TaskEditDialogProps) {
               borderColor: titleValid ? 'var(--rule)' : 'var(--accent)',
             }}
           />
+        </div>
+
+        <div>
+          <label style={labelStyle} htmlFor="task-edit-details">Details</label>
+          <textarea
+            id="task-edit-details"
+            value={details}
+            onChange={(e) => setDetails(e.target.value)}
+            rows={8}
+            placeholder="Notes, current thinking, blockers, next actions..."
+            style={{
+              ...fieldStyle,
+              resize: 'vertical',
+              minHeight: 150,
+            }}
+          />
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <div>
+            <label style={labelStyle} htmlFor="task-edit-org">Organization</label>
+            <select
+              id="task-edit-org"
+              value={organizationId}
+              onChange={(e) => {
+                setOrganizationId(e.target.value);
+                setContactId('');
+              }}
+              style={fieldStyle}
+            >
+              <option value="" style={{ background: 'var(--bg)', color: 'var(--ink-1)' }}>Unassigned</option>
+              {orgs.map((org) => (
+                <option key={org.id} value={org.id} style={{ background: 'var(--bg)', color: 'var(--ink-1)' }}>
+                  {org.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label style={labelStyle} htmlFor="task-edit-contact">Contact</label>
+            <select
+              id="task-edit-contact"
+              value={contactId}
+              onChange={(e) => setContactId(e.target.value)}
+              disabled={!organizationId}
+              style={fieldStyle}
+            >
+              <option value="" style={{ background: 'var(--bg)', color: 'var(--ink-1)' }}>No contact</option>
+              {contacts.map((contact) => (
+                <option key={contact.id} value={contact.id} style={{ background: 'var(--bg)', color: 'var(--ink-1)' }}>
+                  {contact.name}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>

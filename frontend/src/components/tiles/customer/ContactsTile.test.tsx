@@ -39,6 +39,10 @@ function makeMutationHook(mutate = vi.fn()) {
   return { hook: () => ({ mutate, isPending: false }), mutate };
 }
 
+function makeDeleteMutationHook(mutate = vi.fn()) {
+  return { hook: () => ({ mutate, isPending: false }), mutate };
+}
+
 // ── Empty state ───────────────────────────────────────────────────────────────
 
 describe('ContactsTile — empty state', () => {
@@ -80,6 +84,30 @@ describe('ContactsTile — data view', () => {
     expect(
       screen.queryByText('No contacts yet. Add the account team.'),
     ).toBeNull();
+  });
+
+  it('requires confirmation before deleting a contact', async () => {
+    const user = userEvent.setup();
+    const { hook, mutate } = makeDeleteMutationHook();
+    renderWithClient(
+      <ContactsTile
+        orgId={10}
+        _useContacts={makeHook([baseContact])}
+        _useDeleteContact={hook}
+      />,
+    );
+
+    await user.hover(screen.getByText('Alice Smith'));
+    await user.click(screen.getByRole('button', { name: 'Delete Alice Smith' }));
+
+    expect(mutate).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole('button', { name: 'Confirm delete Alice Smith' }));
+
+    expect(mutate).toHaveBeenCalledWith(
+      { id: baseContact.id, orgId: 10 },
+      expect.any(Object),
+    );
   });
 });
 

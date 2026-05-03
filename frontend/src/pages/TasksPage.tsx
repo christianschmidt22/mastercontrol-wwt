@@ -16,10 +16,12 @@ import {
   useTasks,
   useUpdateTask,
 } from '../api/useTasks';
+import { useAllContacts } from '../api/useContacts';
 import { useOrganizations } from '../api/useOrganizations';
+import { ContactCardDialog } from '../components/contacts/ContactCardDialog';
 import { TaskEditDialog } from '../components/tasks/TaskEditDialog';
 import { TileEmptyState } from '../components/tiles/TileEmptyState';
-import type { Organization, Task, TaskStatus } from '../types';
+import type { Contact, Organization, Task, TaskStatus } from '../types';
 
 type SortKey = 'title' | 'organization' | 'status' | 'due_date' | 'created_at' | 'completed_at';
 type SortDir = 'asc' | 'desc';
@@ -75,7 +77,7 @@ const filterControl: CSSProperties = {
 };
 
 function localDateStr(d: Date): string {
-  // LOCAL date — toISOString() rolls to next day in evening hours west of UTC.
+  // LOCAL date; toISOString() rolls to next day in evening hours west of UTC.
   const yyyy = d.getFullYear();
   const mm = String(d.getMonth() + 1).padStart(2, '0');
   const dd = String(d.getDate()).padStart(2, '0');
@@ -126,6 +128,10 @@ function formatDate(value: string | null): string {
 
 function orgLabel(task: Task, orgMap: Map<number, string>): string {
   return task.organization_id === null ? 'Unassigned' : orgMap.get(task.organization_id) ?? `Org #${task.organization_id}`;
+}
+
+function contactLabel(task: Task, contactMap: Map<number, Contact>): string {
+  return task.contact_id === null ? '-' : contactMap.get(task.contact_id)?.name ?? `Contact #${task.contact_id}`;
 }
 
 function compareNullableDate(a: string | null, b: string | null): number {
@@ -183,14 +189,16 @@ interface AddTaskFormProps {
   isCreating: boolean;
   titleRef: RefObject<HTMLInputElement>;
   onCancel: () => void;
-  onSubmit: (input: { title: string; dueDate: string; orgId: string }) => void;
+  onSubmit: (input: { title: string; details: string; dueDate: string; orgId: string }) => void;
 }
 
 function AddTaskForm({ customers, isCreating, titleRef, onCancel, onSubmit }: AddTaskFormProps) {
   const titleId = useId();
   const dueId = useId();
   const orgId = useId();
+  const detailsId = useId();
   const [title, setTitle] = useState('');
+  const [details, setDetails] = useState('');
   const [dueDate, setDueDate] = useState('');
   const [organizationId, setOrganizationId] = useState('');
 
@@ -198,8 +206,9 @@ function AddTaskForm({ customers, isCreating, titleRef, onCancel, onSubmit }: Ad
     e.preventDefault();
     const trimmed = title.trim();
     if (!trimmed) return;
-    onSubmit({ title: trimmed, dueDate, orgId: organizationId });
+    onSubmit({ title: trimmed, details: details.trim(), dueDate, orgId: organizationId });
     setTitle('');
+    setDetails('');
     setDueDate('');
     setOrganizationId('');
   };
@@ -256,6 +265,26 @@ function AddTaskForm({ customers, isCreating, titleRef, onCancel, onSubmit }: Ad
           ))}
         </select>
       </label>
+      <label
+        style={{
+          display: 'grid',
+          gridColumn: '1 / -1',
+          gap: 4,
+          fontSize: 11,
+          color: 'var(--ink-3)',
+        }}
+        htmlFor={detailsId}
+      >
+        Details
+        <textarea
+          id={detailsId}
+          value={details}
+          onChange={(e) => setDetails(e.target.value)}
+          rows={3}
+          placeholder="Notes, context, next actions..."
+          style={{ ...filterControl, resize: 'vertical', minHeight: 74 }}
+        />
+      </label>
       <button
         type="submit"
         disabled={!title.trim() || isCreating}
@@ -296,6 +325,7 @@ function AddTaskForm({ customers, isCreating, titleRef, onCancel, onSubmit }: Ad
 
 export function TasksPage() {
   const tasksQuery = useTasks();
+  const contactsQuery = useAllContacts();
   const customersQuery = useOrganizations('customer');
   const oemsQuery = useOrganizations('oem');
   const createTask = useCreateTask();
@@ -309,6 +339,12 @@ export function TasksPage() {
   const [orgFilter, setOrgFilter] = useState('all');
   const [dueFilter, setDueFilter] = useState<DueFilter>('all');
   const [titleFilter, setTitleFilter] = useState('');
+  const [questionTitle, setQuestionTitle] = useState('');
+  const [questionDetails, setQuestionDetails] = useState('');
+  const [questionDueDate, setQuestionDueDate] = useState('');
+  const [questionOrgId, setQuestionOrgId] = useState('');
+  const [questionContactId, setQuestionContactId] = useState('');
+  const [cardContact, setCardContact] = useState<Contact | null>(null);
   const titleInputRef = useRef<HTMLInputElement>(null);
 
   const allOrgs = useMemo(
@@ -316,10 +352,17 @@ export function TasksPage() {
     [customersQuery.data, oemsQuery.data],
   );
   const orgMap = useMemo(() => new Map(allOrgs.map((org) => [org.id, org.name])), [allOrgs]);
+  const contacts = useMemo(() => contactsQuery.data ?? [], [contactsQuery.data]);
+  const contactMap = useMemo(() => new Map(contacts.map((contact) => [contact.id, contact])), [contacts]);
+  const questionContacts = useMemo(
+    () => contacts.filter((contact) => !questionOrgId || String(contact.organization_id) === questionOrgId),
+    [contacts, questionOrgId],
+  );
 
   const filteredTasks = useMemo(() => {
     const titleNeedle = titleFilter.trim().toLowerCase();
     const filtered = (tasksQuery.data ?? []).filter((task) => {
+      if (task.kind === 'question') return false;
       if (statusFilter !== 'all' && task.status !== statusFilter) return false;
       if (orgFilter !== 'all' && String(task.organization_id ?? 'none') !== orgFilter) return false;
       if (titleNeedle && !task.title.toLowerCase().includes(titleNeedle)) return false;
@@ -328,9 +371,15 @@ export function TasksPage() {
     return sortTasks(filtered, orgMap, sort);
   }, [dueFilter, orgFilter, orgMap, sort, statusFilter, tasksQuery.data, titleFilter]);
 
-  const openCount = (tasksQuery.data ?? []).filter((task) => task.status === 'open').length;
+  const questions = useMemo(() => {
+    return (tasksQuery.data ?? [])
+      .filter((task) => task.kind === 'question' && task.status === 'open')
+      .sort((a, b) => compareNullableDate(a.due_date, b.due_date) || a.title.localeCompare(b.title));
+  }, [tasksQuery.data]);
+
+  const openCount = (tasksQuery.data ?? []).filter((task) => task.kind !== 'question' && task.status === 'open').length;
   const dueTodayCount = (tasksQuery.data ?? []).filter(
-    (task) => task.status === 'open' && dateKey(task.due_date) === todayStr(),
+    (task) => task.kind !== 'question' && task.status === 'open' && dateKey(task.due_date) === todayStr(),
   ).length;
 
   const handleSort = useCallback((key: SortKey) => {
@@ -361,10 +410,12 @@ export function TasksPage() {
   );
 
   const handleCreate = useCallback(
-    ({ title, dueDate, orgId }: { title: string; dueDate: string; orgId: string }) => {
+    ({ title, details, dueDate, orgId }: { title: string; details: string; dueDate: string; orgId: string }) => {
       createTask.mutate(
         {
           title,
+          kind: 'task',
+          details: details || null,
           due_date: dueDate || null,
           organization_id: orgId ? Number(orgId) : null,
           status: 'open',
@@ -374,6 +425,32 @@ export function TasksPage() {
     },
     [createTask],
   );
+
+  const handleCreateQuestion = useCallback((event: FormEvent) => {
+    event.preventDefault();
+    const title = questionTitle.trim();
+    if (!title) return;
+    createTask.mutate(
+      {
+        title,
+        details: questionDetails.trim() || null,
+        due_date: questionDueDate || null,
+        organization_id: questionOrgId ? Number(questionOrgId) : null,
+        contact_id: questionContactId ? Number(questionContactId) : null,
+        status: 'open',
+        kind: 'question',
+      },
+      {
+        onSuccess: () => {
+          setQuestionTitle('');
+          setQuestionDetails('');
+          setQuestionDueDate('');
+          setQuestionOrgId('');
+          setQuestionContactId('');
+        },
+      },
+    );
+  }, [createTask, questionContactId, questionDetails, questionDueDate, questionOrgId, questionTitle]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -613,6 +690,23 @@ export function TasksPage() {
                       >
                         {task.title}
                       </button>
+                      {task.details && (
+                        <div
+                          style={{
+                            marginTop: 4,
+                            maxWidth: 420,
+                            color: 'var(--ink-3)',
+                            fontSize: 12,
+                            fontWeight: 400,
+                            lineHeight: 1.35,
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          {task.details}
+                        </div>
+                      )}
                     </td>
                     <td style={{ ...tableCell, color: 'var(--ink-2)' }}>{orgLabel(task, orgMap)}</td>
                     <td style={{ ...tableCell, color: task.status === 'open' ? 'var(--ink-1)' : 'var(--ink-3)' }}>
@@ -649,7 +743,183 @@ export function TasksPage() {
         )}
       </div>
 
+      <section
+        style={{
+          marginTop: 18,
+          background: 'var(--surface)',
+          border: '1px solid var(--rule)',
+          borderRadius: 8,
+          padding: 16,
+        }}
+      >
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'baseline', marginBottom: 12 }}>
+          <div>
+            <h2 style={{ margin: 0, fontFamily: 'var(--display)', fontSize: 24, fontWeight: 500, color: 'var(--ink-1)' }}>
+              Questions
+            </h2>
+            <p style={{ margin: '4px 0 0', color: 'var(--ink-3)', fontSize: 13 }}>
+              {questions.length} open customer questions tied to contacts
+            </p>
+          </div>
+        </div>
+
+        <form
+          onSubmit={handleCreateQuestion}
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'minmax(240px, 1fr) 180px 180px 145px auto',
+            gap: 8,
+            alignItems: 'end',
+            marginBottom: 14,
+            padding: 12,
+            border: '1px solid var(--rule)',
+            borderRadius: 6,
+            background: 'var(--bg-2)',
+          }}
+        >
+          <label style={{ display: 'grid', gap: 4, fontSize: 11, color: 'var(--ink-3)' }}>
+            Question
+            <input
+              value={questionTitle}
+              onChange={(e) => setQuestionTitle(e.target.value)}
+              placeholder="What should I ask next time?"
+              style={filterControl}
+            />
+          </label>
+          <label style={{ display: 'grid', gap: 4, fontSize: 11, color: 'var(--ink-3)' }}>
+            Organization
+            <select
+              value={questionOrgId}
+              onChange={(e) => {
+                setQuestionOrgId(e.target.value);
+                setQuestionContactId('');
+              }}
+              style={filterControl}
+            >
+              <option value="">Unassigned</option>
+              {allOrgs.map((org) => <option key={org.id} value={org.id}>{org.name}</option>)}
+            </select>
+          </label>
+          <label style={{ display: 'grid', gap: 4, fontSize: 11, color: 'var(--ink-3)' }}>
+            Contact
+            <select value={questionContactId} onChange={(e) => setQuestionContactId(e.target.value)} style={filterControl}>
+              <option value="">No contact</option>
+              {questionContacts.map((contact) => <option key={contact.id} value={contact.id}>{contact.name}</option>)}
+            </select>
+          </label>
+          <label style={{ display: 'grid', gap: 4, fontSize: 11, color: 'var(--ink-3)' }}>
+            Due
+            <input type="date" value={questionDueDate} onChange={(e) => setQuestionDueDate(e.target.value)} style={filterControl} />
+          </label>
+          <button
+            type="submit"
+            disabled={!questionTitle.trim() || createTask.isPending}
+            style={{
+              border: '1px solid var(--rule)',
+              borderRadius: 4,
+              background: 'var(--bg)',
+              color: questionTitle.trim() ? 'var(--ink-1)' : 'var(--ink-3)',
+              cursor: questionTitle.trim() ? 'pointer' : 'not-allowed',
+              fontFamily: 'var(--body)',
+              fontSize: 12,
+              padding: '7px 12px',
+            }}
+          >
+            Add
+          </button>
+          <label style={{ display: 'grid', gridColumn: '1 / -1', gap: 4, fontSize: 11, color: 'var(--ink-3)' }}>
+            Details
+            <textarea
+              value={questionDetails}
+              onChange={(e) => setQuestionDetails(e.target.value)}
+              rows={2}
+              placeholder="Context, why it matters, or talking points..."
+              style={{ ...filterControl, resize: 'vertical', minHeight: 60 }}
+            />
+          </label>
+        </form>
+
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', minWidth: 900, borderCollapse: 'collapse', fontFamily: 'var(--body)' }}>
+            <thead>
+              <tr>
+                <th style={{ ...tableCell, width: 42 }} />
+                <th style={{ ...tableCell, textAlign: 'left' }}>Question</th>
+                <th style={{ ...tableCell, textAlign: 'left' }}>Contact</th>
+                <th style={{ ...tableCell, textAlign: 'left' }}>Organization</th>
+                <th style={{ ...tableCell, textAlign: 'left' }}>Due</th>
+                <th style={{ ...tableCell, textAlign: 'left' }}>Created</th>
+                <th style={{ ...tableCell, width: 48 }} />
+              </tr>
+            </thead>
+            <tbody>
+              {questions.length === 0 && (
+                <tr><td colSpan={7} style={{ ...tableCell, color: 'var(--ink-3)' }}>No open questions yet.</td></tr>
+              )}
+              {questions.map((task) => (
+                <tr key={task.id}>
+                  <td style={tableCell}>
+                    <input
+                      type="checkbox"
+                      checked={false}
+                      aria-label={`Mark answered: ${task.title}`}
+                      onChange={() => completeTask.mutate(task.id)}
+                      style={{ width: 15, height: 15, accentColor: 'var(--ink-3)', cursor: 'pointer' }}
+                    />
+                  </td>
+                  <td style={{ ...tableCell, color: 'var(--ink-1)', fontWeight: 600 }}>
+                    <button type="button" onClick={() => setEditingTask(task)} style={{ border: 'none', background: 'transparent', color: 'inherit', cursor: 'pointer', font: 'inherit', padding: 0, textAlign: 'left' }}>
+                      {task.title}
+                    </button>
+                    {task.details && (
+                      <div style={{ marginTop: 4, color: 'var(--ink-3)', fontSize: 12, fontWeight: 400, lineHeight: 1.35, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 440 }}>
+                        {task.details}
+                      </div>
+                    )}
+                  </td>
+                  <td style={{ ...tableCell, color: 'var(--ink-2)' }}>
+                    {task.contact_id !== null && contactMap.has(task.contact_id) ? (
+                      <button
+                        type="button"
+                        onClick={() => setCardContact(contactMap.get(Number(task.contact_id)) ?? null)}
+                        style={{
+                          border: 'none',
+                          background: 'transparent',
+                          color: 'inherit',
+                          cursor: 'pointer',
+                          font: 'inherit',
+                          padding: 0,
+                          textAlign: 'left',
+                        }}
+                      >
+                        {contactLabel(task, contactMap)}
+                      </button>
+                    ) : contactLabel(task, contactMap)}
+                  </td>
+                  <td style={{ ...tableCell, color: 'var(--ink-2)' }}>{orgLabel(task, orgMap)}</td>
+                  <td style={{ ...tableCell, color: isOverdue(task.due_date) ? 'var(--accent)' : 'var(--ink-2)' }}>{formatDate(task.due_date)}</td>
+                  <td style={{ ...tableCell, color: 'var(--ink-3)' }}>{formatDate(task.created_at)}</td>
+                  <td style={tableCell}>
+                    <button type="button" aria-label={`Edit question: ${task.title}`} onClick={() => setEditingTask(task)} style={{ border: '1px solid var(--rule)', borderRadius: 4, background: 'transparent', color: 'var(--ink-3)', cursor: 'pointer', display: 'inline-flex', padding: 5 }}>
+                      <Edit3 size={13} strokeWidth={1.6} aria-hidden="true" />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
       {editingTask && <TaskEditDialog task={editingTask} onClose={() => setEditingTask(null)} />}
+      {cardContact && (
+        <ContactCardDialog
+          contact={cardContact}
+          organizationName={orgMap.get(cardContact.organization_id)}
+          onSaved={setCardContact}
+          onClose={() => setCardContact(null)}
+        />
+      )}
     </div>
   );
 }

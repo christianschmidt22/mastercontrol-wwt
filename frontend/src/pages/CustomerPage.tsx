@@ -15,6 +15,7 @@ import { OrgTimelineTile } from '../components/tiles/customer/OrgTimelineTile';
 import { ProjectNextStepsTile } from '../components/tiles/customer/ProjectNextStepsTile';
 import { ProjectResourcesTile } from '../components/tiles/customer/ProjectResourcesTile';
 import { MasterNotesTile } from '../components/tiles/customer/MasterNotesTile';
+import { ContactQuestionsTile } from '../components/tiles/customer/ContactQuestionsTile';
 import { useOrganization } from '../api/useOrganizations';
 import { useProjects, useUpdateProject } from '../api/useProjects';
 import { CustomerPageHeader } from '../components/customers/CustomerPageHeader';
@@ -45,7 +46,8 @@ const DEFAULT_CUSTOMER_LAYOUT: TileLayout[] = [
   { id: 'contacts',          x: 8,  y: 10, w: 5,  h: 2 },
   { id: 'reference',         x: 8,  y: 12, w: 5,  h: 1 },
   { id: 'documents',         x: 1,  y: 13, w: 7,  h: 1 },
-  { id: 'org-timeline',      x: 1,  y: 14, w: 12, h: 5 },
+  { id: 'cory-questions',    x: 8,  y: 13, w: 5,  h: 2 },
+  { id: 'org-timeline',      x: 1,  y: 15, w: 12, h: 5 },
 ];
 
 const tabStyleBase: CSSProperties = {
@@ -828,6 +830,9 @@ export function CustomerPage() {
   );
 
   const [editMode, setEditMode] = useState(false);
+  const showCoryQuestions =
+    orgName.toLowerCase().includes('c.h. robinson') ||
+    orgName.toLowerCase().includes('ch robinson');
 
   const handleSave = () => {
     save(layout, false);
@@ -885,6 +890,11 @@ export function CustomerPage() {
       title: 'Documents',
       node: <DocumentsTile orgId={orgId} />,
     },
+    ...(showCoryQuestions ? [{
+      id: 'cory-questions',
+      title: 'Questions for Cory',
+      node: <ContactQuestionsTile orgId={orgId} contactName="Cory" />,
+    }] : []),
     {
       id: 'org-timeline',
       title: 'Notes Timeline',

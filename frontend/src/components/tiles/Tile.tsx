@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 
 export interface TileProps {
-  title: string;
+  title: ReactNode;
   count?: number | string;
   titleAction?: ReactNode;
   children: ReactNode;
@@ -9,7 +9,7 @@ export interface TileProps {
 }
 
 /**
- * Base tile card — purely presentational. Edit-mode chrome is applied externally
+ * Base tile card; purely presentational. Edit-mode chrome is applied externally
  * via TileEditChrome wrapper. Focus-visible ring comes from the global :focus-visible
  * rule in index.css.
  *

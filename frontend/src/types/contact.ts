@@ -6,6 +6,7 @@ export interface Contact {
   email: string | null;
   phone: string | null;
   role?: string | null;
+  details?: string | null;
   created_at: string;
   assigned_org_ids: number[];
 }
@@ -17,6 +18,7 @@ export interface ContactCreate {
   email?: string | null;
   phone?: string | null;
   role?: string | null;
+  details?: string | null;
   assigned_org_ids?: number[];
 }
 
@@ -26,5 +28,21 @@ export interface ContactUpdate {
   email?: string | null;
   phone?: string | null;
   role?: string | null;
+  details?: string | null;
   assigned_org_ids?: number[];
+}
+
+export interface ContactEnrichmentSuggestion {
+  name?: string | null;
+  title?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  confidence: number;
+  evidence: string[];
+}
+
+export interface ContactEnrichmentResponse {
+  contact_id: number;
+  suggestions: ContactEnrichmentSuggestion;
+  notes: string[];
 }

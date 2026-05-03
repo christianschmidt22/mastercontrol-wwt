@@ -6,15 +6,17 @@ import {
   type UseMutationResult,
 } from '@tanstack/react-query';
 import { request } from './http';
-import type { Task, TaskCreate, TaskUpdate, TaskStatus } from '../types';
+import type { Task, TaskCreate, TaskUpdate, TaskStatus, TaskKind } from '../types';
 
 // ---------------------------------------------------------------------------
 // Cache key factory
 // ---------------------------------------------------------------------------
 export interface TaskFilters {
   status?: TaskStatus;
+  kind?: TaskKind;
   dueBefore?: string;
   orgId?: number;
+  contactId?: number;
   projectId?: number;
 }
 
@@ -33,9 +35,12 @@ export function useTasks(filters: TaskFilters = {}): UseQueryResult<Task[]> {
     queryFn: () => {
       const params = new URLSearchParams();
       if (filters.status) params.set('status', filters.status);
+      if (filters.kind) params.set('kind', filters.kind);
       if (filters.dueBefore) params.set('due_before', filters.dueBefore);
       if (filters.orgId !== undefined)
         params.set('org_id', String(filters.orgId));
+      if (filters.contactId !== undefined)
+        params.set('contact_id', String(filters.contactId));
       if (filters.projectId !== undefined)
         params.set('project_id', String(filters.projectId));
       const qs = params.toString();

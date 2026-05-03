@@ -1,4 +1,5 @@
 export type TaskStatus = 'open' | 'done' | 'snoozed';
+export type TaskKind = 'task' | 'question';
 
 export interface Task {
   id: number;
@@ -6,6 +7,8 @@ export interface Task {
   contact_id: number | null;
   project_id: number | null;
   title: string;
+  details: string | null;
+  kind: TaskKind;
   due_date: string | null;
   status: TaskStatus;
   created_at: string;
@@ -17,6 +20,8 @@ export interface TaskCreate {
   organization_id?: number | null;
   contact_id?: number | null;
   project_id?: number | null;
+  details?: string | null;
+  kind?: TaskKind;
   due_date?: string | null;
   status?: TaskStatus;
 }
@@ -26,6 +31,8 @@ export interface TaskUpdate {
   organization_id?: number | null;
   contact_id?: number | null;
   project_id?: number | null;
+  details?: string | null;
+  kind?: TaskKind;
   due_date?: string | null;
   status?: TaskStatus;
 }

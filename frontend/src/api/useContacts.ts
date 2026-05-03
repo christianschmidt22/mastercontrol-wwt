@@ -6,15 +6,31 @@ import {
   type UseMutationResult,
 } from '@tanstack/react-query';
 import { request } from './http';
-import type { Contact, ContactCreate, ContactUpdate } from '../types';
+import type { Contact, ContactCreate, ContactEnrichmentResponse, ContactUpdate } from '../types';
 
 // ---------------------------------------------------------------------------
 // Cache key factory
 // ---------------------------------------------------------------------------
 export const contactKeys = {
+  all: (filters?: ContactFilters) => ['contacts', 'all', filters ?? {}] as const,
   list: (orgId: number) => ['contacts', { orgId }] as const,
   detail: (id: number) => ['contacts', id] as const,
 };
+
+export interface ContactFilters {
+  orgId?: number;
+  query?: string;
+}
+
+function upsertContact(list: Contact[] | undefined, contact: Contact): Contact[] {
+  const contacts = list ?? [];
+  const withoutExisting = contacts.filter((item) => item.id !== contact.id);
+  return [...withoutExisting, contact].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function removeContact(list: Contact[] | undefined, id: number): Contact[] {
+  return (list ?? []).filter((item) => item.id !== id);
+}
 
 // ---------------------------------------------------------------------------
 // Query
@@ -26,6 +42,19 @@ export function useContacts(orgId: number): UseQueryResult<Contact[]> {
     queryFn: () =>
       request<Contact[]>('GET', `/api/organizations/${orgId}/contacts`),
     enabled: orgId > 0,
+  });
+}
+
+export function useAllContacts(filters: ContactFilters = {}): UseQueryResult<Contact[]> {
+  return useQuery({
+    queryKey: contactKeys.all(filters),
+    queryFn: () => {
+      const params = new URLSearchParams();
+      if (filters.orgId !== undefined) params.set('org_id', String(filters.orgId));
+      if (filters.query?.trim()) params.set('q', filters.query.trim());
+      const qs = params.toString();
+      return request<Contact[]>('GET', qs ? `/api/contacts?${qs}` : '/api/contacts');
+    },
   });
 }
 
@@ -42,6 +71,9 @@ export function useCreateContact(): UseMutationResult<
   return useMutation({
     mutationFn: (body) => request<Contact>('POST', '/api/contacts', body),
     onSuccess: (contact) => {
+      qc.setQueryData<Contact[]>(contactKeys.all(), (current) => upsertContact(current, contact));
+      qc.setQueryData<Contact[]>(contactKeys.list(contact.organization_id), (current) => upsertContact(current, contact));
+      void qc.invalidateQueries({ queryKey: ['contacts', 'all'] });
       void qc.invalidateQueries({
         queryKey: contactKeys.list(contact.organization_id),
       });
@@ -60,6 +92,9 @@ export function useUpdateContact(): UseMutationResult<
       request<Contact>('PUT', `/api/contacts/${id}`, body),
     onSuccess: (contact) => {
       qc.setQueryData(contactKeys.detail(contact.id), contact);
+      qc.setQueryData<Contact[]>(contactKeys.all(), (current) => upsertContact(current, contact));
+      qc.setQueryData<Contact[]>(contactKeys.list(contact.organization_id), (current) => upsertContact(current, contact));
+      void qc.invalidateQueries({ queryKey: ['contacts', 'all'] });
       void qc.invalidateQueries({
         queryKey: contactKeys.list(contact.organization_id),
       });
@@ -77,7 +112,16 @@ export function useDeleteContact(): UseMutationResult<
     mutationFn: ({ id }) => request<void>('DELETE', `/api/contacts/${id}`),
     onSuccess: (_data, { id, orgId }) => {
       qc.removeQueries({ queryKey: contactKeys.detail(id) });
+      qc.setQueryData<Contact[]>(contactKeys.all(), (current) => removeContact(current, id));
+      qc.setQueryData<Contact[]>(contactKeys.list(orgId), (current) => removeContact(current, id));
+      void qc.invalidateQueries({ queryKey: ['contacts', 'all'] });
       void qc.invalidateQueries({ queryKey: contactKeys.list(orgId) });
     },
+  });
+}
+
+export function useEnrichContact(): UseMutationResult<ContactEnrichmentResponse, Error, number> {
+  return useMutation({
+    mutationFn: (id) => request<ContactEnrichmentResponse>('POST', `/api/contacts/${id}/enrich`),
   });
 }

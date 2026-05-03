@@ -14,11 +14,14 @@ export {
 
 export {
   contactKeys,
+  useAllContacts,
   useContacts,
   useCreateContact,
   useUpdateContact,
   useDeleteContact,
+  useEnrichContact,
 } from './useContacts';
+export type { ContactFilters } from './useContacts';
 
 export {
   projectKeys,
@@ -91,3 +94,11 @@ export {
   useDelegate,
   useDelegateAgentic,
 } from './useSubagent';
+
+export {
+  bomToolKeys,
+  useBomFiles,
+  useUploadBomFiles,
+  useAnalyzeBomFiles,
+  useMoveBomFiles,
+} from './useBomTool';

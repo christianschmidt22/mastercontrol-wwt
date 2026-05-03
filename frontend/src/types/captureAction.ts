@@ -13,6 +13,7 @@ export interface CaptureActionRequest {
 export interface CaptureActionCreatedTask {
   id: number;
   title: string;
+  details: string | null;
   organization_id: number | null;
   due_date: string | null;
   status: string;

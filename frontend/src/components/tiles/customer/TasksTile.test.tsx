@@ -17,6 +17,8 @@ const openTask: Task = {
   contact_id: null,
   project_id: null,
   title: 'Send renewal quote',
+  details: null,
+  kind: 'task',
   due_date: '2026-12-31',
   status: 'open',
   created_at: '2026-01-01T00:00:00Z',

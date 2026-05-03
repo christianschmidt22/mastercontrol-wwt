@@ -28,6 +28,8 @@ describe('POST /api/tasks', () => {
       .send({
         title: 'Email Sarah about renewal',
         organization_id: org.id,
+        details: 'Ask whether security review has a named owner.',
+        kind: 'task',
         due_date: '2026-05-01',
         status: 'open',
       });
@@ -36,6 +38,8 @@ describe('POST /api/tasks', () => {
     expect(res.body).toMatchObject({
       title: 'Email Sarah about renewal',
       organization_id: org.id,
+      details: 'Ask whether security review has a named owner.',
+      kind: 'task',
       due_date: '2026-05-01',
       status: 'open',
     });
@@ -168,15 +172,33 @@ describe('GET /api/tasks', () => {
 // ---------------------------------------------------------------------------
 
 describe('PUT /api/tasks/:id', () => {
-  it('updates title and due_date', async () => {
+  it('updates title, details, and due_date', async () => {
     const task = makeTask({ title: 'Old Title', due_date: '2026-04-01' });
 
     const res = await request(app)
       .put(`/api/tasks/${task.id}`)
-      .send({ title: 'New Title', due_date: '2026-06-01' });
+      .send({ title: 'New Title', details: 'Working notes for the task', due_date: '2026-06-01' });
 
     expect(res.status).toBe(200);
-    expect(res.body).toMatchObject({ id: task.id, title: 'New Title', due_date: '2026-06-01' });
+    expect(res.body).toMatchObject({
+      id: task.id,
+      title: 'New Title',
+      details: 'Working notes for the task',
+      due_date: '2026-06-01',
+    });
+  });
+
+  it('filters remembered questions separately from normal tasks', async () => {
+    makeTask({ title: 'Normal Task', kind: 'task', status: 'open' });
+    makeTask({ title: 'Question Task', kind: 'question', status: 'open' });
+
+    const res = await request(app).get('/api/tasks?kind=question');
+
+    expect(res.status).toBe(200);
+    const titles = (res.body as Array<{ title: string; kind: string }>).map((t) => t.title);
+    expect(titles).toContain('Question Task');
+    expect(titles).not.toContain('Normal Task');
+    expect((res.body as Array<{ kind: string }>).every((t) => t.kind === 'question')).toBe(true);
   });
 
   it('returns 404 for unknown id', async () => {

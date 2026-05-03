@@ -135,7 +135,7 @@ function TodayTasksWidget({ orgMap }: TodayTasksWidgetProps) {
   const [editingTask, setEditingTask] = useState<Task | null>(null);
 
   const tasks: Task[] = (tasksQuery.data ?? [])
-    .filter((t) => t.status === 'open' || t.status === 'snoozed')
+    .filter((t) => t.kind !== 'question' && (t.status === 'open' || t.status === 'snoozed'))
     .sort((a, b) => {
       // Descending by due_date — latest due first, undated last.
       if (!a.due_date && !b.due_date) return 0;

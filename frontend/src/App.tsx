@@ -6,6 +6,8 @@ import { HomePage } from './pages/HomePage';
 import { TasksPage } from './pages/TasksPage';
 import { AlertsPage } from './pages/AlertsPage';
 import { ReportsPage } from './pages/ReportsPage';
+import { ContactsPage } from './pages/ContactsPage';
+import { ToolsPage } from './pages/ToolsPage';
 import { CustomerPage } from './pages/CustomerPage';
 import { OemPage } from './pages/OemPage';
 import { AgentsPage } from './pages/AgentsPage';
@@ -57,6 +59,8 @@ export function App() {
           <Route path="/tasks" element={<TasksPage />} />
           <Route path="/alerts" element={<AlertsPage />} />
           <Route path="/reports" element={<ReportsPage />} />
+          <Route path="/contacts" element={<ContactsPage />} />
+          <Route path="/tools" element={<ToolsPage />} />
           <Route path="/customers/:id" element={<CustomerPage />} />
           <Route path="/customers/:id/projects/:projectId" element={<CustomerPage />} />
           <Route path="/oem" element={<OemPage />} />

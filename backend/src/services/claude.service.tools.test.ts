@@ -594,7 +594,9 @@ describe('agent tool: create_task', () => {
       id: 99,
       organization_id: 1,
       contact_id: null,
+      project_id: null,
       title: 'follow up on renewal',
+      details: 'Confirm the next owner.',
       due_date: '2026-05-01',
       status: 'open',
       created_at: '2026-04-25T00:00:00.000Z',
@@ -608,6 +610,7 @@ describe('agent tool: create_task', () => {
         name: 'create_task',
         input: {
           title: 'follow up on renewal',
+          details: 'Confirm the next owner.',
           due_date: '2026-05-01',
           org_id: 1,
         },
@@ -620,6 +623,7 @@ describe('agent tool: create_task', () => {
     expect(mockTaskCreate).toHaveBeenCalledTimes(1);
     expect(mockTaskCreate.mock.calls[0]?.[0]).toMatchObject({
       title: 'follow up on renewal',
+      details: 'Confirm the next owner.',
       due_date: '2026-05-01',
       organization_id: 1,
       contact_id: null,
