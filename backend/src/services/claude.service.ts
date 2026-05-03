@@ -2578,6 +2578,11 @@ interface BomQuoteAnalysisInput {
   organization_id: number;
   organization_name: string;
   file_paths: string[];
+  customer_preferences?: Array<{
+    label: string;
+    value: string;
+    is_standard: boolean;
+  }>;
   prompt: string | null;
 }
 
@@ -2607,12 +2612,21 @@ function buildBomAnalysisPrompt(input: BomQuoteAnalysisInput): string {
   const files = input.file_paths
     .map((filePath, index) => `${index + 1}. ${filePath}`)
     .join('\n');
+  const preferences =
+    input.customer_preferences && input.customer_preferences.length > 0
+      ? input.customer_preferences
+          .map((pref) => `- ${pref.label}: ${pref.value.trim() || 'not specified'}`)
+          .join('\n')
+      : '- No customer BOM preferences are currently tracked.';
   const userPrompt = input.prompt?.trim()
     ? input.prompt.trim()
     : 'Analyze the selected BOMs/quotes/configs and generate the standard MasterControl BOM report plus copy/paste outputs.';
 
   return `Current date: ${new Date().toISOString().slice(0, 10)}
 Customer: ${input.organization_name} (id ${input.organization_id})
+
+Tracked customer BOM preferences:
+${preferences}
 
 User instruction:
 ${userPrompt}

@@ -97,7 +97,10 @@ export {
 
 export {
   bomToolKeys,
+  useBomAnalysisReports,
   useBomFiles,
+  useBomCustomerPreferences,
+  useSaveBomCustomerPreferences,
   useUploadBomFiles,
   useAnalyzeBomFiles,
   useMoveBomFiles,

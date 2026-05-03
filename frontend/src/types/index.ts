@@ -119,4 +119,9 @@ export type {
   BomToolAnalyzeResponse,
   BomToolMoveRequest,
   BomToolMoveResponse,
+  BomCustomerPreference,
+  BomCustomerPreferenceList,
+  BomCustomerPreferencesSaveRequest,
+  BomAnalysisReport,
+  BomAnalysisReportList,
 } from './bomTool';

@@ -4,16 +4,21 @@ import {
   BomToolAnalyzeSchema,
   BomToolFilesQuerySchema,
   BomToolMoveSchema,
+  BomToolPreferencesSaveSchema,
   BomToolUploadSchema,
   type BomToolAnalyze,
   type BomToolFilesQuery,
   type BomToolMove,
+  type BomToolPreferencesSave,
   type BomToolUpload,
 } from '../schemas/bomTool.schema.js';
 import {
   analyzeBomToolFiles,
+  listBomAnalysisReports,
+  listBomCustomerPreferences,
   listBomToolFiles,
   moveBomToolFiles,
+  saveBomCustomerPreferences,
   uploadBomToolFiles,
 } from '../services/bomTool.service.js';
 
@@ -50,6 +55,33 @@ bomToolRouter.post('/move', validateBody(BomToolMoveSchema), async (req, res, ne
   try {
     const body = req.validatedBody as BomToolMove;
     res.json(await moveBomToolFiles(body));
+  } catch (err) {
+    next(err);
+  }
+});
+
+bomToolRouter.get('/preferences', validateQuery(BomToolFilesQuerySchema), (req, res, next) => {
+  try {
+    const query = req.validatedQuery as BomToolFilesQuery;
+    res.json(listBomCustomerPreferences(query.org_id));
+  } catch (err) {
+    next(err);
+  }
+});
+
+bomToolRouter.put('/preferences', validateBody(BomToolPreferencesSaveSchema), (req, res, next) => {
+  try {
+    const body = req.validatedBody as BomToolPreferencesSave;
+    res.json(saveBomCustomerPreferences(body));
+  } catch (err) {
+    next(err);
+  }
+});
+
+bomToolRouter.get('/reports', validateQuery(BomToolFilesQuerySchema), (req, res, next) => {
+  try {
+    const query = req.validatedQuery as BomToolFilesQuery;
+    res.json(listBomAnalysisReports(query.org_id));
   } catch (err) {
     next(err);
   }

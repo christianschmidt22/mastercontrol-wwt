@@ -27,7 +27,21 @@ export const BomToolMoveSchema = z.object({
   file_names: z.array(z.string().min(1).max(240)).min(1).max(50),
 });
 
+export const BomToolPreferenceSchema = z.object({
+  id: z.number().int().positive().optional().nullable(),
+  label: z.string().min(1).max(120),
+  value: z.string().max(2000).optional().nullable(),
+  is_standard: z.boolean().optional(),
+  sort_order: z.number().int().min(0).optional(),
+});
+
+export const BomToolPreferencesSaveSchema = z.object({
+  organization_id: z.number().int().positive(),
+  preferences: z.array(BomToolPreferenceSchema).max(100),
+});
+
 export type BomToolFilesQuery = z.infer<typeof BomToolFilesQuerySchema>;
 export type BomToolUpload = z.infer<typeof BomToolUploadSchema>;
 export type BomToolAnalyze = z.infer<typeof BomToolAnalyzeSchema>;
 export type BomToolMove = z.infer<typeof BomToolMoveSchema>;
+export type BomToolPreferencesSave = z.infer<typeof BomToolPreferencesSaveSchema>;

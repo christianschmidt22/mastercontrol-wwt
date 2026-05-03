@@ -93,15 +93,70 @@ describe('BOM tool files', () => {
       });
 
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ output: '# Report\nLooks good.' });
+    expect(res.body).toMatchObject({
+      output: '# Report\nLooks good.',
+      report: {
+        organization_id: org.id,
+        title: 'Report',
+        file_names: ['chr-config.csv'],
+        output: '# Report\nLooks good.',
+      },
+    });
     expect(runBomQuoteAnalysis).toHaveBeenCalledWith({
       organization_id: org.id,
       organization_name: 'C.H. Robinson',
       file_paths: [
         path.join(rootDir, 'customers', 'c_h_robinson', 'quotes_configs', 'chr-config.csv'),
       ],
+      customer_preferences: expect.any(Array),
       prompt: 'Find risks',
     });
+
+    const reportsRes = await request(app).get(`/api/tools/bom/reports?org_id=${org.id}`);
+    expect(reportsRes.status).toBe(200);
+    expect(reportsRes.body.reports).toEqual([
+      expect.objectContaining({
+        title: 'Report',
+        output: '# Report\nLooks good.',
+        file_names: ['chr-config.csv'],
+      }),
+    ]);
+  });
+
+  it('returns standard customer preferences and saves manual additions', async () => {
+    const org = makeOrg({ name: 'Preference Customer' });
+
+    const defaultRes = await request(app).get(`/api/tools/bom/preferences?org_id=${org.id}`);
+    expect(defaultRes.status).toBe(200);
+    expect(defaultRes.body.preferences).toEqual([
+      expect.objectContaining({ label: 'Support type', value: '', is_standard: true }),
+      expect.objectContaining({ label: 'Support term', value: '', is_standard: true }),
+      expect.objectContaining({ label: 'Optics for switch included', value: '', is_standard: true }),
+      expect.objectContaining({ label: 'Optics for server included', value: '', is_standard: true }),
+      expect.objectContaining({ label: 'Bezel', value: '', is_standard: true }),
+      expect.objectContaining({ label: 'Rail types', value: '', is_standard: true }),
+      expect.objectContaining({ label: 'Cable management', value: '', is_standard: true }),
+    ]);
+
+    const saveRes = await request(app)
+      .put('/api/tools/bom/preferences')
+      .send({
+        organization_id: org.id,
+        preferences: [
+          { label: 'Support type', value: 'Foundation Care', is_standard: true },
+          { label: 'Support term', value: '5 years', is_standard: true },
+          { label: 'Unexpected cabling preference', value: 'Use blue DACs when available' },
+        ],
+      });
+
+    expect(saveRes.status).toBe(200);
+    expect(saveRes.body.preferences).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ label: 'Support type', value: 'Foundation Care', is_standard: true }),
+        expect.objectContaining({ label: 'Support term', value: '5 years', is_standard: true }),
+        expect.objectContaining({ label: 'Unexpected cabling preference', value: 'Use blue DACs when available', is_standard: false }),
+      ]),
+    );
   });
 
   it('moves selected files between customer quotes_configs folders', async () => {

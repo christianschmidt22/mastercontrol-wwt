@@ -10,7 +10,12 @@
   live working-state updates while Claude Code is running. The analysis pane
   now renders Markdown reports in a readable preview with a raw Markdown view
   retained for troubleshooting and exact copying, and preserves the last
-  customer/prompt/report locally when the page remounts.
+  customer/prompt/report locally when the page remounts. Customers now have
+  persisted BOM preferences for support, optics, bezel, rails, cable
+  management, and manual additions; saved preferences flow into BOM analysis.
+  Completed analyses are saved as historical reports with customer/report
+  selectors and a rendered preview pane. The sidebar section is now labeled
+  BOM Analyzer instead of Tools.
 - Tasks now have persisted free-form details for working notes, with the task
   edit dialog exposing a larger Details section and the task table showing a
   compact details preview.

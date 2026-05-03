@@ -532,7 +532,7 @@ export function Sidebar() {
         <NavItem
           to="/tools"
           icon={<Wrench size={16} strokeWidth={1.5} />}
-          label="Tools"
+          label="BOM Analyzer"
         />
       </Section>
 

@@ -31,6 +31,7 @@ export interface BomToolAnalyzeRequest {
 
 export interface BomToolAnalyzeResponse {
   output: string;
+  report: BomAnalysisReport;
 }
 
 export interface BomToolMoveRequest {
@@ -43,4 +44,48 @@ export interface BomToolMoveResponse {
   from: BomToolFileList;
   to: BomToolFileList;
   moved_files: string[];
+}
+
+export interface BomCustomerPreference {
+  id: number | null;
+  organization_id: number;
+  label: string;
+  value: string;
+  is_standard: boolean;
+  sort_order: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface BomCustomerPreferenceList {
+  organization_id: number;
+  organization_name: string;
+  preferences: BomCustomerPreference[];
+}
+
+export interface BomCustomerPreferencesSaveRequest {
+  organization_id: number;
+  preferences: Array<{
+    id?: number | null;
+    label: string;
+    value?: string | null;
+    is_standard?: boolean;
+    sort_order?: number;
+  }>;
+}
+
+export interface BomAnalysisReport {
+  id: number;
+  organization_id: number;
+  title: string;
+  prompt: string | null;
+  file_names: string[];
+  output: string;
+  created_at: string;
+}
+
+export interface BomAnalysisReportList {
+  organization_id: number;
+  organization_name: string;
+  reports: BomAnalysisReport[];
 }
