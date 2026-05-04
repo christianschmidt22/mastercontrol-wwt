@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Tile customization now uses the same grid renderer in normal and edit modes,
+  preventing Cancel from falling back to a stacked layout and making Save
+  behavior testable in narrow desktop panes.
 - Tightened customer/project headers by removing the unused summary/note band
   beneath customer tabs and dropping the extra full-width tab divider.
 - Fixed empty Master Notes tiles getting stuck on the `Loading...` placeholder

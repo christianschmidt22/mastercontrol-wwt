@@ -21,7 +21,6 @@ interface TileGridProps {
 const COLS = 12;
 const ROW_HEIGHT = 80;
 const MARGIN: [number, number] = [14, 14];
-const NARROW_BREAKPOINT = 1100;
 
 /**
  * Convert app-shape ({1-based x,y, hidden}) ↔ react-grid-layout shape (0-based).
@@ -113,13 +112,11 @@ function useElementWidth<T extends HTMLElement>() {
  * edit mode unlocks drag-by-tile and corner resize. Collisions push other
  * tiles down (vertical compaction) so growing one never overlaps another.
  *
- * On narrow viewports (<1100px) drops to a single-column scrolling stack
- * sorted by the layout's reading order (y, then x).
+ * The same grid renderer is used in view and edit modes so customizing,
+ * saving, and canceling never changes the visual layout mode.
  */
 export function TileGrid({ items, layout, editMode, onLayoutChange }: TileGridProps) {
   const [containerRef, width] = useElementWidth<HTMLDivElement>();
-  const isNarrow = width > 0 && width < NARROW_BREAKPOINT;
-  const useStack = isNarrow && !editMode;
 
   const rglLayout = useMemo(() => toRgl(layout, editMode), [layout, editMode]);
 
@@ -129,14 +126,6 @@ export function TileGrid({ items, layout, editMode, onLayoutChange }: TileGridPr
   }), [items, layout]);
 
   // Stack order on narrow viewports — top-down by row, then left-to-right.
-  const stackedItems = useMemo(() => {
-    return [...visibleItems].sort((a, b) => {
-      const la = layout.find((l) => l.id === a.id) ?? { x: 1, y: 1 };
-      const lb = layout.find((l) => l.id === b.id) ?? { x: 1, y: 1 };
-      return la.y - lb.y || la.x - lb.x;
-    });
-  }, [visibleItems, layout]);
-
   const handleLayoutChange = (next: Layout) => {
     const merged = fromRgl(next, layout);
     if (!layoutsEqual(merged, layout)) {
@@ -148,34 +137,24 @@ export function TileGrid({ items, layout, editMode, onLayoutChange }: TileGridPr
     <div ref={containerRef} className="tile-grid-wrapper">
       <style>{tileGridCss}</style>
 
-      {useStack ? (
-        <div className="tile-grid-stack">
-          {stackedItems.map((item) => (
-            <div key={item.id} className="tile-grid-stack-cell">
-              {item.node}
-            </div>
-          ))}
-        </div>
-      ) : (
-        <GridLayout
-          className={`tile-grid${editMode ? ' tile-grid--edit' : ''}`}
-          layout={rglLayout}
-          gridConfig={{ cols: COLS, rowHeight: ROW_HEIGHT, margin: MARGIN }}
-          dragConfig={{
-            enabled: editMode,
-            cancel: 'input,textarea,select,button,a,[data-no-drag]',
-          }}
-          resizeConfig={{ enabled: editMode, handles: ['se'] }}
-          width={width || 1200}
-          onLayoutChange={handleLayoutChange}
-        >
-          {visibleItems.map((item) => (
-            <div key={item.id} className="tile-grid-cell">
-              <div className="tile-grid-cell-inner">{item.node}</div>
-            </div>
-          ))}
-        </GridLayout>
-      )}
+      <GridLayout
+        className={`tile-grid${editMode ? ' tile-grid--edit' : ''}`}
+        layout={rglLayout}
+        gridConfig={{ cols: COLS, rowHeight: ROW_HEIGHT, margin: MARGIN }}
+        dragConfig={{
+          enabled: editMode,
+          cancel: 'input,textarea,select,button,a,[data-no-drag]',
+        }}
+        resizeConfig={{ enabled: editMode, handles: ['se'] }}
+        width={width || 1200}
+        onLayoutChange={handleLayoutChange}
+      >
+        {visibleItems.map((item) => (
+          <div key={item.id} className="tile-grid-cell">
+            <div className="tile-grid-cell-inner">{item.node}</div>
+          </div>
+        ))}
+      </GridLayout>
     </div>
   );
 }
@@ -237,13 +216,6 @@ const tileGridCss = `
 }
 .tile-grid--edit .react-resizable-handle::after { opacity: 1; }
 
-/* Narrow stack fallback */
-.tile-grid-stack {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-.tile-grid-stack-cell { min-height: 240px; }
 `;
 
 function cssBlock(style: CSSProperties): string {
