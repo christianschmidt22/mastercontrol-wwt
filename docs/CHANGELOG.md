@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Tightened customer/project headers by removing the unused summary/note band
+  beneath customer tabs and dropping the extra full-width tab divider.
 - Fixed empty Master Notes tiles getting stuck on the `Loading...` placeholder
   after the server had already returned an empty note, and made the editor
   reseed correctly when switching accounts or projects.

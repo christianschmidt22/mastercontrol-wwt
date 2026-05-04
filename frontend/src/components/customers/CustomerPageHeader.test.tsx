@@ -67,6 +67,15 @@ describe('CustomerPageHeader — rendering', () => {
     expect(screen.queryByText('Click to add summary')).toBeNull();
   });
 
+  it('hides the org summary row when project tabs are supplied', () => {
+    renderHeader({
+      org: { ...baseOrg, metadata: { summary: 'Premier health network in the Midwest.' } },
+      tabs: <div role="tablist" aria-label="Customer pages"><button role="tab">Home</button></div>,
+    });
+    expect(screen.getByRole('tab', { name: 'Home' })).toBeInTheDocument();
+    expect(screen.queryByText('Premier health network in the Midwest.')).toBeNull();
+  });
+
   it('does not render the removed top-level action buttons', () => {
     renderHeader();
     expect(screen.queryByRole('button', { name: /edit organization/i })).toBeNull();

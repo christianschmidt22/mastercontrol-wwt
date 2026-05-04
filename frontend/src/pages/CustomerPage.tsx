@@ -57,7 +57,7 @@ const DEFAULT_CUSTOMER_LAYOUT: TileLayout[] = [
 const tabStyleBase: CSSProperties = {
   fontFamily: 'var(--body)',
   fontSize: 13,
-  padding: '7px 12px',
+  padding: '5px 12px 6px',
   border: 'none',
   borderBottom: '2px solid transparent',
   marginBottom: -1,
@@ -89,7 +89,6 @@ function CustomerTabs({
         gap: 0,
         flexWrap: 'wrap',
         rowGap: 4,
-        borderBottom: '1px solid var(--rule)',
         marginBottom: 0,
       }}
     >
@@ -207,69 +206,6 @@ function formatDate(value: string): string {
     day: 'numeric',
     year: 'numeric',
   }).format(new Date(value));
-}
-
-function ProjectHeaderNote({ project }: { project: Project }) {
-  const updateProject = useUpdateProject();
-  const [note, setNote] = useState(project.notes_url ?? '');
-
-  useEffect(() => {
-    setNote(project.notes_url ?? '');
-  }, [project.id, project.notes_url]);
-
-  const isDirty = note !== (project.notes_url ?? '');
-
-  const handleSave = () => {
-    if (!isDirty) return;
-    updateProject.mutate({ id: project.id, notes_url: normalizeOptional(note) });
-  };
-
-  return (
-    <form
-      onSubmit={(event) => {
-        event.preventDefault();
-        handleSave();
-      }}
-      style={{ display: 'grid', gap: 8 }}
-    >
-      <textarea
-        value={note}
-        aria-label={`${project.name} project note`}
-        placeholder="Add a project note..."
-        rows={2}
-        onChange={(event) => setNote(event.target.value)}
-        style={{
-          ...projectFieldStyle,
-          minHeight: 58,
-          resize: 'vertical',
-          color: note ? 'var(--ink-2)' : 'var(--ink-3)',
-        }}
-      />
-      {isDirty && (
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <button
-            type="submit"
-            disabled={updateProject.isPending}
-            style={{
-              ...projectActionStyle,
-              background: 'var(--bg-2)',
-              color: 'var(--ink-1)',
-              cursor: updateProject.isPending ? 'not-allowed' : 'pointer',
-            }}
-          >
-            {updateProject.isPending ? 'Saving...' : 'Save note'}
-          </button>
-          <button
-            type="button"
-            onClick={() => setNote(project.notes_url ?? '')}
-            style={projectActionStyle}
-          >
-            Reset
-          </button>
-        </div>
-      )}
-    </form>
-  );
 }
 
 // ── Project config popover ────────────────────────────────────────────────────
@@ -758,9 +694,6 @@ export function CustomerPage() {
               activeProjectId={activeProjectId}
               projectsLoading={projectsLoading}
             />
-          }
-          summaryOverride={
-            activeProject ? <ProjectHeaderNote project={activeProject} /> : undefined
           }
         />
       ) : (

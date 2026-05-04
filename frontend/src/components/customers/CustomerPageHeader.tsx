@@ -300,7 +300,7 @@ const NAME_DISPLAY_STYLE: CSSProperties = {
   letterSpacing: '-0.02em',
   marginLeft: -3,
   textWrap: 'balance',
-  margin: '0 0 8px -3px',
+  margin: '0 0 2px -3px',
   color: 'var(--ink-1)',
   cursor: 'pointer',
   display: 'inline-flex',
@@ -324,6 +324,7 @@ export function CustomerPageHeader({
     typeof org.metadata?.summary === 'string' && org.metadata.summary.trim()
       ? org.metadata.summary.trim()
       : '';
+  const showSummaryRow = summaryOverride !== undefined || !tabs;
 
   const updateOrg = useUpdateOrganization();
   const [editingName, setEditingName] = useState(false);
@@ -377,7 +378,7 @@ export function CustomerPageHeader({
               onCancel={() => setEditingName(false)}
             />
           ) : (
-            <h1 style={{ margin: '0 0 12px', padding: 0 }}>
+            <h1 style={{ margin: '0 0 2px', padding: 0 }}>
               <button
                 type="button"
                 aria-label={`${org.name} — click to edit name`}
@@ -403,7 +404,7 @@ export function CustomerPageHeader({
           )}
 
           {tabs ? (
-            <div style={{ marginBottom: 14 }}>{tabs}</div>
+            <div style={{ marginBottom: showSummaryRow ? 10 : 0 }}>{tabs}</div>
           ) : (
             <div
               style={{
@@ -429,6 +430,8 @@ export function CustomerPageHeader({
           )}
 
           {/* About / summary — click to edit */}
+          {showSummaryRow && (
+            <>
           {summaryOverride !== undefined ? (
             <div style={{ maxWidth: '72ch' }}>{summaryOverride}</div>
           ) : editingSummary ? (
@@ -505,19 +508,22 @@ export function CustomerPageHeader({
               Click to add summary
             </button>
           )}
+            </>
+          )}
         </div>
       </div>
 
-      {/* Hairline separator */}
-      <div
-        aria-hidden="true"
-        style={{
-          height: 1,
-          background: 'var(--rule)',
-          marginTop: 20,
-          marginBottom: 24,
-        }}
-      />
+      {showSummaryRow && (
+        <div
+          aria-hidden="true"
+          style={{
+            height: 1,
+            background: 'var(--rule)',
+            marginTop: 14,
+            marginBottom: 18,
+          }}
+        />
+      )}
     </div>
   );
 }
