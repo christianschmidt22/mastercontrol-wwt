@@ -1,7 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import request from 'supertest';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import { buildApp } from '../test/app.js';
 import { calendarEventModel } from '../models/calendarEvent.model.js';
+import { settingsModel } from '../models/settings.model.js';
 
 function mockGeocode(lat: string, lon: string): Response {
   return new Response(JSON.stringify([{ lat, lon }]), {
@@ -24,6 +28,7 @@ describe('mileage route', () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+    settingsModel.remove('mastercontrol_root');
   });
 
   it('builds a mileage report from physical calendar locations and filters virtual/office events', async () => {
@@ -120,5 +125,62 @@ describe('mileage route', () => {
       distance_source: 'cache',
     });
     expect(fetchMock).toHaveBeenCalledTimes(3);
+
+    const manualRes = await request(app)
+      .post('/api/tools/mileage/calculate')
+      .send({
+        from_address: '250 Pine St, Lino Lakes, MN 55014',
+        to_address: '1000 Nicollet Mall, Minneapolis, MN',
+      });
+
+    expect(manualRes.status).toBe(200);
+    expect(manualRes.body).toMatchObject({
+      from_address: '250 Pine St, Lino Lakes, MN 55014',
+      to_address: '1000 Nicollet Mall, Minneapolis, MN',
+      type: 'round trip',
+      miles: 20,
+      one_way_miles: 10,
+      distance_source: 'cache',
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(3);
   }, 10_000);
+
+  it('exports editable mileage rows to a PDF in the MasterControl reports vault', async () => {
+    const app = await buildApp();
+    const rootDir = mkdtempSync(path.join(tmpdir(), 'mastercontrol-mileage-export-'));
+    settingsModel.set('mastercontrol_root', rootDir);
+
+    try {
+      const res = await request(app)
+        .post('/api/tools/mileage/export-pdf')
+        .send({
+          start_date: '2026-05-01',
+          end_date: '2026-05-14',
+          total_miles: 79,
+          rows: [
+            {
+              uid: 'manual-1',
+              date: '2026-05-14',
+              subject: 'Edited lunch subject',
+              from_address: '250 Pine St, Lino Lakes, MN 55014',
+              to_address: '860 Cliff Rd, Eagan, MN 55123',
+              type: 'round trip',
+              miles: 79,
+            },
+          ],
+        });
+
+      expect(res.status).toBe(200);
+      expect(res.body).toMatchObject({
+        file_name: expect.stringContaining('mileage-report-2026-05-01-to-2026-05-14'),
+        file_path: expect.stringContaining(path.join('reports', 'mileage')),
+        row_count: 1,
+        total_miles: 79,
+      });
+      expect(existsSync(res.body.file_path)).toBe(true);
+      expect(readFileSync(res.body.file_path, 'utf8').startsWith('%PDF-1.4')).toBe(true);
+    } finally {
+      rmSync(rootDir, { recursive: true, force: true });
+    }
+  });
 });

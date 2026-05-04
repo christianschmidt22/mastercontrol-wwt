@@ -3,6 +3,7 @@ import {
   useState,
   useCallback,
   useEffect,
+  useMemo,
   type KeyboardEvent,
   type FormEvent,
 } from 'react';
@@ -162,6 +163,10 @@ function AssistantMessage({ content, reserveToolbarSpace = true }: {
   );
 }
 
+function isNearBottom(el: HTMLElement): boolean {
+  return el.scrollHeight - el.scrollTop - el.clientHeight <= 40;
+}
+
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
@@ -195,6 +200,8 @@ export function ChatTile({
   const [draft, setDraft] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const feedRef = useRef<HTMLDivElement>(null);
+  const shouldStickToBottomRef = useRef(true);
+  const didInitializeScrollRef = useRef(false);
 
   // Hover tracking for message rows
   const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
@@ -205,12 +212,46 @@ export function ChatTile({
   // Single live-region string for a11y announcements (Saved / Copied)
   const [liveMsg, setLiveMsg] = useState('');
 
-  // Auto-scroll feed to bottom when messages or stream state changes
+  const scrollSignature = useMemo(() => {
+    const last = messages[messages.length - 1];
+    return [
+      messages.length,
+      last?.id ?? '',
+      last?.role ?? '',
+      last?.content.length ?? 0,
+      stream.streaming ? 'streaming' : 'idle',
+      stream.partial.length,
+      stream.activities.length,
+    ].join(':');
+  }, [messages, stream.activities.length, stream.partial.length, stream.streaming]);
+
+  const scrollFeedToBottom = useCallback(() => {
+    const feed = feedRef.current;
+    if (!feed) return;
+    feed.scrollTop = feed.scrollHeight;
+  }, []);
+
+  const handleFeedScroll = useCallback(() => {
+    const feed = feedRef.current;
+    if (!feed) return;
+    shouldStickToBottomRef.current = isNearBottom(feed);
+  }, []);
+
+  // Auto-scroll only while the user is already reading the bottom of the feed.
+  // If they scroll up to review an answer, hover/focus rerenders must preserve
+  // their reading position.
   useEffect(() => {
-    if (feedRef.current) {
-      feedRef.current.scrollTop = feedRef.current.scrollHeight;
+    if (!feedRef.current) return;
+    if (!didInitializeScrollRef.current) {
+      didInitializeScrollRef.current = true;
+      shouldStickToBottomRef.current = true;
+      scrollFeedToBottom();
+      return;
     }
-  }, [messages, stream.partial, stream.activities]);
+    if (shouldStickToBottomRef.current) {
+      scrollFeedToBottom();
+    }
+  }, [scrollFeedToBottom, scrollSignature]);
 
   useEffect(() => {
     function handleReadDocument(event: Event) {
@@ -227,6 +268,7 @@ export function ChatTile({
         textareaRef.current?.focus();
         return;
       }
+      shouldStickToBottomRef.current = true;
       send(prompt);
     }
 
@@ -279,6 +321,7 @@ export function ChatTile({
       const trimmed = draft.trim();
       if (!trimmed || stream.streaming) return;
       setDraft('');
+      shouldStickToBottomRef.current = true;
       // Reset textarea height after sending
       if (textareaRef.current) {
         textareaRef.current.style.height = 'auto';
@@ -413,6 +456,7 @@ export function ChatTile({
           ref={feedRef}
           aria-live="polite"
           aria-label="Chat history"
+          onScroll={handleFeedScroll}
           style={{
             flex: 1,
             overflowY: 'auto',

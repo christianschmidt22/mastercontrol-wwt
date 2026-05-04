@@ -1118,9 +1118,123 @@ function ReportRow({
           History
         </button>
       </div>
+      <LastReportRunLinks reportId={report.id} reportName={report.name} />
     </li>
   );
 }
+
+interface LastReportRunLinksProps {
+  reportId: number;
+  reportName: string;
+}
+
+function LastReportRunLinks({ reportId, reportName }: LastReportRunLinksProps) {
+  const runsQuery = useReportRuns(reportId);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const lastOutput = (runsQuery.data ?? []).find(
+    (run) => run.status === 'done' && run.output_path !== null,
+  );
+
+  if (runsQuery.isLoading) {
+    return (
+      <div style={lastRunLineStyle}>
+        <span style={lastRunLabelStyle}>Last output</span>
+        <span>Loading...</span>
+      </div>
+    );
+  }
+
+  if (runsQuery.isError) {
+    return (
+      <div style={lastRunLineStyle}>
+        <span style={lastRunLabelStyle}>Last output</span>
+        <span>Unavailable</span>
+      </div>
+    );
+  }
+
+  if (!lastOutput) {
+    return (
+      <div style={lastRunLineStyle}>
+        <span style={lastRunLabelStyle}>Last output</span>
+        <span>No completed report yet</span>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 2 }}>
+      <div style={lastRunLineStyle}>
+        <span style={lastRunLabelStyle}>Last output</span>
+        <time dateTime={lastOutput.started_at}>{formatRelative(lastOutput.started_at)}</time>
+        <span aria-hidden="true">·</span>
+        <button
+          type="button"
+          onClick={() => setPreviewOpen((value) => !value)}
+          aria-expanded={previewOpen}
+          aria-label={`${previewOpen ? 'Collapse' : 'Preview'} last ${reportName} output`}
+          style={linkButtonStyle}
+        >
+          {previewOpen ? 'Collapse preview' : 'Preview'}
+        </button>
+        <span aria-hidden="true">·</span>
+        <a
+          href={`/api/reports/${reportId}/runs/${lastOutput.id}/download`}
+          download
+          aria-label={`Download last ${reportName} output`}
+          style={linkAnchorStyle}
+        >
+          Download
+        </a>
+      </div>
+      {previewOpen && (
+        <RunContentPreview
+          reportId={reportId}
+          runId={lastOutput.id}
+          outputPath={lastOutput.output_path}
+        />
+      )}
+    </div>
+  );
+}
+
+const lastRunLineStyle: CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 7,
+  minHeight: 22,
+  fontSize: 11,
+  color: 'var(--ink-3)',
+  fontFamily: 'var(--body)',
+  fontVariantNumeric: 'tabular-nums',
+  borderTop: '1px dotted var(--rule)',
+  paddingTop: 7,
+};
+
+const lastRunLabelStyle: CSSProperties = {
+  color: 'var(--ink-2)',
+  fontWeight: 600,
+  textTransform: 'uppercase',
+  letterSpacing: '0.06em',
+};
+
+const linkButtonStyle: CSSProperties = {
+  border: 'none',
+  background: 'transparent',
+  color: 'var(--ink-2)',
+  cursor: 'pointer',
+  fontFamily: 'var(--body)',
+  fontSize: 11,
+  padding: 0,
+  textDecoration: 'underline',
+  textUnderlineOffset: 3,
+};
+
+const linkAnchorStyle: CSSProperties = {
+  color: 'var(--ink-2)',
+  textDecoration: 'underline',
+  textUnderlineOffset: 3,
+};
 
 // ---------------------------------------------------------------------------
 // ReportsPage

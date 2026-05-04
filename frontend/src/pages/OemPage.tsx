@@ -1,8 +1,12 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
-import { LayoutGrid, Settings } from 'lucide-react';
+import { Settings } from 'lucide-react';
 import { TileGrid, type TileGridItem } from '../components/tiles/TileGrid';
 import { useTileLayout, type TileLayout } from '../components/tiles/useTileLayout';
+import {
+  TileLayoutControls,
+  tileActionIconButtonStyle,
+} from '../components/tiles/TileLayoutControls';
 import { ChatTile } from '../components/tiles/customer/ChatTile';
 import { AccountChannelTile } from '../components/tiles/oem/AccountChannelTile';
 import { OemQuickLinksTile } from '../components/tiles/oem/OemQuickLinksTile';
@@ -246,60 +250,17 @@ function OemDashboard({ org, tabs }: OemDashboardProps) {
       <OemPageHeader org={org} tabs={tabs} />
       <OemCrossRefsPanel orgId={org.id} />
 
-      {/* Edit controls — fixed top-right next to the AlertBell. Right offset
-          mirrors the customer page (16 bell margin + 42 bell width + 10 gap). */}
-      <div
-        style={{
-          position: 'fixed',
-          top: 10,
-          right: 68,
-          display: 'flex',
-          alignItems: 'center',
-          gap: 6,
-          zIndex: 500,
-        }}
+      <TileLayoutControls
+        editMode={editMode}
+        isDirty={isDirty}
+        ariaLabel="Customize OEM tile layout"
+        onStartEdit={() => setEditMode(true)}
+        onReset={handleReset}
+        onCancel={handleCancel}
+        onSave={handleSave}
       >
-        {editMode ? (
-          <>
-            <button
-              type="button"
-              onClick={() => void handleReset()}
-              style={secondaryBtnStyle}
-            >
-              Reset
-            </button>
-            <button type="button" onClick={handleCancel} style={secondaryBtnStyle}>
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={handleSave}
-              disabled={!isDirty}
-              style={{
-                ...secondaryBtnStyle,
-                background: isDirty ? 'var(--bg-2)' : 'var(--bg)',
-                color: isDirty ? 'var(--ink-1)' : 'var(--ink-3)',
-                cursor: isDirty ? 'pointer' : 'default',
-              }}
-            >
-              Save
-            </button>
-          </>
-        ) : (
-          <>
-            <OemSettingsPopover org={org} />
-            <button
-              type="button"
-              onClick={() => setEditMode(true)}
-              aria-label="Customize OEM tile layout"
-              title="Customize layout"
-              style={iconBtnStyle}
-            >
-              <LayoutGrid size={14} strokeWidth={1.5} aria-hidden="true" />
-            </button>
-          </>
-        )}
-      </div>
+        <OemSettingsPopover org={org} />
+      </TileLayoutControls>
 
       <TileGrid
         items={tiles}
@@ -311,34 +272,8 @@ function OemDashboard({ org, tabs }: OemDashboardProps) {
   );
 }
 
-const secondaryBtnStyle: CSSProperties = {
-  fontFamily: 'var(--body)',
-  fontSize: 12,
-  fontWeight: 500,
-  padding: '7px 12px',
-  borderRadius: 6,
-  cursor: 'pointer',
-  border: '1px solid var(--rule)',
-  background: 'var(--bg)',
-  color: 'var(--ink-2)',
-  height: 30,
-  display: 'flex',
-  alignItems: 'center',
-  transition: 'background-color 150ms var(--ease), color 150ms var(--ease), border-color 150ms var(--ease)',
-};
-
 const iconBtnStyle: CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  width: 30,
-  height: 30,
-  border: '1px solid var(--rule)',
-  borderRadius: 6,
-  background: 'var(--bg)',
-  color: 'var(--ink-3)',
-  cursor: 'pointer',
-  padding: 0,
+  ...tileActionIconButtonStyle,
 };
 
 const oemTabStyleBase: CSSProperties = {

@@ -428,6 +428,22 @@ describe('GET /api/reports/:id/runs/:run_id/output', () => {
     expect(typeof res.body.output_sha256).toBe('string');
   });
 
+  it('download path: streams the latest output file as an attachment', async () => {
+    const r = reportModel.create({ name: 'Output download', prompt_template: 't' });
+    const s = reportScheduleModel.upsert(r.id, { cron_expr: '0 7 * * *' });
+    const { run } = reportRunModel.create({ schedule_id: s.id, fire_time: 1000 });
+    reportRunModel.updateStatus(run.id, 'done', {
+      output_path: tmpFilePath,
+      output_sha256: 'deadbeef'.repeat(8),
+    });
+
+    const res = await request(app).get(`/api/reports/${r.id}/runs/${run.id}/download`);
+
+    expect(res.status).toBe(200);
+    expect(res.headers['content-disposition']).toMatch(/attachment/);
+    expect(res.text).toBe('# Hello\n\nTest output.');
+  });
+
   it('returns 404 for a run_id that does not exist', async () => {
     const r = reportModel.create({ name: 'Output missing run', prompt_template: 't' });
     const res = await request(app).get(`/api/reports/${r.id}/runs/9999999/output`);

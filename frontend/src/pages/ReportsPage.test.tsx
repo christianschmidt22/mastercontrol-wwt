@@ -217,6 +217,13 @@ describe('ReportsPage — list rendering', () => {
     expect(
       screen.getByRole('button', { name: /view run history for daily task review/i }),
     ).toBeInTheDocument();
+    expect(screen.getByText(/last output/i)).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /preview last daily task review output/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('link', { name: /download last daily task review output/i }),
+    ).toHaveAttribute('href', '/api/reports/1/runs/7/download');
   });
 
   it('renders an empty-state when there are no reports', () => {

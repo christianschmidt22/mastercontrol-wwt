@@ -1,5 +1,9 @@
 import { calendarEventModel, type CalendarEvent } from '../models/calendarEvent.model.js';
 import { mileageDistanceModel } from '../models/mileageDistance.model.js';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import path from 'node:path';
+import { getReportsRoot } from '../lib/appPaths.js';
+import { isMastercontrolRootConfigured } from './fileSpace.service.js';
 
 export const MILEAGE_HOME_ADDRESS = '250 Pine St, Lino Lakes, MN 55014';
 const EXCLUDED_LOCATION_NEEDLES = [
@@ -71,6 +75,41 @@ export interface MileageReport {
   calculated: boolean;
 }
 
+export interface MileageCalculation {
+  from_address: string;
+  to_address: string;
+  type: typeof ROUND_TRIP;
+  miles: number | null;
+  one_way_miles: number | null;
+  distance_source: 'cache' | 'osrm' | 'unavailable';
+  distance_error: string | null;
+  maps_url: string;
+}
+
+export interface MileageExportRow {
+  uid: string;
+  date: string;
+  subject: string;
+  from_address: string;
+  to_address: string;
+  type: typeof ROUND_TRIP;
+  miles: number | null;
+}
+
+export interface MileageExportPdfInput {
+  start_date: string;
+  end_date: string;
+  rows: MileageExportRow[];
+  total_miles: number;
+}
+
+export interface MileageExportPdfResult {
+  file_name: string;
+  file_path: string;
+  row_count: number;
+  total_miles: number;
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
@@ -128,6 +167,96 @@ function googleMapsUrl(fromAddress: string, toAddress: string): string {
     travelmode: 'driving',
   });
   return `https://www.google.com/maps/dir/?${params.toString()}`;
+}
+
+function pdfSafeText(value: string): string {
+  return value.replace(/[\r\n\t]+/g, ' ').replace(/[^\x20-\x7E]/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+function pdfEscape(value: string): string {
+  return pdfSafeText(value).replaceAll('\\', '\\\\').replaceAll('(', '\\(').replaceAll(')', '\\)');
+}
+
+function clipText(value: string, maxChars: number): string {
+  const text = pdfSafeText(value);
+  return text.length > maxChars ? `${text.slice(0, Math.max(0, maxChars - 3))}...` : text;
+}
+
+function pdfText(x: number, y: number, text: string, font = 'F1', size = 9): string {
+  return `BT /${font} ${size} Tf ${x} ${y} Td (${pdfEscape(text)}) Tj ET\n`;
+}
+
+function buildMileagePdf(input: MileageExportPdfInput): Buffer {
+  const pageWidth = 792;
+  const pageHeight = 612;
+  const rowsPerPage = 23;
+  const pages: string[] = [];
+  const rowPages = input.rows.length === 0
+    ? [[]]
+    : Array.from({ length: Math.ceil(input.rows.length / rowsPerPage) }, (_, index) =>
+        input.rows.slice(index * rowsPerPage, (index + 1) * rowsPerPage),
+      );
+
+  rowPages.forEach((pageRows, pageIndex) => {
+    let stream = '';
+    stream += pdfText(30, 568, 'Mileage Report', 'F2', 19);
+    stream += pdfText(30, 548, `${input.start_date} to ${input.end_date}`, 'F1', 10);
+    stream += pdfText(pageWidth - 170, 548, `Total miles: ${input.total_miles.toFixed(1)}`, 'F2', 11);
+    stream += pdfText(30, 520, 'Date', 'F2', 8);
+    stream += pdfText(100, 520, 'Subject', 'F2', 8);
+    stream += pdfText(305, 520, 'From Address', 'F2', 8);
+    stream += pdfText(475, 520, 'To Address', 'F2', 8);
+    stream += pdfText(670, 520, 'Type', 'F2', 8);
+    stream += pdfText(745, 520, 'Miles', 'F2', 8);
+
+    pageRows.forEach((row, rowIndex) => {
+      const y = 500 - rowIndex * 20;
+      stream += pdfText(30, y, row.date, 'F1', 8);
+      stream += pdfText(100, y, clipText(row.subject, 42), 'F1', 8);
+      stream += pdfText(305, y, clipText(row.from_address, 34), 'F1', 8);
+      stream += pdfText(475, y, clipText(row.to_address, 39), 'F1', 8);
+      stream += pdfText(670, y, row.type, 'F1', 8);
+      stream += pdfText(755, y, row.miles == null ? '' : row.miles.toFixed(1), 'F1', 8);
+    });
+
+    stream += pdfText(30, 34, `Page ${pageIndex + 1} of ${rowPages.length}`, 'F1', 8);
+    pages.push(stream);
+  });
+
+  const objects: string[] = [
+    '<< /Type /Catalog /Pages 2 0 R >>',
+    '',
+    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
+    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>',
+  ];
+  const pageObjectIds: number[] = [];
+
+  pages.forEach((stream) => {
+    const pageId = objects.length + 1;
+    const contentId = objects.length + 2;
+    pageObjectIds.push(pageId);
+    objects.push(
+      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pageWidth} ${pageHeight}] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents ${contentId} 0 R >>`,
+    );
+    objects.push(`<< /Length ${Buffer.byteLength(stream, 'ascii')} >>\nstream\n${stream}endstream`);
+  });
+
+  objects[1] = `<< /Type /Pages /Kids [${pageObjectIds.map((id) => `${id} 0 R`).join(' ')}] /Count ${pageObjectIds.length} >>`;
+
+  let pdf = '%PDF-1.4\n';
+  const offsets = [0];
+  objects.forEach((object, index) => {
+    offsets.push(Buffer.byteLength(pdf, 'ascii'));
+    pdf += `${index + 1} 0 obj\n${object}\nendobj\n`;
+  });
+  const xrefOffset = Buffer.byteLength(pdf, 'ascii');
+  pdf += `xref\n0 ${objects.length + 1}\n`;
+  pdf += '0000000000 65535 f \n';
+  for (const offset of offsets.slice(1)) {
+    pdf += `${String(offset).padStart(10, '0')} 00000 n \n`;
+  }
+  pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF\n`;
+  return Buffer.from(pdf, 'ascii');
 }
 
 async function waitForNominatimSlot(): Promise<void> {
@@ -284,5 +413,52 @@ export async function buildMileageReport(
     total_miles: roundMiles(totalMiles),
     excluded_count: events.length - eligible.length,
     calculated: calculate,
+  };
+}
+
+export async function calculateMileageRoute(
+  fromAddress: string,
+  toAddress: string,
+): Promise<MileageCalculation> {
+  const from = normalizeLocation(fromAddress);
+  const to = normalizeLocation(toAddress);
+  const distance = await getDistance(from, to, true);
+  const miles = distance.oneWayMiles == null ? null : roundMiles(distance.oneWayMiles * 2);
+
+  return {
+    from_address: from,
+    to_address: to,
+    type: ROUND_TRIP,
+    miles,
+    one_way_miles: distance.oneWayMiles,
+    distance_source: distance.source === 'not_calculated' ? 'unavailable' : distance.source,
+    distance_error: distance.error,
+    maps_url: googleMapsUrl(from, to),
+  };
+}
+
+export function exportMileagePdf(input: MileageExportPdfInput): MileageExportPdfResult {
+  if (!isMastercontrolRootConfigured()) {
+    throw new Error('mastercontrol_root is not configured in settings');
+  }
+
+  const reportsRoot = path.resolve(getReportsRoot());
+  const outputDir = path.join(reportsRoot, 'mileage');
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const fileName = `mileage-report-${input.start_date}-to-${input.end_date}-${timestamp}.pdf`;
+  const outputPath = path.resolve(outputDir, fileName);
+  const safeRoot = `${path.normalize(reportsRoot)}${path.sep}`;
+  if (!path.normalize(outputPath).startsWith(safeRoot)) {
+    throw new Error('safe-path-rejected: mileage PDF destination escapes reports root');
+  }
+
+  mkdirSync(outputDir, { recursive: true });
+  writeFileSync(outputPath, buildMileagePdf(input));
+
+  return {
+    file_name: fileName,
+    file_path: outputPath,
+    row_count: input.rows.length,
+    total_miles: roundMiles(input.total_miles),
   };
 }

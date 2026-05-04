@@ -1,9 +1,13 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { Folder, LayoutGrid, Settings, Users } from 'lucide-react';
+import { Folder, Settings, Users } from 'lucide-react';
 import { useOpenPath } from '../api/useShell';
 import { TileGrid, type TileGridItem } from '../components/tiles/TileGrid';
 import { useTileLayout, type TileLayout } from '../components/tiles/useTileLayout';
+import {
+  TileLayoutControls,
+  tileActionIconButtonStyle,
+} from '../components/tiles/TileLayoutControls';
 import { ChatTile } from '../components/tiles/customer/ChatTile';
 import { PriorityProjectsTile } from '../components/tiles/customer/PriorityProjectsTile';
 import { TasksTile } from '../components/tiles/customer/TasksTile';
@@ -556,88 +560,20 @@ function ProjectPage({ project }: { project: Project }) {
   ];
 
   const iconBtnStyle: CSSProperties = {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    width: 30,
-    height: 30,
-    border: '1px solid var(--rule)',
-    borderRadius: 6,
-    background: 'var(--bg)',
-    color: 'var(--ink-3)',
-    cursor: 'pointer',
-    padding: 0,
-  };
-
-  const inlineToolbarBtn: CSSProperties = {
-    fontFamily: 'var(--body)',
-    fontSize: 12,
-    fontWeight: 500,
-    padding: '7px 12px',
-    borderRadius: 6,
-    cursor: 'pointer',
-    border: '1px solid var(--rule)',
-    background: 'var(--bg)',
-    color: 'var(--ink-2)',
-    display: 'flex',
-    alignItems: 'center',
-    gap: 6,
-    height: 30,
+    ...tileActionIconButtonStyle,
   };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-      {/*
-        Fixed overlay next to the AlertBell (top:12 right:16, ~42px wide).
-        Right offset = 16 (bell margin) + 42 (bell width) + 10 (gap) = 68px.
-      */}
-      <div
-        style={{
-          position: 'fixed',
-          top: 10,
-          right: 68,
-          display: 'flex',
-          alignItems: 'center',
-          gap: 6,
-          zIndex: 500,
-        }}
+      <TileLayoutControls
+        editMode={editMode}
+        isDirty={isDirty}
+        onStartEdit={() => setEditMode(true)}
+        onReset={handleLayoutReset}
+        onCancel={handleLayoutCancel}
+        onSave={handleLayoutSave}
       >
         <StatusPill status={project.status} />
-
-        {/* Customize / edit-mode controls — live inline with the icon row */}
-        {editMode ? (
-          <>
-            <button type="button" onClick={() => void handleLayoutReset()} style={inlineToolbarBtn}>
-              Reset
-            </button>
-            <button type="button" onClick={handleLayoutCancel} style={inlineToolbarBtn}>
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={handleLayoutSave}
-              disabled={!isDirty}
-              style={{
-                ...inlineToolbarBtn,
-                cursor: isDirty ? 'pointer' : 'default',
-                background: isDirty ? 'var(--bg-2)' : 'var(--bg)',
-                color: isDirty ? 'var(--ink-1)' : 'var(--ink-3)',
-              }}
-            >
-              Save
-            </button>
-          </>
-        ) : (
-          <button
-            type="button"
-            onClick={() => setEditMode(true)}
-            aria-label="Customize tile layout"
-            title="Customize layout"
-            style={iconBtnStyle}
-          >
-            <LayoutGrid size={14} strokeWidth={1.5} aria-hidden="true" />
-          </button>
-        )}
 
         {project.doc_url && (
           <button
@@ -692,104 +628,9 @@ function ProjectPage({ project }: { project: Project }) {
         </div>
 
         <ProjectConfigPanel project={project} />
-      </div>
+      </TileLayoutControls>
 
       <TileGrid items={tiles} layout={layout} editMode={editMode} onLayoutChange={save} />
-    </div>
-  );
-}
-
-function LayoutToolbar({
-  editMode,
-  isDirty,
-  onStartEdit,
-  onReset,
-  onCancel,
-  onSave,
-}: {
-  editMode: boolean;
-  isDirty: boolean;
-  onStartEdit: () => void;
-  onReset: () => void;
-  onCancel: () => void;
-  onSave: () => void;
-}) {
-  const textBtnStyle: CSSProperties = {
-    fontFamily: 'var(--body)',
-    fontSize: 12,
-    fontWeight: 500,
-    padding: '7px 12px',
-    borderRadius: 6,
-    cursor: 'pointer',
-    border: '1px solid var(--rule)',
-    background: 'var(--bg)',
-    color: 'var(--ink-2)',
-    display: 'flex',
-    alignItems: 'center',
-    gap: 6,
-    height: 30,
-    transition: 'background-color 150ms var(--ease), color 150ms var(--ease)',
-  };
-
-  const iconBtnStyle: CSSProperties = {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    width: 30,
-    height: 30,
-    border: '1px solid var(--rule)',
-    borderRadius: 6,
-    background: 'var(--bg)',
-    color: 'var(--ink-3)',
-    cursor: 'pointer',
-    padding: 0,
-  };
-
-  return (
-    <div
-      style={{
-        position: 'fixed',
-        top: 10,
-        right: 68,
-        display: 'flex',
-        alignItems: 'center',
-        gap: 6,
-        zIndex: 500,
-      }}
-    >
-      {editMode ? (
-        <>
-          <button type="button" onClick={onReset} style={textBtnStyle}>
-            Reset
-          </button>
-          <button type="button" onClick={onCancel} style={textBtnStyle}>
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={onSave}
-            disabled={!isDirty}
-            style={{
-              ...textBtnStyle,
-              cursor: isDirty ? 'pointer' : 'default',
-              background: isDirty ? 'var(--bg-2)' : 'var(--bg)',
-              color: isDirty ? 'var(--ink-1)' : 'var(--ink-3)',
-            }}
-          >
-            Save
-          </button>
-        </>
-      ) : (
-        <button
-          type="button"
-          onClick={onStartEdit}
-          aria-label="Customize tile layout"
-          title="Customize layout"
-          style={iconBtnStyle}
-        >
-          <LayoutGrid size={14} strokeWidth={1.5} aria-hidden="true" />
-        </button>
-      )}
     </div>
   );
 }
@@ -967,11 +808,11 @@ export function CustomerPage() {
       )}
 
       {activeProjectId === null && (
-        <LayoutToolbar
+        <TileLayoutControls
           editMode={editMode}
           isDirty={isDirty}
           onStartEdit={() => setEditMode(true)}
-          onReset={() => void handleReset()}
+          onReset={handleReset}
           onCancel={handleCancel}
           onSave={handleSave}
         />

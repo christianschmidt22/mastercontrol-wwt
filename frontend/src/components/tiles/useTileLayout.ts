@@ -61,6 +61,17 @@ export function useTileLayout(
 
   const [layout, setLayout] = useState<TileLayout[]>(() => savedLayout ?? defaultLayout);
 
+  const clearPendingSave = useCallback(() => {
+    if (debounceTimer.current) {
+      clearTimeout(debounceTimer.current);
+      debounceTimer.current = null;
+    }
+  }, []);
+
+  useEffect(() => {
+    return () => clearPendingSave();
+  }, [clearPendingSave]);
+
   // Keep local state in sync when the server response arrives
   useEffect(() => {
     if (savedLayout) {
@@ -100,26 +111,29 @@ export function useTileLayout(
   const save = useCallback(
     (tiles: TileLayout[], debounce = true) => {
       setLayout(tiles);
+      clearPendingSave();
       if (!debounce) {
         void saveToServer(tiles);
         return;
       }
-      if (debounceTimer.current) clearTimeout(debounceTimer.current);
       debounceTimer.current = setTimeout(() => {
+        debounceTimer.current = null;
         void saveToServer(tiles);
       }, 500);
     },
-    [saveToServer],
+    [clearPendingSave, saveToServer],
   );
 
   const reset = useCallback(async () => {
-    await deleteFromServer();
+    clearPendingSave();
     setLayout(defaultLayout);
-  }, [deleteFromServer, defaultLayout]);
+    await deleteFromServer();
+  }, [clearPendingSave, deleteFromServer, defaultLayout]);
 
   const revert = useCallback(() => {
+    clearPendingSave();
     setLayout(serverLayout);
-  }, [serverLayout]);
+  }, [clearPendingSave, serverLayout]);
 
   return { layout, save, reset, revert, isDirty };
 }

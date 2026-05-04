@@ -21,6 +21,12 @@
   Utica office, uses 250 Pine St in Lino Lakes as the fixed origin, calculates
   round-trip driving miles through OpenStreetMap/OSRM when requested, caches
   distance lookups locally, and includes a Google Maps route link for review.
+  Reports now support inline manual entries, explicit reruns of the current
+  calculation, total-mile rollups across generated and manual rows, and PDF/PNG
+  export for expense-report upload. Manual entries can also calculate round-trip
+  miles from their own from/to address fields. Report subjects can now be
+  edited inline before export, and PDF exports are saved into the MasterControl
+  vault under `reports/mileage`.
 - Tasks now have persisted free-form details for working notes, with the task
   edit dialog exposing a larger Details section and the task table showing a
   compact details preview.

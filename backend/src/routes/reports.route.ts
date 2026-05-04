@@ -156,6 +156,39 @@ reportsRouter.delete('/:id', (req, res, next) => {
   res.status(204).end();
 });
 
+reportsRouter.get('/:id/runs/:run_id/download', (req, res, next) => {
+  const id = parseId(req.params.id);
+  if (id === null) return next(new HttpError(400, 'Invalid id'));
+
+  const runId = parseId(req.params.run_id);
+  if (runId === null) return next(new HttpError(400, 'Invalid run_id'));
+
+  const report = reportModel.get(id);
+  if (!report) return next(new HttpError(404, 'Report not found'));
+
+  const run = reportRunModel.get(runId);
+  if (!run) return next(new HttpError(404, 'Run not found'));
+
+  const schedule = reportScheduleModel.get(run.schedule_id);
+  if (!schedule || schedule.report_id !== id) {
+    return next(new HttpError(400, 'Run does not belong to this report'));
+  }
+
+  if (run.status !== 'done' || run.output_path === null) {
+    return next(new HttpError(404, 'Run has no output'));
+  }
+
+  let absPath: string;
+  try {
+    absPath = resolveSafePath(run.output_path, getReportsRoot());
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return next(new HttpError(404, `Output file not accessible: ${msg}`));
+  }
+
+  res.download(absPath);
+});
+
 // ---------------------------------------------------------------------------
 // Schedules — listed and upserted under a parent report
 // ---------------------------------------------------------------------------

@@ -119,6 +119,7 @@ function useElementWidth<T extends HTMLElement>() {
 export function TileGrid({ items, layout, editMode, onLayoutChange }: TileGridProps) {
   const [containerRef, width] = useElementWidth<HTMLDivElement>();
   const isNarrow = width > 0 && width < NARROW_BREAKPOINT;
+  const useStack = isNarrow && !editMode;
 
   const rglLayout = useMemo(() => toRgl(layout, editMode), [layout, editMode]);
 
@@ -147,7 +148,7 @@ export function TileGrid({ items, layout, editMode, onLayoutChange }: TileGridPr
     <div ref={containerRef} className="tile-grid-wrapper">
       <style>{tileGridCss}</style>
 
-      {isNarrow ? (
+      {useStack ? (
         <div className="tile-grid-stack">
           {stackedItems.map((item) => (
             <div key={item.id} className="tile-grid-stack-cell">
@@ -164,7 +165,7 @@ export function TileGrid({ items, layout, editMode, onLayoutChange }: TileGridPr
             enabled: editMode,
             cancel: 'input,textarea,select,button,a,[data-no-drag]',
           }}
-          resizeConfig={{ enabled: editMode }}
+          resizeConfig={{ enabled: editMode, handles: ['se'] }}
           width={width || 1200}
           onLayoutChange={handleLayoutChange}
         >
@@ -218,6 +219,8 @@ const tileGridCss = `
   background: none;
   width: 18px;
   height: 18px;
+  z-index: 20;
+  cursor: se-resize;
 }
 .tile-grid .react-resizable-handle::after {
   content: '';

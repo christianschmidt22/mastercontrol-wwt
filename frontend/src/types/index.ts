@@ -127,6 +127,11 @@ export type {
 } from './bomTool';
 
 export type {
+  MileageCalculation,
+  MileageCalculateRequest,
+  MileageExportPdfRequest,
+  MileageExportPdfResponse,
+  MileageExportRow,
   MileageReport,
   MileageReportRow,
 } from './mileage';

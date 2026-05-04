@@ -1,5 +1,5 @@
-import { useState, useCallback, useId, type FormEvent, type CSSProperties } from 'react';
-import { Mail, MessageSquare, PhoneCall, Plus, Trash2 } from 'lucide-react';
+import { useState, useCallback, useId, useMemo, type FormEvent, type CSSProperties } from 'react';
+import { Mail, MessageSquare, PhoneCall, Plus, Search, Trash2, X } from 'lucide-react';
 import { Tile } from '../Tile';
 import { TileEmptyState } from '../TileEmptyState';
 import { ContactCardDialog } from '../../contacts/ContactCardDialog';
@@ -77,6 +77,7 @@ export function ContactsTile({ orgId, _useContacts, _useCreateContact, _useDelet
   const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
   const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
   const [adding, setAdding] = useState(false);
+  const [filter, setFilter] = useState('');
   const [optimisticContacts, setOptimisticContacts] = useState<Contact[]>([]);
 
   // Form state
@@ -164,35 +165,123 @@ export function ContactsTile({ orgId, _useContacts, _useCreateContact, _useDelet
     [deleteContact, orgId],
   );
 
-  const contactList = [...(contacts ?? []), ...optimisticContacts];
+  const contactList = useMemo(() => [...(contacts ?? []), ...optimisticContacts], [contacts, optimisticContacts]);
+  const filteredContacts = useMemo(() => {
+    const query = filter.trim().toLowerCase();
+    if (!query) return contactList;
+    return contactList.filter((contact) => {
+      const haystack = [
+        contact.name,
+        contact.title,
+        contact.email,
+        contact.phone,
+      ].filter(Boolean).join(' ').toLowerCase();
+      return haystack.includes(query);
+    });
+  }, [contactList, filter]);
+  const hasFilter = filter.trim().length > 0;
 
   return (
     <Tile
       title="Contacts"
-      count={isLoading ? '…' : contactList.length || undefined}
+      count={
+        isLoading
+          ? '...'
+          : (hasFilter ? `${filteredContacts.length}/${contactList.length}` : contactList.length || undefined)
+      }
       titleAction={
-        adding ? undefined : (
-          <button
-            type="button"
-            aria-label="Add contact"
-            onClick={() => setAdding(true)}
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center', minWidth: 0 }}>
+          <div
             style={{
+              position: 'relative',
               display: 'flex',
               alignItems: 'center',
-              gap: 4,
-              background: 'transparent',
-              border: 'none',
-              padding: '2px 4px',
-              cursor: 'pointer',
-              fontSize: 11,
-              color: 'var(--ink-3)',
-              fontFamily: 'var(--body)',
+              width: 154,
+              minWidth: 108,
             }}
           >
-            <Plus size={11} strokeWidth={1.5} aria-hidden="true" />
-            Add contact
-          </button>
-        )
+            <Search
+              size={11}
+              strokeWidth={1.5}
+              aria-hidden="true"
+              style={{
+                position: 'absolute',
+                left: 7,
+                color: 'var(--ink-3)',
+                pointerEvents: 'none',
+              }}
+            />
+            <input
+              type="search"
+              value={filter}
+              onChange={(event) => setFilter(event.target.value)}
+              aria-label="Filter contacts"
+              placeholder="Find contact"
+              data-no-drag
+              style={{
+                width: '100%',
+                height: 26,
+                border: '1px solid var(--rule)',
+                borderRadius: 5,
+                background: 'transparent',
+                color: 'var(--ink-1)',
+                fontFamily: 'var(--body)',
+                fontSize: 12,
+                padding: filter ? '3px 26px 3px 23px' : '3px 7px 3px 23px',
+                outline: 'none',
+              }}
+            />
+            {filter && (
+              <button
+                type="button"
+                onClick={() => setFilter('')}
+                aria-label="Clear contact filter"
+                data-no-drag
+                style={{
+                  position: 'absolute',
+                  right: 4,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  width: 20,
+                  height: 20,
+                  border: 'none',
+                  borderRadius: 4,
+                  background: 'transparent',
+                  color: 'var(--ink-3)',
+                  cursor: 'pointer',
+                  padding: 0,
+                }}
+              >
+                <X size={11} strokeWidth={1.5} aria-hidden="true" />
+              </button>
+            )}
+          </div>
+          {!adding && (
+            <button
+              type="button"
+              aria-label="Add contact"
+              onClick={() => setAdding(true)}
+              data-no-drag
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4,
+                background: 'transparent',
+                border: 'none',
+                padding: '2px 4px',
+                cursor: 'pointer',
+                fontSize: 11,
+                color: 'var(--ink-3)',
+                fontFamily: 'var(--body)',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              <Plus size={11} strokeWidth={1.5} aria-hidden="true" />
+              Add contact
+            </button>
+          )}
+        </div>
       }
     >
       {/* ── Inline add form ───────────────────────────────────────────────── */}
@@ -345,7 +434,14 @@ export function ContactsTile({ orgId, _useContacts, _useCreateContact, _useDelet
         />
       )}
 
-      {contactList.length > 0 && (
+      {!isLoading && hasFilter && contactList.length > 0 && filteredContacts.length === 0 && !adding && (
+        <TileEmptyState
+          copy="No matching contacts."
+          ariaLive
+        />
+      )}
+
+      {filteredContacts.length > 0 && (
         <ul
           role="list"
           style={{
@@ -357,7 +453,7 @@ export function ContactsTile({ orgId, _useContacts, _useCreateContact, _useDelet
             gap: 8,
           }}
         >
-          {contactList.map((contact) => (
+          {filteredContacts.map((contact) => (
             <li
               key={contact.id}
               onMouseEnter={() => setHoveredId(contact.id)}

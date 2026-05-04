@@ -184,6 +184,42 @@ describe('ChatTile — assistant formatting', () => {
   });
 });
 
+describe('ChatTile — feed scroll position', () => {
+  it("keeps the user's scroll position when hover state rerenders the feed", () => {
+    const useStreamWithFreshMessages = () => ({
+      messages: [assistantMsg].map((message) => ({ ...message })),
+      stream: { streaming: false, partial: '', failed: null, activities: [] },
+      send: vi.fn(),
+      stop: vi.fn(),
+      retry: vi.fn(),
+    });
+
+    render(
+      <ChatTile
+        orgId={10}
+        orgName="Acme"
+        _useStreamChat={useStreamWithFreshMessages}
+        _useCreateNote={makeCreateNoteHook()}
+      />,
+    );
+
+    const feed = screen.getByLabelText('Chat history');
+    Object.defineProperty(feed, 'scrollHeight', { value: 1000, configurable: true });
+    Object.defineProperty(feed, 'clientHeight', { value: 250, configurable: true });
+
+    feed.scrollTop = 180;
+    fireEvent.scroll(feed);
+
+    const messageRow = screen.getByText('Here is the answer.').closest('[data-role="assistant"]');
+    expect(messageRow).not.toBeNull();
+
+    fireEvent.mouseEnter(messageRow!);
+    fireEvent.mouseLeave(messageRow!);
+
+    expect(feed.scrollTop).toBe(180);
+  });
+});
+
 describe('ChatTile — textarea auto-resize', () => {
   it('onInput handler updates textarea style.height based on scrollHeight', () => {
     render(

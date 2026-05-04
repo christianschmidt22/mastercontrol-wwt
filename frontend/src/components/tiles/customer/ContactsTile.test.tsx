@@ -31,6 +31,14 @@ const baseContact: Contact = {
   assigned_org_ids: [],
 };
 
+const secondContact: Contact = {
+  ...baseContact,
+  id: 2,
+  name: 'Cory Degerstrom',
+  title: 'Director',
+  email: 'cory@example.com',
+};
+
 function makeHook(data: Contact[] | undefined, isLoading = false) {
   return (_orgId: number) => ({ data, isLoading });
 }
@@ -84,6 +92,21 @@ describe('ContactsTile — data view', () => {
     expect(
       screen.queryByText('No contacts yet. Add the account team.'),
     ).toBeNull();
+  });
+
+  it('filters contacts from the tile header as the user types', async () => {
+    const user = userEvent.setup();
+    renderWithClient(<ContactsTile orgId={10} _useContacts={makeHook([baseContact, secondContact])} />);
+
+    await user.type(screen.getByRole('searchbox', { name: 'Filter contacts' }), 'cory');
+
+    expect(screen.getByText('Cory Degerstrom')).toBeInTheDocument();
+    expect(screen.queryByText('Alice Smith')).toBeNull();
+
+    await user.click(screen.getByRole('button', { name: 'Clear contact filter' }));
+
+    expect(screen.getByText('Alice Smith')).toBeInTheDocument();
+    expect(screen.getByText('Cory Degerstrom')).toBeInTheDocument();
   });
 
   it('requires confirmation before deleting a contact', async () => {

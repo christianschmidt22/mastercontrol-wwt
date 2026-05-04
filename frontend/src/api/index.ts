@@ -108,5 +108,7 @@ export {
 
 export {
   mileageKeys,
+  useCalculateMileage,
+  useExportMileagePdf,
   useMileageReport,
 } from './useMileage';
