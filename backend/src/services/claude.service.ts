@@ -332,6 +332,9 @@ function displayToolName(toolName: string): string {
     .replace(/_/g, ' ');
 }
 
+const CLAUDE_CODE_CHAT_MAX_TURNS = 10;
+const CLAUDE_CODE_M365_CHAT_MAX_TURNS = 16;
+
 async function runClaudeCodePrompt(options: {
   prompt: string;
   systemPrompt: string | string[];
@@ -1473,6 +1476,9 @@ async function streamChatViaClaudeCode({
   const mcpAllowed = toolDefs.map((def) => `mcp__mastercontrol__${def.name}`);
   const builtinTools = enabledToolNames.has('web_search') ? ['WebSearch'] : [];
   const m365Allowed = m365ClaudeCodeEnabled ? M365_CLAUDE_CODE_ALLOWED_TOOLS : [];
+  const maxTurns = m365ClaudeCodeEnabled
+    ? CLAUDE_CODE_M365_CHAT_MAX_TURNS
+    : CLAUDE_CODE_CHAT_MAX_TURNS;
 
   const historyText = historyMessages.length
     ? historyMessages
@@ -1505,7 +1511,7 @@ async function streamChatViaClaudeCode({
       prompt,
       options: {
         model: agentConfig.model,
-        maxTurns: 4,
+        maxTurns,
         tools: builtinTools,
         allowedTools: [...builtinTools, ...mcpAllowed, ...m365Allowed],
         permissionMode: 'dontAsk',

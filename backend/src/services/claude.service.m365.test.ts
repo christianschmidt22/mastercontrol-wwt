@@ -414,13 +414,51 @@ describe('M365 MCP - Claude Code subscription path', () => {
 
     expect(mockClaudeCodeQuery).toHaveBeenCalled();
     const callArg = firstCallArg<{
-      options?: { allowedTools?: string[]; systemPrompt?: string[] };
+      options?: { allowedTools?: string[]; maxTurns?: number; systemPrompt?: string[] };
     }>(mockClaudeCodeQuery);
+    expect(callArg.options?.maxTurns).toBe(16);
     expect(callArg.options?.allowedTools).toContain(
       'mcp__claude_ai_Microsoft_365__outlook_email_search',
     );
     expect(callArg.options?.allowedTools).not.toContain('mcp__mastercontrol__record_insight');
     expect(callArg.options?.systemPrompt?.join('\n')).toContain('Microsoft 365 Search Tools');
+  });
+
+  it('gives calendar/search requests enough turns for multiple M365 tool calls', async () => {
+    mockSettingsGet.mockImplementation(buildSettingsGetter(true, false, 'subscription'));
+    mockHasClaudeCodeCredentials.mockReturnValue(true);
+    async function* sdkEvents() {
+      yield {
+        type: 'result',
+        subtype: 'success',
+        duration_ms: 10,
+        duration_api_ms: 8,
+        is_error: false,
+        num_turns: 8,
+        result: 'availability found',
+        errors: [],
+        total_cost_usd: 0,
+        usage: {
+          input_tokens: 10,
+          output_tokens: 5,
+          cache_read_input_tokens: 0,
+          cache_creation_input_tokens: 0,
+        },
+      };
+    }
+    mockClaudeCodeQuery.mockReturnValue(sdkEvents());
+    const { req, res } = makeMockReqRes();
+
+    await streamChat({
+      orgId: 1,
+      threadId: 21,
+      content: 'Check my and Josh Garrett calendars for availability over the next two weeks',
+      req,
+      res,
+    });
+
+    const callArg = firstCallArg<{ options?: { maxTurns?: number } }>(mockClaudeCodeQuery);
+    expect(callArg.options?.maxTurns).toBeGreaterThan(8);
   });
 });
 
