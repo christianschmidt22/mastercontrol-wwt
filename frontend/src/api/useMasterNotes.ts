@@ -125,18 +125,36 @@ export function useMasterNoteEditor(args: {
   const [status, setStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>(
     'idle',
   );
-  const loadedRef = useRef(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const latestRef = useRef('');
+  const serverContentRef = useRef<string | null>(null);
+  const hydratedScopeRef = useRef<string | null>(null);
+  const [loaded, setLoaded] = useState(false);
+  const scopeKey = `${orgId}:${projectId ?? 'org'}`;
 
-  // Seed the textarea once when the server response arrives.
+  // Reset the local draft when the tile is reused for a different scope.
   useEffect(() => {
-    if (note.data && !loadedRef.current) {
+    if (hydratedScopeRef.current === scopeKey) return;
+    setValueState('');
+    latestRef.current = '';
+    serverContentRef.current = null;
+    setStatus('idle');
+    setLoaded(false);
+  }, [scopeKey]);
+
+  // Seed the textarea when the server response for the active scope arrives.
+  useEffect(() => {
+    if (note.data) {
+      serverContentRef.current = note.data.content;
+    }
+
+    if (note.data && hydratedScopeRef.current !== scopeKey) {
       setValueState(note.data.content);
       latestRef.current = note.data.content;
-      loadedRef.current = true;
+      hydratedScopeRef.current = scopeKey;
+      setLoaded(true);
     }
-  }, [note.data]);
+  }, [note.data, scopeKey]);
 
   const setValue = (next: string) => {
     setValueState(next);
@@ -159,7 +177,8 @@ export function useMasterNoteEditor(args: {
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
       const pending = latestRef.current;
-      if (pending && note.data && pending !== note.data.content) {
+      const serverContent = serverContentRef.current;
+      if (serverContent !== null && pending !== serverContent) {
         const url =
           projectId === null
             ? `/api/master-notes/orgs/${orgId}`
@@ -173,14 +192,13 @@ export function useMasterNoteEditor(args: {
       }
     };
     // We intentionally don't depend on `note.data` — we only flush at unmount.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orgId, projectId]);
 
   return {
     value,
     setValue,
     status,
-    loaded: loadedRef.current,
+    loaded,
     filePath: note.data?.file_path ?? null,
     lastIngestedAt: note.data?.last_ingested_at ?? null,
   };

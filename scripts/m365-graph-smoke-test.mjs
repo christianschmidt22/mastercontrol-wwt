@@ -2,6 +2,7 @@
 
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { acquireGraphToken } from "./m365-graph-auth.mjs";
 
 const GRAPH_ROOT = "https://graph.microsoft.com/v1.0";
 const DEFAULT_TIME_ZONE = "Central Standard Time";
@@ -50,7 +51,7 @@ function printHelp() {
 Microsoft Graph smoke test for delegated M365 access tokens.
 
 Usage:
-  $env:GRAPH_ACCESS_TOKEN = "<token>"
+  node scripts/m365-graph-browser-login.mjs
   node scripts/m365-graph-smoke-test.mjs --date 2026-05-04
 
 Options:
@@ -59,7 +60,7 @@ Options:
   --include-message-body       Store a truncated message body excerpt in the JSON report.
 
 Environment:
-  GRAPH_ACCESS_TOKEN           Required. Never store this token in source control.
+  GRAPH_ACCESS_TOKEN           Optional one-off token. If omitted, the MSAL device-code cache is used.
   M365_RECORD_BODY=1           Same as --include-message-body.
 `);
 }
@@ -283,10 +284,10 @@ function markdownReport(report) {
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
-  const token = process.env.GRAPH_ACCESS_TOKEN;
-  if (!token) {
-    throw new Error("Set GRAPH_ACCESS_TOKEN before running this script");
-  }
+  const tokenResult = process.env.GRAPH_ACCESS_TOKEN
+    ? { accessToken: process.env.GRAPH_ACCESS_TOKEN, source: "GRAPH_ACCESS_TOKEN" }
+    : { ...(await acquireGraphToken()), source: "msal-cache" };
+  const token = tokenResult.accessToken;
 
   const claims = decodeJwtPayload(token);
   const runId = new Date().toISOString().replace(/[:.]/g, "-");
@@ -300,6 +301,7 @@ async function main() {
       appId: claims.appid ?? null,
       appDisplayName: claims.app_displayname ?? null,
       userPrincipalName: claims.upn ?? claims.unique_name ?? null,
+      source: tokenResult.source,
       issuedAt: unixToIso(claims.iat),
       notBefore: unixToIso(claims.nbf),
       expiresAt: unixToIso(claims.exp),
@@ -310,6 +312,7 @@ async function main() {
       timeZone: DEFAULT_TIME_ZONE,
       includeMessageBody: args.includeMessageBody,
       outputDirectory: path.resolve(args.outDir),
+      authSource: tokenResult.source,
     },
     account: {},
     steps: {},

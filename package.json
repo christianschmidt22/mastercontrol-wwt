@@ -2,7 +2,10 @@
   "name": "mastercontrol",
   "version": "0.1.0",
   "private": true,
-  "workspaces": ["backend", "frontend"],
+  "workspaces": [
+    "backend",
+    "frontend"
+  ],
   "scripts": {
     "dev": "concurrently -n be,fe -c cyan,magenta \"npm run dev -w backend\" \"npm run dev -w frontend\"",
     "build": "npm run build -w backend && npm run build -w frontend",
@@ -12,5 +15,9 @@
   },
   "devDependencies": {
     "concurrently": "^8.2.2"
+  },
+  "dependencies": {
+    "@azure/msal-node": "^5.1.5",
+    "@primno/dpapi": "^1.1.0"
   }
 }

@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Fixed empty Master Notes tiles getting stuck on the `Loading...` placeholder
+  after the server had already returned an empty note, and made the editor
+  reseed correctly when switching accounts or projects.
 - Added a Tools area with a BOM Analyzer. Customer quote/config uploads are
   stored in each customer's `quotes_configs` folder, listed/filterable in the
   app, and can be selected for Claude Code-guided BOM analysis with dedicated
