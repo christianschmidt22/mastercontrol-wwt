@@ -16,6 +16,11 @@
   Completed analyses are saved as historical reports with customer/report
   selectors and a rendered preview pane. The sidebar section is now labeled
   BOM Analyzer instead of Tools.
+- Added a Mileage tool that builds expense-report rows from synced calendar
+  events with physical locations. It filters virtual meetings and the 1601
+  Utica office, uses 250 Pine St in Lino Lakes as the fixed origin, calculates
+  round-trip driving miles through OpenStreetMap/OSRM when requested, caches
+  distance lookups locally, and includes a Google Maps route link for review.
 - Tasks now have persisted free-form details for working notes, with the task
   edit dialog exposing a larger Details section and the task table showing a
   compact details preview.

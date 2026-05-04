@@ -125,3 +125,8 @@ export type {
   BomAnalysisReport,
   BomAnalysisReportList,
 } from './bomTool';
+
+export type {
+  MileageReport,
+  MileageReportRow,
+} from './mileage';

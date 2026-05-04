@@ -26,6 +26,7 @@ import { m365Router } from './routes/m365.route.js';
 import { captureActionRouter } from './routes/captureAction.route.js';
 import { heartbeatRouter } from './routes/heartbeat.route.js';
 import { bomToolRouter } from './routes/bomTool.route.js';
+import { mileageRouter } from './routes/mileage.route.js';
 import { seedDailyTaskReview } from './services/reports.service.js';
 import {
   runMissedJobs,
@@ -103,6 +104,7 @@ app.use('/api/m365', m365Router);
 app.use('/api/capture-action', captureActionRouter);
 app.use('/api/heartbeat', heartbeatRouter);
 app.use('/api/tools/bom', bomToolRouter);
+app.use('/api/tools/mileage', mileageRouter);
 
 app.use(errorHandler);
 

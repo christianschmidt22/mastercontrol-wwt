@@ -46,6 +46,12 @@ const listForDayStmt = db.prepare<[string, string], CalendarEvent>(`
   ORDER BY start_at ASC
 `);
 
+const listForRangeStmt = db.prepare<[string, string], CalendarEvent>(`
+  SELECT * FROM calendar_events
+  WHERE start_at >= ? AND start_at < ?
+  ORDER BY start_at ASC
+`);
+
 const listVisibleStmt = db.prepare<[string, string, string], CalendarEvent>(`
   SELECT e.* FROM calendar_events e
   WHERE e.start_at >= ? AND e.start_at < ?
@@ -117,6 +123,16 @@ function localDayBoundsUtc(dateStr: string): [string, string] {
   return [startLocal.toISOString(), endLocal.toISOString()];
 }
 
+function addLocalDays(dateStr: string, days: number): string {
+  const [year, month, day] = dateStr.split('-').map(Number);
+  const local = new Date(year, month - 1, day + days, 0, 0, 0, 0);
+  return (
+    `${local.getFullYear()}-` +
+    `${String(local.getMonth() + 1).padStart(2, '0')}-` +
+    `${String(local.getDate()).padStart(2, '0')}`
+  );
+}
+
 export const calendarEventModel = {
   upsertMany(events: CalendarEventInsert[]): void {
     upsertMany(events);
@@ -126,6 +142,13 @@ export const calendarEventModel = {
   listForDay(dateStr: string): CalendarEvent[] {
     const [start, end] = localDayBoundsUtc(dateStr);
     return listForDayStmt.all(start, end);
+  },
+
+  /** Returns all events from start date through end date, inclusive, in local-day terms. */
+  listForRange(startDate: string, endDate: string): CalendarEvent[] {
+    const [start] = localDayBoundsUtc(startDate);
+    const [, end] = localDayBoundsUtc(addLocalDays(endDate, 0));
+    return listForRangeStmt.all(start, end);
   },
 
   /** Returns events partitioned into visible (not hidden) and hidden lists. */

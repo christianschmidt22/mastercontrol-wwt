@@ -1,7 +1,7 @@
 import type { ReactNode, KeyboardEvent, DragEvent } from 'react';
 import { useCallback, useRef, useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
-import { Home, CheckSquare, BarChart2, Bot, Settings, Package, Bell, Users, Wrench } from 'lucide-react';
+import { Home, CheckSquare, BarChart2, Bot, Settings, Package, Bell, Users, Wrench, MapPin } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useOrganizations, useOrgLastTouched } from '../../api/useOrganizations';
 import { useCaptureAction } from '../../api/useCaptureAction';
@@ -533,6 +533,11 @@ export function Sidebar() {
           to="/tools"
           icon={<Wrench size={16} strokeWidth={1.5} />}
           label="BOM Analyzer"
+        />
+        <NavItem
+          to="/mileage"
+          icon={<MapPin size={16} strokeWidth={1.5} />}
+          label="Mileage"
         />
       </Section>
 
