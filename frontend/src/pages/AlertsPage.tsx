@@ -8,6 +8,7 @@ import {
   type AlertFilters,
 } from '../api/useCalendar';
 import { TileEmptyState } from '../components/tiles/TileEmptyState';
+import { formatAlertTimestamp } from '../utils/alertTime';
 import type { SystemAlert } from '../types';
 
 type SortKey = 'severity' | 'source' | 'message' | 'created_at' | 'read_at' | 'resolved_at';
@@ -46,18 +47,6 @@ const filterControl: CSSProperties = {
   fontSize: 12,
   padding: '5px 7px',
 };
-
-function formatDate(value: string | null): string {
-  if (!value) return '-';
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return value;
-  return new Intl.DateTimeFormat('en-US', {
-    month: 'short',
-    day: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-  }).format(d);
-}
 
 function severityColor(severity: SystemAlert['severity']): string {
   if (severity === 'error') return 'var(--accent)';
@@ -312,9 +301,9 @@ export function AlertsPage() {
                     </div>
                   )}
                 </td>
-                <td style={{ ...cell, color: 'var(--ink-3)' }}>{formatDate(alert.created_at)}</td>
-                <td style={{ ...cell, color: 'var(--ink-3)' }}>{formatDate(alert.read_at)}</td>
-                <td style={{ ...cell, color: 'var(--ink-3)' }}>{formatDate(alert.resolved_at)}</td>
+                <td style={{ ...cell, color: 'var(--ink-3)' }}>{formatAlertTimestamp(alert.created_at)}</td>
+                <td style={{ ...cell, color: 'var(--ink-3)' }}>{formatAlertTimestamp(alert.read_at)}</td>
+                <td style={{ ...cell, color: 'var(--ink-3)' }}>{formatAlertTimestamp(alert.resolved_at)}</td>
                 <td style={{ ...cell, whiteSpace: 'nowrap' }}>
                   {!alert.read_at && (
                     <button

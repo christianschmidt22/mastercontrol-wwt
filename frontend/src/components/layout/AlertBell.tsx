@@ -7,19 +7,13 @@ import {
   useMarkAlertRead,
   useMarkAllAlertsRead,
 } from '../../api/useCalendar';
+import { formatAlertTimestamp } from '../../utils/alertTime';
 import type { SystemAlert } from '../../types';
 
 function severityIcon(severity: SystemAlert['severity']) {
   if (severity === 'error') return <AlertTriangle size={13} color="var(--accent)" aria-hidden="true" />;
   if (severity === 'warn') return <AlertTriangle size={13} color="#c2710c" aria-hidden="true" />;
   return <Info size={13} color="var(--ink-3)" aria-hidden="true" />;
-}
-
-function formatAlertTime(iso: string): string {
-  return new Intl.DateTimeFormat('en-US', {
-    month: 'short', day: 'numeric',
-    hour: 'numeric', minute: '2-digit', hour12: true,
-  }).format(new Date(iso));
 }
 
 function AlertRow({ alert, onRead }: { alert: SystemAlert; onRead: (id: number) => void }) {
@@ -46,7 +40,7 @@ function AlertRow({ alert, onRead }: { alert: SystemAlert; onRead: (id: number) 
           </p>
         )}
         <p style={{ margin: '3px 0 0', fontSize: 10, color: 'var(--ink-3)' }}>
-          {alert.source} · {formatAlertTime(alert.created_at)}
+          {alert.source} · {formatAlertTimestamp(alert.created_at)}
         </p>
       </div>
       {!alert.read_at && (

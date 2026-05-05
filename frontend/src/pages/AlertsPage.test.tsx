@@ -70,6 +70,7 @@ describe('AlertsPage', () => {
     expect(screen.getByLabelText('Filter alerts by message')).toBeInTheDocument();
     expect(screen.getByText('Note extraction failed')).toBeInTheDocument();
     expect(screen.getByText('Calendar sync failed')).toBeInTheDocument();
+    expect(screen.getAllByText('Apr 28, 7:08 PM CT').length).toBeGreaterThan(0);
   });
 
   it('can resolve and reopen alerts from the table actions', async () => {
