@@ -5,6 +5,9 @@
 - Increased the Claude Code chat turn budget, with additional room for
   Microsoft 365 calendar/search tool use, so availability checks do not stop
   after four tool turns.
+- Calendar sync now reads the default M365 calendar from the running Classic
+  Outlook COM session instead of an ICS subscription URL, matching the local
+  delegated-auth pattern used for Outlook mail.
 - Tile customization now uses the same grid renderer in normal and edit modes,
   preventing Cancel from falling back to a stacked layout and making Save
   behavior testable in narrow desktop panes.
