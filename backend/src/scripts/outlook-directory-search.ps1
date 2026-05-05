@@ -21,6 +21,46 @@ function Result($error, $results) {
     } | ConvertTo-Json -Depth 5
 }
 
+function Build-DirectoryResult($entry, $source) {
+    if ($null -eq $entry) { return $null }
+
+    $displayName = [string]$entry.Name
+    $email = ''
+    $title = ''
+    $department = ''
+    $office = ''
+    $phone = ''
+
+    try {
+        $exchangeUser = $entry.GetExchangeUser()
+        if ($null -ne $exchangeUser) {
+            $email = [string]$exchangeUser.PrimarySmtpAddress
+            $title = [string]$exchangeUser.JobTitle
+            $department = [string]$exchangeUser.Department
+            $office = [string]$exchangeUser.OfficeLocation
+            $phone = [string]$exchangeUser.BusinessTelephoneNumber
+        }
+    } catch {
+        $email = ''
+    }
+
+    if ([string]::IsNullOrWhiteSpace($email)) {
+        try { $email = [string]$entry.Address } catch { $email = '' }
+    }
+    if ([string]::IsNullOrWhiteSpace($email)) { return $null }
+    if ($email.ToLowerInvariant() -notlike '*@wwt.com') { return $null }
+
+    return @{
+        name       = $displayName
+        email      = $email
+        title      = $title
+        department = $department
+        office     = $office
+        phone      = $phone
+        source     = $source
+    }
+}
+
 $needle = $Query.Trim().ToLowerInvariant()
 if ($needle.Length -lt 2) {
     Result "Search text must be at least 2 characters." @()
@@ -36,6 +76,22 @@ try {
 
 try {
     $namespace = $outlook.GetNamespace('MAPI')
+    $directResults = @()
+    try {
+        $recipient = $namespace.CreateRecipient($Query.Trim())
+        if ($recipient.Resolve()) {
+            $direct = Build-DirectoryResult $recipient.AddressEntry 'Outlook resolver'
+            if ($null -ne $direct) {
+                $directResults += $direct
+            }
+        }
+    } catch { }
+
+    if ($directResults.Count -gt 0) {
+        Result $null $directResults
+        exit 0
+    }
+
     $addressLists = @($namespace.AddressLists)
     $preferred = @($addressLists | Where-Object { $_.Name -match 'Global Address List|GAL|WWT' })
     if ($preferred.Count -eq 0) { $preferred = $addressLists }
@@ -58,46 +114,20 @@ try {
                 $entry = $entries.Item($i)
                 if ($null -eq $entry) { continue }
 
-                $displayName = [string]$entry.Name
-                $email = ''
-                $title = ''
-                $department = ''
-                $office = ''
-                $phone = ''
-
-                try {
-                    $exchangeUser = $entry.GetExchangeUser()
-                    if ($null -ne $exchangeUser) {
-                        $email = [string]$exchangeUser.PrimarySmtpAddress
-                        $title = [string]$exchangeUser.JobTitle
-                        $department = [string]$exchangeUser.Department
-                        $office = [string]$exchangeUser.OfficeLocation
-                        $phone = [string]$exchangeUser.BusinessTelephoneNumber
-                    }
-                } catch {
-                    $email = ''
-                }
-
-                if ([string]::IsNullOrWhiteSpace($email)) {
-                    try { $email = [string]$entry.Address } catch { $email = '' }
-                }
-                if ([string]::IsNullOrWhiteSpace($email)) { continue }
-                if ($email.ToLowerInvariant() -notlike '*@wwt.com') { continue }
+                $result = Build-DirectoryResult $entry $list.Name
+                if ($null -eq $result) { continue }
+                $displayName = [string]$result.name
+                $email = [string]$result.email
+                $title = [string]$result.title
+                $department = [string]$result.department
+                $office = [string]$result.office
                 if ($seen.ContainsKey($email.ToLowerInvariant())) { continue }
 
                 $haystack = (@($displayName, $email, $title, $department, $office) -join ' ').ToLowerInvariant()
                 if (-not $haystack.Contains($needle)) { continue }
 
                 $seen[$email.ToLowerInvariant()] = $true
-                $results += @{
-                    name       = $displayName
-                    email      = $email
-                    title      = $title
-                    department = $department
-                    office     = $office
-                    phone      = $phone
-                    source     = $list.Name
-                }
+                $results += $result
             } catch {
                 continue
             }
