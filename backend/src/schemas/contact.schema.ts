@@ -39,6 +39,20 @@ export const ContactListQuerySchema = z.object({
   q: z.string().optional(),
 });
 
+export const WwtDirectorySearchQuerySchema = z.object({
+  q: z.string().min(2),
+  limit: z.coerce.number().int().min(1).max(50).optional(),
+});
+
+export const WwtDirectoryImportSchema = z.object({
+  name: z.string().min(1),
+  email: z.string().email(),
+  title: z.string().optional().nullable(),
+  phone: z.string().optional().nullable(),
+  department: z.string().optional().nullable(),
+  office: z.string().optional().nullable(),
+});
+
 export const ContactEnrichmentSuggestionSchema = z.object({
   name: z.string().optional().nullable(),
   title: z.string().optional().nullable(),
@@ -58,3 +72,4 @@ export type Contact = z.infer<typeof ContactSchema>;
 export type ContactCreate = z.infer<typeof ContactCreateSchema>;
 export type ContactUpdate = z.infer<typeof ContactUpdateSchema>;
 export type ContactEnrichmentResponse = z.infer<typeof ContactEnrichmentResponseSchema>;
+export type WwtDirectoryImport = z.infer<typeof WwtDirectoryImportSchema>;

@@ -1,7 +1,7 @@
 import type { ReactNode, KeyboardEvent, DragEvent } from 'react';
 import { useCallback, useRef, useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
-import { Home, CheckSquare, BarChart2, Bot, Settings, Package, Bell, Users, Wrench, MapPin } from 'lucide-react';
+import { Home, CheckSquare, BarChart2, Bot, Settings, Package, Bell, Users, Wrench, MapPin, CalendarSearch } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useOrganizations, useOrgLastTouched } from '../../api/useOrganizations';
 import { useCaptureAction } from '../../api/useCaptureAction';
@@ -538,6 +538,11 @@ export function Sidebar() {
           to="/mileage"
           icon={<MapPin size={16} strokeWidth={1.5} />}
           label="Mileage"
+        />
+        <NavItem
+          to="/freetime"
+          icon={<CalendarSearch size={16} strokeWidth={1.5} />}
+          label="Freetime"
         />
       </Section>
 

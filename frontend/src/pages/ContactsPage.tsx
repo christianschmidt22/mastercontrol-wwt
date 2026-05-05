@@ -1,8 +1,16 @@
 import { useEffect, useMemo, useState, type CSSProperties, type FormEvent } from 'react';
-import { Mail, MessageSquare, PhoneCall, Plus, RefreshCw, Sparkles, Trash2, X } from 'lucide-react';
+import { Mail, MessageSquare, PhoneCall, Plus, RefreshCw, Search, Sparkles, Trash2, UserPlus, X } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import { PageHeader } from '../components/layout/PageHeader';
-import { useAllContacts, useCreateContact, useDeleteContact, useEnrichContact, useUpdateContact } from '../api/useContacts';
+import {
+  useAllContacts,
+  useCreateContact,
+  useDeleteContact,
+  useEnrichContact,
+  useImportWwtDirectoryContact,
+  useSearchWwtDirectory,
+  useUpdateContact,
+} from '../api/useContacts';
 import { useOrganizations } from '../api/useOrganizations';
 import { useTasks } from '../api/useTasks';
 import { ContactCardDialog } from '../components/contacts/ContactCardDialog';
@@ -216,6 +224,87 @@ function EnrichmentDialog({ contact, result, isSaving, onApply, onClose }: Enric
   );
 }
 
+function WwtDirectoryTile() {
+  const [query, setQuery] = useState('');
+  const searchDirectory = useSearchWwtDirectory();
+  const importContact = useImportWwtDirectoryContact();
+  const results = searchDirectory.data ?? [];
+
+  const runSearch = (event: FormEvent) => {
+    event.preventDefault();
+    const trimmed = query.trim();
+    if (trimmed.length < 2) return;
+    searchDirectory.mutate(trimmed);
+  };
+
+  return (
+    <section style={{ border: '1px solid var(--rule)', borderRadius: 8, background: 'var(--surface)', padding: 16, marginBottom: 16 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', marginBottom: 12 }}>
+        <div>
+          <h2 style={{ margin: 0, fontFamily: 'var(--display)', fontSize: 22, fontWeight: 500 }}>WWT directory</h2>
+          <p style={{ margin: '4px 0 0', color: 'var(--ink-3)', fontSize: 13 }}>
+            Pull WWT users from the Classic Outlook address book into local contacts.
+          </p>
+        </div>
+      </div>
+      <form onSubmit={runSearch} style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12 }}>
+        <input
+          aria-label="Search WWT directory"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="Type a WWT name or email"
+          style={{ ...fieldStyle, maxWidth: 420 }}
+        />
+        <button type="submit" disabled={query.trim().length < 2 || searchDirectory.isPending} style={actionButtonStyle(query.trim().length < 2 || searchDirectory.isPending)}>
+          <Search size={13} aria-hidden="true" />
+          {searchDirectory.isPending ? 'Searching...' : 'Search'}
+        </button>
+      </form>
+      {searchDirectory.isError && (
+        <p role="alert" style={{ margin: '0 0 10px', color: 'var(--accent)', fontSize: 13 }}>
+          {searchDirectory.error.message}
+        </p>
+      )}
+      {results.length > 0 && (
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', minWidth: 720, borderCollapse: 'collapse', fontFamily: 'var(--body)' }}>
+            <thead>
+              <tr>
+                <th style={{ ...tableCell, textAlign: 'left' }}>Name</th>
+                <th style={{ ...tableCell, textAlign: 'left' }}>Title</th>
+                <th style={{ ...tableCell, textAlign: 'left' }}>Email</th>
+                <th style={{ ...tableCell, textAlign: 'left' }}>Office</th>
+                <th style={{ ...tableCell, width: 120 }} />
+              </tr>
+            </thead>
+            <tbody>
+              {results.map((result) => (
+                <tr key={result.email}>
+                  <td style={tableCell}>{result.name}</td>
+                  <td style={{ ...tableCell, color: 'var(--ink-2)' }}>{result.title ?? '-'}</td>
+                  <td style={{ ...tableCell, color: 'var(--ink-2)' }}>{result.email}</td>
+                  <td style={{ ...tableCell, color: 'var(--ink-2)' }}>{result.office ?? '-'}</td>
+                  <td style={tableCell}>
+                    <button
+                      type="button"
+                      onClick={() => importContact.mutate(result)}
+                      disabled={importContact.isPending}
+                      style={actionButtonStyle(importContact.isPending)}
+                    >
+                      <UserPlus size={13} aria-hidden="true" />
+                      Add
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
+}
+
 export function ContactsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [query, setQuery] = useState('');
@@ -317,6 +406,8 @@ export function ContactsPage() {
           </button>
         }
       />
+
+      <WwtDirectoryTile />
 
       <section style={{ border: '1px solid var(--rule)', borderRadius: 8, background: 'var(--surface)', padding: 16 }}>
         {adding && (

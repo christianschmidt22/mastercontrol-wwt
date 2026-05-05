@@ -14,6 +14,7 @@ export type {
   ContactUpdate,
   ContactEnrichmentResponse,
   ContactEnrichmentSuggestion,
+  WwtDirectoryResult,
 } from './contact';
 
 export type {
@@ -135,3 +136,10 @@ export type {
   MileageReport,
   MileageReportRow,
 } from './mileage';
+
+export type {
+  FreetimeFindRequest,
+  FreetimeFindResponse,
+  FreetimeParticipant,
+  FreetimeSlot,
+} from './freetime';

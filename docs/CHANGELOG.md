@@ -8,6 +8,10 @@
 - Calendar sync now reads the default M365 calendar from the running Classic
   Outlook COM session instead of an ICS subscription URL, matching the local
   delegated-auth pattern used for Outlook mail.
+- Added a Freetime tool that compares selected WWT contacts through Outlook
+  FreeBusy in Central time, with selectable weekdays, work-hour range, end date,
+  and an option to include or exclude the current user. Contacts now includes a
+  WWT directory import tile backed by the Classic Outlook address book.
 - Tile customization now uses the same grid renderer in normal and edit modes,
   preventing Cancel from falling back to a stacked layout and making Save
   behavior testable in narrow desktop panes.

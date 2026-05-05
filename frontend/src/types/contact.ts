@@ -46,3 +46,13 @@ export interface ContactEnrichmentResponse {
   suggestions: ContactEnrichmentSuggestion;
   notes: string[];
 }
+
+export interface WwtDirectoryResult {
+  name: string;
+  email: string;
+  title: string | null;
+  department: string | null;
+  office: string | null;
+  phone: string | null;
+  source: string | null;
+}

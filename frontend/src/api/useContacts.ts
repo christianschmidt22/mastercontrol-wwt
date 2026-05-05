@@ -6,7 +6,7 @@ import {
   type UseMutationResult,
 } from '@tanstack/react-query';
 import { request } from './http';
-import type { Contact, ContactCreate, ContactEnrichmentResponse, ContactUpdate } from '../types';
+import type { Contact, ContactCreate, ContactEnrichmentResponse, ContactUpdate, WwtDirectoryResult } from '../types';
 
 // ---------------------------------------------------------------------------
 // Cache key factory
@@ -123,5 +123,25 @@ export function useDeleteContact(): UseMutationResult<
 export function useEnrichContact(): UseMutationResult<ContactEnrichmentResponse, Error, number> {
   return useMutation({
     mutationFn: (id) => request<ContactEnrichmentResponse>('POST', `/api/contacts/${id}/enrich`),
+  });
+}
+
+export function useSearchWwtDirectory(): UseMutationResult<WwtDirectoryResult[], Error, string> {
+  return useMutation({
+    mutationFn: (query) => request<WwtDirectoryResult[]>('GET', `/api/contacts/directory/search?q=${encodeURIComponent(query)}`),
+  });
+}
+
+export function useImportWwtDirectoryContact(): UseMutationResult<Contact, Error, WwtDirectoryResult> {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body) => request<Contact>('POST', '/api/contacts/directory/import', body),
+    onSuccess: (contact) => {
+      qc.setQueryData<Contact[]>(contactKeys.all(), (current) => upsertContact(current, contact));
+      qc.setQueryData<Contact[]>(contactKeys.list(contact.organization_id), (current) => upsertContact(current, contact));
+      void qc.invalidateQueries({ queryKey: ['contacts', 'all'] });
+      void qc.invalidateQueries({ queryKey: contactKeys.list(contact.organization_id) });
+      void qc.invalidateQueries({ queryKey: ['organizations'] });
+    },
   });
 }

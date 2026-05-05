@@ -105,6 +105,13 @@ const getStmt = db.prepare<[number], ContactRow>(`
   WHERE c.id = ?
   GROUP BY c.id
 `);
+const getByEmailStmt = db.prepare<[string], ContactRow>(`
+  SELECT c.*, GROUP_CONCAT(caa.organization_id) AS _assigned_csv
+  FROM contacts c
+  LEFT JOIN contact_account_assignments caa ON caa.contact_id = c.id
+  WHERE lower(c.email) = lower(?)
+  GROUP BY c.id
+`);
 
 const insertStmt = db.prepare<
   [number, string, string | null, string | null, string | null, string | null, string | null]
@@ -150,6 +157,11 @@ export const contactModel = {
 
   get: (id: number): Contact | undefined => {
     const row = getStmt.get(id);
+    return row ? hydrate(row) : undefined;
+  },
+
+  getByEmail: (email: string): Contact | undefined => {
+    const row = getByEmailStmt.get(email);
     return row ? hydrate(row) : undefined;
   },
 
