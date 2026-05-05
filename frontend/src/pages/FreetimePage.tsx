@@ -67,7 +67,7 @@ export function FreetimePage() {
   const [filter, setFilter] = useState('');
   const [selectedEmails, setSelectedEmails] = useState<string[]>([]);
   const [includeSelf, setIncludeSelf] = useState(true);
-  const [weekdays, setWeekdays] = useState<number[]>(DAYS.map((day) => day.value));
+  const [weekdays, setWeekdays] = useState<number[]>([1, 2, 3, 4, 5]);
   const [startMinutes, setStartMinutes] = useState(8 * 60);
   const [endMinutes, setEndMinutes] = useState(16 * 60);
   const [startDate, setStartDate] = useState(localDate());
