@@ -2,6 +2,27 @@
 
 ## Unreleased
 
+- Added an Electron desktop wrapper for `MasterControl_work`, including a
+  Windows installer target, single-instance behavior, startup screen, local
+  backend launch, packaged frontend serving, and app icon generation from the
+  MasterControl face image.
+- The desktop wrapper now serves the packaged frontend from a stable local
+  origin, and the frontend syncs theme changes through the settings API so the
+  selected theme survives app relaunches.
+- Fixed packaged desktop startup by bundling the backend production
+  dependencies, running the packaged backend on its own local port, pointing it
+  at the real local SQLite database, and writing desktop/backend startup logs
+  under the app user-data folder.
+- Fixed the packaged desktop build to include backend PowerShell bridge
+  scripts, restoring Outlook COM features such as Freetime and calendar sync
+  in `MasterControl_work`.
+- WWT directory searches now return targeted multi-word Outlook resolver
+  matches immediately and enforce a backend timeout, preventing Contacts from
+  getting stuck on slow broad address book scans.
+- Home tasks can now be reordered directly from the dashboard with drag/drop
+  or up/down controls, with the custom order remembered locally. The home
+  Recent Notes tile has been replaced by a latest Daily Task Review preview
+  with a download link to the completed report output.
 - Increased the Claude Code chat turn budget, with additional room for
   Microsoft 365 calendar/search tool use, so availability checks do not stop
   after four tool turns.
@@ -12,8 +33,18 @@
   FreeBusy in Central time, with selectable weekdays, work-hour range, end date,
   and an option to include or exclude the current user. Contacts now includes a
   WWT directory import tile backed by the Classic Outlook address book.
+- Freetime now uses top-aligned WWT user selection, 30-minute increment start
+  and end time dropdowns, a minimum shared-opening dropdown, a larger
+  right-aligned search action, and the Pinky pondering header treatment.
 - WWT directory search now asks Outlook's address resolver before falling back
   to a broad GAL scan, so specific searches like `munger` return quickly.
+- WWT directory searches now continue into a broad address book scan when the
+  Outlook resolver only returns a first-name-style hit, so searches like
+  `garret` list multiple candidates. The Contacts page now shows saved WWT
+  contacts directly on the WWT directory tile and flips imported search rows
+  from Add to Saved. Directory searches can also combine multiple terms typed
+  into the single search box, so targeted searches like `jo garret` narrow to
+  matching records instead of relying on Outlook's single-name resolver.
 - Tile customization now uses the same grid renderer in normal and edit modes,
   preventing Cancel from falling back to a stacked layout and making Save
   behavior testable in narrow desktop panes.
@@ -47,6 +78,13 @@
   miles from their own from/to address fields. Report subjects can now be
   edited inline before export, and PDF exports are saved into the MasterControl
   vault under `reports/mileage`.
+- Mileage now keeps calendar events that include both a physical address and a
+  Teams/virtual meeting marker, stripping the virtual marker before distance
+  lookup instead of incorrectly excluding the trip.
+- Mileage report rows can now be manually removed from the current results,
+  which updates totals and exports. Address extraction now cleans dangling
+  connector text left behind after stripping virtual meeting markers, fixing
+  Commvault/Azure-style locations ending in `AND`.
 - Tasks now have persisted free-form details for working notes, with the task
   edit dialog exposing a larger Details section and the task table showing a
   compact details preview.

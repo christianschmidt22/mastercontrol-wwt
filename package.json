@@ -1,23 +1,92 @@
 {
   "name": "mastercontrol",
   "version": "0.1.0",
+  "description": "MasterControl local work assistant",
+  "author": "WWT",
   "private": true,
+  "main": "desktop/main.cjs",
   "workspaces": [
     "backend",
     "frontend"
   ],
   "scripts": {
     "dev": "concurrently -n be,fe -c cyan,magenta \"npm run dev -w backend\" \"npm run dev -w frontend\"",
+    "dev:desktop": "concurrently -k -n be,fe,desktop -c cyan,magenta,green \"npm run dev -w backend\" \"npm run dev -w frontend\" \"node desktop/wait-for-url.cjs http://127.0.0.1:5173 && electron desktop/main.cjs --dev-url=http://127.0.0.1:5173\"",
     "build": "npm run build -w backend && npm run build -w frontend",
+    "desktop:icons": "node desktop/generate-icons.cjs",
+    "desktop:prepare": "npm run desktop:icons && node desktop/prepare-runtime.cjs",
+    "desktop:pack": "npm run desktop:prepare && npm run build && electron-builder --dir",
+    "desktop:installer": "npm run desktop:prepare && npm run build && electron-builder",
     "typecheck": "npm run typecheck -w backend && npm run typecheck -w frontend",
     "lint": "npm run lint -w backend && npm run lint -w frontend",
     "test": "npm run test -w backend && npm run test -w frontend"
   },
   "devDependencies": {
-    "concurrently": "^8.2.2"
+    "@types/pngjs": "^6.0.5",
+    "concurrently": "^8.2.2",
+    "electron": "^41.5.0",
+    "electron-builder": "^26.8.1",
+    "png-to-ico": "^3.0.1",
+    "pngjs": "^7.0.0"
   },
   "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.2.119",
+    "@anthropic-ai/sdk": "^0.39.0",
     "@azure/msal-node": "^5.1.5",
-    "@primno/dpapi": "^1.1.0"
+    "@primno/dpapi": "^1.1.0",
+    "better-sqlite3": "^12.9.0",
+    "cors": "^2.8.5",
+    "cron-parser": "^4.9.0",
+    "express": "^4.21.2",
+    "fast-glob": "^3.3.3",
+    "node-cron": "^3.0.3",
+    "node-ical": "^0.26.0",
+    "zod": "^3.24.3"
+  },
+  "build": {
+    "appId": "com.wwt.mastercontrol.work",
+    "productName": "MasterControl_work",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "desktop/**/*",
+      "!desktop/runtime/**/*",
+      "backend/dist/**/*",
+      "backend/package.json",
+      "frontend/dist/**/*",
+      "package.json",
+      "node_modules/**/*"
+    ],
+    "asar": false,
+    "asarUnpack": [
+      "node_modules/**/*.node"
+    ],
+    "extraResources": [
+      {
+        "from": "desktop/runtime/node.exe",
+        "to": "node/node.exe"
+      }
+    ],
+    "npmRebuild": false,
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "desktop/assets/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "MasterControl_work"
+    }
   }
 }

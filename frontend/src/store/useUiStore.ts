@@ -13,6 +13,11 @@ export type Theme =
   | 'verdant';
 
 export const NAMED_THEMES = ['pine', 'moss', 'carbon', 'oxblood', 'ridge', 'verdant'] as const;
+export const THEME_VALUES = ['light', 'dark', 'system', ...NAMED_THEMES] as const;
+
+export function isTheme(value: unknown): value is Theme {
+  return typeof value === 'string' && (THEME_VALUES as readonly string[]).includes(value);
+}
 
 interface UiState {
   sidebarCollapsed: boolean;

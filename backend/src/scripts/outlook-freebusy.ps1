@@ -18,7 +18,8 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$WeekdaysJson,
     [string]$IncludeSelf = 'true',
-    [int]$SlotMinutes = 30
+    [int]$SlotMinutes = 30,
+    [int]$MinimumDurationMinutes = 30
 )
 
 $ErrorActionPreference = 'Stop'
@@ -109,6 +110,19 @@ try {
     $openStart = $null
     $openEnd = $null
 
+    function Add-OpenSlot($slotStart, $slotEnd) {
+        $duration = [int]($slotEnd - $slotStart).TotalMinutes
+        if ($duration -lt $MinimumDurationMinutes) { return }
+        $script:slots += @{
+            date = $slotStart.ToString('yyyy-MM-dd', $culture)
+            start_time = $slotStart.ToString('h:mm tt', $culture)
+            end_time = $slotEnd.ToString('h:mm tt', $culture)
+            start_at = $slotStart.ToString('s', $culture)
+            end_at = $slotEnd.ToString('s', $culture)
+            duration_minutes = $duration
+        }
+    }
+
     $cursor = $rangeStart
     while ($cursor -lt $rangeEnd) {
         $dayAllowed = $weekdays -contains [int]$cursor.DayOfWeek
@@ -132,14 +146,7 @@ try {
             if ($null -eq $openStart) { $openStart = $cursor }
             $openEnd = $slotEnd
         } elseif ($null -ne $openStart) {
-            $slots += @{
-                date = $openStart.ToString('yyyy-MM-dd', $culture)
-                start_time = $openStart.ToString('h:mm tt', $culture)
-                end_time = $openEnd.ToString('h:mm tt', $culture)
-                start_at = $openStart.ToString('s', $culture)
-                end_at = $openEnd.ToString('s', $culture)
-                duration_minutes = [int]($openEnd - $openStart).TotalMinutes
-            }
+            Add-OpenSlot $openStart $openEnd
             $openStart = $null
             $openEnd = $null
         }
@@ -148,18 +155,11 @@ try {
     }
 
     if ($null -ne $openStart) {
-        $slots += @{
-            date = $openStart.ToString('yyyy-MM-dd', $culture)
-            start_time = $openStart.ToString('h:mm tt', $culture)
-            end_time = $openEnd.ToString('h:mm tt', $culture)
-            start_at = $openStart.ToString('s', $culture)
-            end_at = $openEnd.ToString('s', $culture)
-            duration_minutes = [int]($openEnd - $openStart).TotalMinutes
-        }
+        Add-OpenSlot $openStart $openEnd
     }
 
     $participantSummary = @($resolved | ForEach-Object { @{ email = $_.email; name = $_.name } })
     Result $null $slots $participantSummary $unresolved
 } catch {
-    Result "Outlook FreeBusy lookup failed." @() @() @()
+    Result ("Outlook FreeBusy lookup failed: " + $_.Exception.Message) @() @() @()
 }

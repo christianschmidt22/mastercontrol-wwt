@@ -20,6 +20,7 @@ export interface FreetimeFindRequest {
   weekdays: number[];
   work_start_minutes: number;
   work_end_minutes: number;
+  minimum_duration_minutes: 30 | 60 | 90 | 120;
 }
 
 export interface FreetimeFindResponse {

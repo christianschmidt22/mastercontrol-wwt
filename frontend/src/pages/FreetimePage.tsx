@@ -3,6 +3,7 @@ import { CalendarSearch, UserRoundPlus } from 'lucide-react';
 import { PageHeader } from '../components/layout/PageHeader';
 import { useAllContacts } from '../api/useContacts';
 import { useFindFreetime } from '../api/useFreetime';
+import { PONDERING_PROMPT, PONDERING_RESPONSES } from '../data/ponderingResponses';
 import type { Contact } from '../types';
 
 const DAYS = [
@@ -14,6 +15,9 @@ const DAYS = [
   { value: 5, label: 'Fri' },
   { value: 6, label: 'Sat' },
 ];
+
+const TIME_OPTIONS = Array.from({ length: ((18 - 6) * 2) + 1 }, (_, index) => (6 * 60) + (index * 30));
+const MINIMUM_WINDOW_OPTIONS = [30, 60, 90, 120] as const;
 
 const fieldStyle = {
   width: '100%',
@@ -43,6 +47,19 @@ function buttonStyle(disabled = false) {
   };
 }
 
+function searchButtonStyle(disabled = false) {
+  return {
+    ...buttonStyle(disabled),
+    borderColor: disabled ? 'var(--rule)' : 'var(--accent)',
+    color: disabled ? 'var(--ink-3)' : 'var(--ink-1)',
+    fontSize: 15,
+    fontWeight: 700,
+    justifyContent: 'center',
+    minWidth: 220,
+    padding: '11px 18px',
+  };
+}
+
 function localDate(offsetDays = 0): string {
   const d = new Date();
   d.setDate(d.getDate() + offsetDays);
@@ -64,12 +81,17 @@ function isWwtContact(contact: Contact): boolean {
 export function FreetimePage() {
   const contactsQuery = useAllContacts();
   const findFreetime = useFindFreetime();
+  const ponderingResponse = useMemo(
+    () => PONDERING_RESPONSES[Math.floor(Math.random() * PONDERING_RESPONSES.length)] ?? PONDERING_RESPONSES[0],
+    [],
+  );
   const [filter, setFilter] = useState('');
   const [selectedEmails, setSelectedEmails] = useState<string[]>([]);
   const [includeSelf, setIncludeSelf] = useState(true);
   const [weekdays, setWeekdays] = useState<number[]>([1, 2, 3, 4, 5]);
   const [startMinutes, setStartMinutes] = useState(8 * 60);
   const [endMinutes, setEndMinutes] = useState(16 * 60);
+  const [minimumDurationMinutes, setMinimumDurationMinutes] = useState<30 | 60 | 90 | 120>(30);
   const [startDate, setStartDate] = useState(localDate());
   const [endDate, setEndDate] = useState(localDate(14));
 
@@ -102,7 +124,26 @@ export function FreetimePage() {
     ));
   };
 
-  const canSearch = (includeSelf || selectedEmails.length > 0) && weekdays.length > 0 && endMinutes > startMinutes && !findFreetime.isPending;
+  const canSearch = (
+    (includeSelf || selectedEmails.length > 0)
+    && weekdays.length > 0
+    && endMinutes - startMinutes >= minimumDurationMinutes
+    && !findFreetime.isPending
+  );
+
+  const handleStartTimeChange = (minutes: number) => {
+    setStartMinutes(minutes);
+    if (endMinutes - minutes < 30) {
+      setEndMinutes(Math.min(minutes + 30, 18 * 60));
+    }
+  };
+
+  const handleEndTimeChange = (minutes: number) => {
+    setEndMinutes(minutes);
+    if (minutes - startMinutes < 30) {
+      setStartMinutes(Math.max(minutes - 30, 6 * 60));
+    }
+  };
 
   const runSearch = () => {
     if (!canSearch) return;
@@ -114,25 +155,20 @@ export function FreetimePage() {
       weekdays,
       work_start_minutes: startMinutes,
       work_end_minutes: endMinutes,
+      minimum_duration_minutes: minimumDurationMinutes,
     });
   };
 
   return (
     <div>
       <PageHeader
-        eyebrow="Freetime"
+        eyebrow={PONDERING_PROMPT}
         title="Freetime"
-        subtitle="Find shared Central-time availability through Outlook FreeBusy"
-        actions={
-          <button type="button" onClick={runSearch} disabled={!canSearch} style={buttonStyle(!canSearch)}>
-            <CalendarSearch size={14} aria-hidden="true" />
-            {findFreetime.isPending ? 'Searching...' : 'Search'}
-          </button>
-        }
+        subtitle={ponderingResponse}
       />
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(340px, 430px) minmax(420px, 1fr)', gap: 16 }}>
-        <section style={{ border: '1px solid var(--rule)', borderRadius: 8, background: 'var(--surface)', padding: 16, display: 'grid', gap: 14 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(340px, 430px) minmax(420px, 1fr)', gap: 16, alignItems: 'start' }}>
+        <section style={{ border: '1px solid var(--rule)', borderRadius: 8, background: 'var(--surface)', padding: 16, display: 'grid', gap: 14, alignSelf: 'start', alignContent: 'start' }}>
           <div>
             <h2 style={{ margin: 0, fontFamily: 'var(--display)', fontSize: 22, fontWeight: 500 }}>WWT users</h2>
             <p style={{ margin: '4px 0 0', color: 'var(--ink-3)', fontSize: 13 }}>
@@ -146,7 +182,7 @@ export function FreetimePage() {
             placeholder="Filter by name, title, email"
             style={fieldStyle}
           />
-          <div style={{ maxHeight: 190, overflow: 'auto', border: '1px solid var(--rule)', borderRadius: 6 }}>
+          <div style={{ maxHeight: 260, overflow: 'auto', border: '1px solid var(--rule)', borderRadius: 6 }}>
             {contactsQuery.isLoading && <p style={{ margin: 10, color: 'var(--ink-3)', fontSize: 13 }}>Loading...</p>}
             {!contactsQuery.isLoading && filteredContacts.length === 0 && (
               <p style={{ margin: 10, color: 'var(--ink-3)', fontSize: 13 }}>No WWT contacts found locally.</p>
@@ -183,7 +219,7 @@ export function FreetimePage() {
           </button>
         </section>
 
-        <section style={{ border: '1px solid var(--rule)', borderRadius: 8, background: 'var(--surface)', padding: 16, display: 'grid', gap: 16 }}>
+        <section style={{ border: '1px solid var(--rule)', borderRadius: 8, background: 'var(--surface)', padding: 16, display: 'grid', gap: 16, alignSelf: 'start', alignContent: 'start' }}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(160px, 1fr))', gap: 12 }}>
             <label style={{ display: 'grid', gap: 5, fontSize: 11, color: 'var(--ink-3)', textTransform: 'uppercase' }}>
               Start date
@@ -195,18 +231,34 @@ export function FreetimePage() {
             </label>
           </div>
 
-          <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--ink-2)', fontSize: 13, marginBottom: 8 }}>
-              <span>{minutesLabel(startMinutes)}</span>
-              <span>{minutesLabel(endMinutes)}</span>
-            </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(140px, 1fr))', gap: 12 }}>
             <label style={{ display: 'grid', gap: 5, fontSize: 11, color: 'var(--ink-3)', textTransform: 'uppercase' }}>
-              Start hour
-              <input type="range" min={360} max={1080} step={30} value={startMinutes} onChange={(event) => setStartMinutes(Math.min(Number(event.target.value), endMinutes - 30))} />
+              Start time
+              <select value={startMinutes} onChange={(event) => handleStartTimeChange(Number(event.target.value))} style={fieldStyle}>
+                {TIME_OPTIONS.map((minutes) => (
+                  <option key={minutes} value={minutes}>{minutesLabel(minutes)}</option>
+                ))}
+              </select>
             </label>
-            <label style={{ display: 'grid', gap: 5, fontSize: 11, color: 'var(--ink-3)', textTransform: 'uppercase', marginTop: 8 }}>
-              End hour
-              <input type="range" min={360} max={1080} step={30} value={endMinutes} onChange={(event) => setEndMinutes(Math.max(Number(event.target.value), startMinutes + 30))} />
+            <label style={{ display: 'grid', gap: 5, fontSize: 11, color: 'var(--ink-3)', textTransform: 'uppercase' }}>
+              End time
+              <select value={endMinutes} onChange={(event) => handleEndTimeChange(Number(event.target.value))} style={fieldStyle}>
+                {TIME_OPTIONS.map((minutes) => (
+                  <option key={minutes} value={minutes}>{minutesLabel(minutes)}</option>
+                ))}
+              </select>
+            </label>
+            <label style={{ display: 'grid', gap: 5, fontSize: 11, color: 'var(--ink-3)', textTransform: 'uppercase' }}>
+              Minimum opening
+              <select
+                value={minimumDurationMinutes}
+                onChange={(event) => setMinimumDurationMinutes(Number(event.target.value) as 30 | 60 | 90 | 120)}
+                style={fieldStyle}
+              >
+                {MINIMUM_WINDOW_OPTIONS.map((minutes) => (
+                  <option key={minutes} value={minutes}>{minutes} minutes</option>
+                ))}
+              </select>
             </label>
           </div>
 
@@ -227,6 +279,13 @@ export function FreetimePage() {
           {findFreetime.isError && (
             <p role="alert" style={{ margin: 0, color: 'var(--accent)', fontSize: 13 }}>{findFreetime.error.message}</p>
           )}
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '12px 48px 0 0' }}>
+            <button type="button" onClick={runSearch} disabled={!canSearch} style={searchButtonStyle(!canSearch)}>
+              <CalendarSearch size={18} aria-hidden="true" />
+              {findFreetime.isPending ? 'Searching...' : 'Search availability'}
+            </button>
+          </div>
 
           <div style={{ borderTop: '1px solid var(--rule)', paddingTop: 14 }}>
             <h2 style={{ margin: '0 0 10px', fontFamily: 'var(--display)', fontSize: 22, fontWeight: 500 }}>

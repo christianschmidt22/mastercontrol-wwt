@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type CSSProperties, type FormEvent } from 'react';
-import { Mail, MessageSquare, PhoneCall, Plus, RefreshCw, Search, Sparkles, Trash2, UserPlus, X } from 'lucide-react';
+import { CheckCircle2, Mail, MessageSquare, PhoneCall, Plus, RefreshCw, Search, Sparkles, Trash2, UserPlus, X } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import { PageHeader } from '../components/layout/PageHeader';
 import {
@@ -226,9 +226,20 @@ function EnrichmentDialog({ contact, result, isSaving, onApply, onClose }: Enric
 
 function WwtDirectoryTile() {
   const [query, setQuery] = useState('');
+  const contactsQuery = useAllContacts();
   const searchDirectory = useSearchWwtDirectory();
   const importContact = useImportWwtDirectoryContact();
   const results = searchDirectory.data ?? [];
+  const savedWwtContacts = useMemo(
+    () => (contactsQuery.data ?? [])
+      .filter((contact) => contact.role === 'wwt_resource' || contact.email?.toLowerCase().endsWith('@wwt.com'))
+      .sort((a, b) => a.name.localeCompare(b.name)),
+    [contactsQuery.data],
+  );
+  const savedEmails = useMemo(
+    () => new Set(savedWwtContacts.flatMap((contact) => (contact.email ? [contact.email.toLowerCase()] : []))),
+    [savedWwtContacts],
+  );
 
   const runSearch = (event: FormEvent) => {
     event.preventDefault();
@@ -238,7 +249,7 @@ function WwtDirectoryTile() {
   };
 
   return (
-    <section style={{ border: '1px solid var(--rule)', borderRadius: 8, background: 'var(--surface)', padding: 16, marginBottom: 16 }}>
+    <section style={{ border: '1px solid var(--rule)', borderRadius: 8, background: 'var(--surface)', padding: 16, marginBottom: 16, width: 'min(780px, 100%)' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', marginBottom: 12 }}>
         <div>
           <h2 style={{ margin: 0, fontFamily: 'var(--display)', fontSize: 22, fontWeight: 500 }}>WWT directory</h2>
@@ -247,13 +258,13 @@ function WwtDirectoryTile() {
           </p>
         </div>
       </div>
-      <form onSubmit={runSearch} style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12 }}>
+      <form onSubmit={runSearch} style={{ display: 'grid', gridTemplateColumns: 'minmax(260px, 1fr) auto', gap: 8, alignItems: 'center', marginBottom: 12 }}>
         <input
           aria-label="Search WWT directory"
           value={query}
           onChange={(event) => setQuery(event.target.value)}
-          placeholder="Type a WWT name or email"
-          style={{ ...fieldStyle, maxWidth: 420 }}
+          placeholder="Name, email, title, office, or multi-word search"
+          style={fieldStyle}
         />
         <button type="submit" disabled={query.trim().length < 2 || searchDirectory.isPending} style={actionButtonStyle(query.trim().length < 2 || searchDirectory.isPending)}>
           <Search size={13} aria-hidden="true" />
@@ -266,7 +277,7 @@ function WwtDirectoryTile() {
         </p>
       )}
       {results.length > 0 && (
-        <div style={{ overflowX: 'auto' }}>
+        <div style={{ overflowX: 'auto', marginBottom: 14 }}>
           <table style={{ width: '100%', minWidth: 720, borderCollapse: 'collapse', fontFamily: 'var(--body)' }}>
             <thead>
               <tr>
@@ -278,29 +289,67 @@ function WwtDirectoryTile() {
               </tr>
             </thead>
             <tbody>
-              {results.map((result) => (
-                <tr key={result.email}>
-                  <td style={tableCell}>{result.name}</td>
-                  <td style={{ ...tableCell, color: 'var(--ink-2)' }}>{result.title ?? '-'}</td>
-                  <td style={{ ...tableCell, color: 'var(--ink-2)' }}>{result.email}</td>
-                  <td style={{ ...tableCell, color: 'var(--ink-2)' }}>{result.office ?? '-'}</td>
-                  <td style={tableCell}>
-                    <button
-                      type="button"
-                      onClick={() => importContact.mutate(result)}
-                      disabled={importContact.isPending}
-                      style={actionButtonStyle(importContact.isPending)}
-                    >
-                      <UserPlus size={13} aria-hidden="true" />
-                      Add
-                    </button>
-                  </td>
+              {results.map((result) => {
+                const isSaved = savedEmails.has(result.email.toLowerCase());
+                const isBusy = importContact.isPending && importContact.variables?.email === result.email;
+                return (
+                  <tr key={result.email}>
+                    <td style={tableCell}>{result.name}</td>
+                    <td style={{ ...tableCell, color: 'var(--ink-2)' }}>{result.title ?? '-'}</td>
+                    <td style={{ ...tableCell, color: 'var(--ink-2)' }}>{result.email}</td>
+                    <td style={{ ...tableCell, color: 'var(--ink-2)' }}>{result.office ?? '-'}</td>
+                    <td style={tableCell}>
+                      <button
+                        type="button"
+                        onClick={() => importContact.mutate(result)}
+                        disabled={isSaved || importContact.isPending}
+                        style={actionButtonStyle(isSaved || importContact.isPending)}
+                      >
+                        {isSaved ? <CheckCircle2 size={13} aria-hidden="true" /> : <UserPlus size={13} aria-hidden="true" />}
+                        {isSaved ? 'Saved' : isBusy ? 'Adding...' : 'Add'}
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <div style={{ borderTop: '1px solid var(--rule)', paddingTop: 12 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'baseline', marginBottom: 8 }}>
+          <h3 style={{ margin: 0, fontSize: 13, fontWeight: 700 }}>Saved WWT contacts</h3>
+          <span style={{ color: 'var(--ink-3)', fontSize: 12 }}>{savedWwtContacts.length} local</span>
+        </div>
+        <div style={{ overflowX: 'auto', maxHeight: 220, overflowY: 'auto' }}>
+          <table style={{ width: '100%', minWidth: 720, borderCollapse: 'collapse', fontFamily: 'var(--body)' }}>
+            <thead>
+              <tr>
+                <th style={{ ...tableCell, textAlign: 'left' }}>Name</th>
+                <th style={{ ...tableCell, textAlign: 'left' }}>Title</th>
+                <th style={{ ...tableCell, textAlign: 'left' }}>Email</th>
+                <th style={{ ...tableCell, textAlign: 'left' }}>Phone</th>
+              </tr>
+            </thead>
+            <tbody>
+              {contactsQuery.isLoading && (
+                <tr><td colSpan={4} style={{ ...tableCell, color: 'var(--ink-3)' }}>Loading local directory...</td></tr>
+              )}
+              {!contactsQuery.isLoading && savedWwtContacts.length === 0 && (
+                <tr><td colSpan={4} style={{ ...tableCell, color: 'var(--ink-3)' }}>No WWT contacts saved locally yet.</td></tr>
+              )}
+              {savedWwtContacts.map((contact) => (
+                <tr key={contact.id}>
+                  <td style={tableCell}>{contact.name}</td>
+                  <td style={{ ...tableCell, color: 'var(--ink-2)' }}>{contact.title ?? '-'}</td>
+                  <td style={{ ...tableCell, color: 'var(--ink-2)' }}>{contact.email ?? '-'}</td>
+                  <td style={{ ...tableCell, color: 'var(--ink-2)' }}>{contact.phone ?? '-'}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
-      )}
+      </div>
     </section>
   );
 }

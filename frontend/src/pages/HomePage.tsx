@@ -1,6 +1,5 @@
-import { useCallback, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Clock, RefreshCw } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { ArrowDown, ArrowUp, Clock, GripVertical, RefreshCw } from 'lucide-react';
 import { Tile } from '../components/tiles/Tile';
 import { NoteApprovalsTile } from '../components/notes/NoteApprovalsTile';
 import { TodayAgendaTile } from '../components/tiles/home/TodayAgendaTile';
@@ -8,15 +7,15 @@ import { TaskEditDialog } from '../components/tasks/TaskEditDialog';
 import { PageHeader } from '../components/layout/PageHeader';
 import { useTasks, useCompleteTask } from '../api/useTasks';
 import { useOrganizations } from '../api/useOrganizations';
-import { noteKeys } from '../api/useNotes';
 import { BacklogTile } from '../components/backlog/BacklogTile';
-import { useQueries } from '@tanstack/react-query';
-import { request } from '../api/http';
+import { useReports } from '../api/useReports';
+import { useReportRuns } from '../api/useReportRuns';
+import { ReportPreview } from '../components/overlays/ReportPreview';
 import {
   getDailyPonderingResponse,
   PONDERING_PROMPT,
 } from '../data/ponderingResponses';
-import type { Task, Note, Organization } from '../types';
+import type { Task, Organization } from '../types';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -38,19 +37,6 @@ function formatDue(dueDate: string | null): string {
     month: 'short',
     day: 'numeric',
   }).format(d);
-}
-
-function formatNoteTimestamp(iso: string): string {
-  const d = new Date(iso);
-  return new Intl.DateTimeFormat('en-US', {
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  })
-    .format(d)
-    .replace(',', '');
 }
 
 // ---------------------------------------------------------------------------
@@ -133,8 +119,10 @@ function TodayTasksWidget({ orgMap }: TodayTasksWidgetProps) {
   const tasksQuery = useTasks();
   const { mutate: completeTask } = useCompleteTask();
   const [editingTask, setEditingTask] = useState<Task | null>(null);
+  const [taskOrder, setTaskOrder] = useState<number[]>(() => readHomeTaskOrder());
+  const [draggingTaskId, setDraggingTaskId] = useState<number | null>(null);
 
-  const tasks: Task[] = (tasksQuery.data ?? [])
+  const defaultSortedTasks = useMemo(() => (tasksQuery.data ?? [])
     .filter((t) => t.kind !== 'question' && (t.status === 'open' || t.status === 'snoozed'))
     .sort((a, b) => {
       // Descending by due_date — latest due first, undated last.
@@ -142,7 +130,56 @@ function TodayTasksWidget({ orgMap }: TodayTasksWidgetProps) {
       if (!a.due_date) return 1;
       if (!b.due_date) return -1;
       return b.due_date.localeCompare(a.due_date);
+    }), [tasksQuery.data]);
+
+  const tasks = useMemo(() => {
+    const byId = new Map(defaultSortedTasks.map((task) => [task.id, task]));
+    const ordered = taskOrder.flatMap((id) => {
+      const task = byId.get(id);
+      if (!task) return [];
+      byId.delete(id);
+      return [task];
     });
+    return [...ordered, ...defaultSortedTasks.filter((task) => byId.has(task.id))];
+  }, [defaultSortedTasks, taskOrder]);
+
+  useEffect(() => {
+    setTaskOrder((current) => {
+      const activeIds = new Set(defaultSortedTasks.map((task) => task.id));
+      const next = current.filter((id) => activeIds.has(id));
+      if (next.length !== current.length) writeHomeTaskOrder(next);
+      return next.length === current.length ? current : next;
+    });
+  }, [defaultSortedTasks]);
+
+  const persistOrder = useCallback((orderedTasks: Task[]) => {
+    const ids = orderedTasks.map((task) => task.id);
+    setTaskOrder(ids);
+    writeHomeTaskOrder(ids);
+  }, []);
+
+  const moveTask = useCallback((taskId: number, direction: -1 | 1) => {
+    const from = tasks.findIndex((task) => task.id === taskId);
+    const to = from + direction;
+    if (from < 0 || to < 0 || to >= tasks.length) return;
+    const next = [...tasks];
+    const [moved] = next.splice(from, 1);
+    if (!moved) return;
+    next.splice(to, 0, moved);
+    persistOrder(next);
+  }, [persistOrder, tasks]);
+
+  const moveTaskToDropTarget = useCallback((draggedId: number, targetId: number, placeAfter: boolean) => {
+    if (draggedId === targetId) return;
+    const dragged = tasks.find((task) => task.id === draggedId);
+    if (!dragged) return;
+    const withoutDragged = tasks.filter((task) => task.id !== draggedId);
+    const targetIndex = withoutDragged.findIndex((task) => task.id === targetId);
+    if (targetIndex < 0) return;
+    const next = [...withoutDragged];
+    next.splice(placeAfter ? targetIndex + 1 : targetIndex, 0, dragged);
+    persistOrder(next);
+  }, [persistOrder, tasks]);
 
   const handleComplete = useCallback(
     (id: number) => {
@@ -172,7 +209,7 @@ function TodayTasksWidget({ orgMap }: TodayTasksWidgetProps) {
           role="list"
           style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column' }}
         >
-          {tasks.map((task) => {
+          {tasks.map((task, index) => {
             const overdue = isOverdue(task.due_date);
             const checkId = `home-task-${task.id}`;
             const orgName =
@@ -182,14 +219,42 @@ function TodayTasksWidget({ orgMap }: TodayTasksWidgetProps) {
             return (
               <li
                 key={task.id}
+                draggable
+                onDragStart={(event) => {
+                  setDraggingTaskId(task.id);
+                  event.dataTransfer.effectAllowed = 'move';
+                  event.dataTransfer.setData('text/plain', String(task.id));
+                }}
+                onDragOver={(event) => {
+                  if (draggingTaskId !== null && draggingTaskId !== task.id) {
+                    event.preventDefault();
+                    event.dataTransfer.dropEffect = 'move';
+                  }
+                }}
+                onDrop={(event) => {
+                  event.preventDefault();
+                  const draggedId = Number(event.dataTransfer.getData('text/plain')) || draggingTaskId;
+                  const rect = event.currentTarget.getBoundingClientRect();
+                  const placeAfter = event.clientY > rect.top + rect.height / 2;
+                  if (draggedId !== null) moveTaskToDropTarget(draggedId, task.id, placeAfter);
+                  setDraggingTaskId(null);
+                }}
+                onDragEnd={() => setDraggingTaskId(null)}
                 style={{
                   display: 'flex',
                   alignItems: 'baseline',
                   gap: 10,
                   padding: '6px 0',
                   borderBottom: '1px dotted var(--rule)',
+                  opacity: draggingTaskId === task.id ? 0.48 : 1,
                 }}
               >
+                <GripVertical
+                  size={14}
+                  strokeWidth={1.5}
+                  aria-hidden="true"
+                  style={{ color: 'var(--ink-3)', flexShrink: 0, transform: 'translateY(2px)' }}
+                />
                 <input
                   id={checkId}
                   type="checkbox"
@@ -258,6 +323,48 @@ function TodayTasksWidget({ orgMap }: TodayTasksWidgetProps) {
                     {formatDue(task.due_date)}
                   </time>
                 )}
+                <div style={{ display: 'flex', gap: 3, flexShrink: 0 }}>
+                  <button
+                    type="button"
+                    onClick={() => moveTask(task.id, -1)}
+                    disabled={index === 0}
+                    aria-label={`Move ${task.title} up`}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      width: 22,
+                      height: 22,
+                      border: '1px solid var(--rule)',
+                      borderRadius: 4,
+                      background: 'transparent',
+                      color: index === 0 ? 'var(--ink-3)' : 'var(--ink-2)',
+                      cursor: index === 0 ? 'not-allowed' : 'pointer',
+                    }}
+                  >
+                    <ArrowUp size={12} aria-hidden="true" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => moveTask(task.id, 1)}
+                    disabled={index === tasks.length - 1}
+                    aria-label={`Move ${task.title} down`}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      width: 22,
+                      height: 22,
+                      border: '1px solid var(--rule)',
+                      borderRadius: 4,
+                      background: 'transparent',
+                      color: index === tasks.length - 1 ? 'var(--ink-3)' : 'var(--ink-2)',
+                      cursor: index === tasks.length - 1 ? 'not-allowed' : 'pointer',
+                    }}
+                  >
+                    <ArrowDown size={12} aria-hidden="true" />
+                  </button>
+                </div>
               </li>
             );
           })}
@@ -272,141 +379,77 @@ function TodayTasksWidget({ orgMap }: TodayTasksWidgetProps) {
 }
 
 // ---------------------------------------------------------------------------
-// Widget 2 — Recent notes (cross-org)
+// Widget 2 — Daily Task Review preview
 // ---------------------------------------------------------------------------
 
-interface RecentNotesWidgetProps {
-  orgs: Organization[];
-  orgMap: Map<number, Organization>;
-}
-
-interface NoteWithOrg extends Note {
-  orgName: string;
-  orgType: 'customer' | 'oem';
-}
-
-function RecentNotesWidget({ orgs }: RecentNotesWidgetProps) {
-  const navigate = useNavigate();
-
-  const noteQueries = useQueries({
-    queries: orgs.map((org) => ({
-      queryKey: noteKeys.list(org.id, false),
-      queryFn: () =>
-        request<Note[]>('GET', `/api/organizations/${org.id}/notes`),
-      enabled: org.id > 0,
-    })),
-  });
-
-  const isLoading = noteQueries.some((q) => q.isLoading);
-  const isError = !isLoading && noteQueries.every((q) => q.isError);
-
-  const allNotes: NoteWithOrg[] = noteQueries
-    .flatMap((q, i) => {
-      const org = orgs[i];
-      if (!org || !q.data) return [];
-      return q.data
-        .filter((n) => n.role === 'user' || n.role === 'imported')
-        .map((n): NoteWithOrg => ({
-          ...n,
-          orgName: org.name,
-          orgType: org.type,
-        }));
-    })
-    .sort((a, b) => b.created_at.localeCompare(a.created_at))
-    .slice(0, 5);
-
-  const handleNoteClick = (note: NoteWithOrg) => {
-    if (note.orgType === 'customer') {
-      navigate(`/customers/${note.organization_id}`);
-    } else {
-      navigate(`/oem/${note.organization_id}`);
-    }
-  };
-
-  const handleRetry = () => {
-    noteQueries.forEach((q) => void q.refetch());
-  };
+function DailyTaskReviewPreviewWidget() {
+  const reportsQuery = useReports();
+  const report = (reportsQuery.data ?? []).find((item) => item.name.toLowerCase() === 'daily task review') ?? null;
+  const runsQuery = useReportRuns(report?.id ?? 0, { enabled: report !== null });
+  const latestRun = (runsQuery.data ?? [])
+    .filter((run) => run.status === 'done' && run.output_path !== null)
+    .sort((a, b) => {
+      const aTime = a.finished_at ?? a.started_at;
+      const bTime = b.finished_at ?? b.started_at;
+      return bTime.localeCompare(aTime);
+    })[0] ?? null;
 
   return (
-    <Tile title="Recent Notes" count={isLoading ? '…' : allNotes.length || undefined}>
-      {isError && (
-        <TileError message="Couldn't load notes" onRetry={handleRetry} />
+    <Tile title="Daily Task Review" count={reportsQuery.isLoading || runsQuery.isLoading ? '...' : undefined}>
+      {reportsQuery.isError && (
+        <TileError message="Couldn't load reports" onRetry={() => void reportsQuery.refetch()} />
       )}
-      {isLoading && (
+      {!reportsQuery.isError && reportsQuery.isLoading && (
         <p style={{ fontSize: 13, color: 'var(--ink-3)', fontFamily: 'var(--body)' }}>
-          Loading…
+          Loading report...
         </p>
       )}
-      {!isLoading && !isError && allNotes.length === 0 && (
-        <EmptyState text="No notes yet." />
+      {!reportsQuery.isLoading && !reportsQuery.isError && report === null && (
+        <EmptyState text="Daily Task Review report is not configured yet." />
       )}
-      {allNotes.length > 0 && (
-        <ul
-          role="list"
-          style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 10 }}
-        >
-          {allNotes.map((note) => (
-            <li key={note.id}>
-              <button
-                type="button"
-                onClick={() => handleNoteClick(note)}
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'auto 1fr',
-                  gap: '4px 10px',
-                  width: '100%',
-                  textAlign: 'left',
-                  background: 'transparent',
-                  border: 'none',
-                  padding: '4px 0',
-                  cursor: 'pointer',
-                  borderBottom: '1px dotted var(--rule)',
-                }}
-                aria-label={`Go to ${note.orgName}`}
-              >
-                <time
-                  dateTime={note.created_at}
-                  style={{
-                    fontSize: 12,
-                    color: 'var(--ink-3)',
-                    fontVariantNumeric: 'tabular-nums',
-                    fontFamily: 'var(--body)',
-                    gridRow: '1 / 3',
-                    alignSelf: 'start',
-                    paddingTop: 2,
-                    whiteSpace: 'nowrap',
-                  }}
-                >
-                  {formatNoteTimestamp(note.created_at)}
-                </time>
-                <p
-                  style={{
-                    fontSize: 14,
-                    color: 'var(--ink-1)',
-                    fontFamily: 'var(--body)',
-                    margin: 0,
-                    lineHeight: 1.45,
-                    overflow: 'hidden',
-                    display: '-webkit-box',
-                    WebkitLineClamp: 2,
-                    WebkitBoxOrient: 'vertical',
-                  }}
-                >
-                  {note.content}
-                </p>
-                <span
-                  style={{
-                    fontSize: 11,
-                    color: 'var(--ink-3)',
-                    fontFamily: 'var(--body)',
-                  }}
-                >
-                  {note.orgName}
-                </span>
-              </button>
-            </li>
-          ))}
-        </ul>
+      {report !== null && runsQuery.isError && (
+        <TileError message="Couldn't load report history" onRetry={() => void runsQuery.refetch()} />
+      )}
+      {report !== null && runsQuery.isLoading && (
+        <p style={{ fontSize: 13, color: 'var(--ink-3)', fontFamily: 'var(--body)' }}>
+          Loading latest preview...
+        </p>
+      )}
+      {report !== null && !runsQuery.isLoading && !runsQuery.isError && latestRun === null && (
+        <EmptyState text="No completed Daily Task Review output yet." />
+      )}
+      {report !== null && latestRun !== null && (
+        <div style={{ display: 'grid', gap: 8 }}>
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              gap: 10,
+              alignItems: 'baseline',
+              color: 'var(--ink-3)',
+              fontSize: 11,
+              fontFamily: 'var(--body)',
+              fontVariantNumeric: 'tabular-nums',
+            }}
+          >
+            <span>Latest output</span>
+            <a
+              href={`/api/reports/${report.id}/runs/${latestRun.id}/download`}
+              download
+              style={{ color: 'var(--ink-2)', textDecoration: 'underline', textUnderlineOffset: 3 }}
+            >
+              Download
+            </a>
+          </div>
+          <div style={{ maxHeight: 360, overflow: 'auto' }}>
+            <ReportPreview
+              reportId={report.id}
+              runId={latestRun.id}
+              runDate={latestRun.started_at}
+              enabled
+            />
+          </div>
+        </div>
       )}
     </Tile>
   );
@@ -463,6 +506,28 @@ const longDate = new Intl.DateTimeFormat('en-US', {
   day: 'numeric',
 });
 
+const HOME_TASK_ORDER_STORAGE_KEY = 'mastercontrol:home-task-order';
+
+function readHomeTaskOrder(): number[] {
+  try {
+    const raw = window.localStorage.getItem(HOME_TASK_ORDER_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((item): item is number => Number.isInteger(item));
+  } catch {
+    return [];
+  }
+}
+
+function writeHomeTaskOrder(ids: number[]): void {
+  try {
+    window.localStorage.setItem(HOME_TASK_ORDER_STORAGE_KEY, JSON.stringify(ids));
+  } catch {
+    // Ignore storage failures; ordering still works for this render.
+  }
+}
+
 export function HomePage() {
   const now = new Date();
   const dateStr = longDate.format(now);
@@ -503,9 +568,9 @@ export function HomePage() {
           <TodayTasksWidget orgMap={orgMap} />
         </div>
 
-        {/* Top-right: Recent notes */}
+        {/* Top-right: latest Daily Task Review preview */}
         <div style={{ gridColumn: 2, gridRow: 1 }}>
-          <RecentNotesWidget orgs={allOrgs} orgMap={orgMap} />
+          <DailyTaskReviewPreviewWidget />
         </div>
 
         {/* Bottom-left: MasterControl backlog */}

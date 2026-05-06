@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "tsc",
+    "build": "tsc && node scripts/copy-migrations.cjs",
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src --ext .ts --report-unused-disable-directives --max-warnings 0",
@@ -21,6 +21,7 @@
     "cors": "^2.8.5",
     "cron-parser": "^4.9.0",
     "express": "^4.21.2",
+    "fast-glob": "^3.3.3",
     "node-cron": "^3.0.3",
     "node-ical": "^0.26.0",
     "zod": "^3.24.3"

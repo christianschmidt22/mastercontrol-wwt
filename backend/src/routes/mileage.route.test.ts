@@ -49,6 +49,20 @@ describe('mileage route', () => {
         location: 'Microsoft Teams Meeting',
       },
       {
+        uid: 'teams-physical-1',
+        title: 'Customer onsite with Teams option',
+        start_at: '2026-05-01T18:00:00.000Z',
+        end_at: '2026-05-01T19:00:00.000Z',
+        location: '860 Cliff Rd, Eagan, MN 55123; Microsoft Teams Meeting',
+      },
+      {
+        uid: 'teams-physical-and-1',
+        title: 'Commvault - Azure Protection',
+        start_at: '2026-05-01T19:00:00.000Z',
+        end_at: '2026-05-01T20:00:00.000Z',
+        location: '14701 Charlson Rd, Eden Prairie, MN 55347 AND Microsoft Teams Meeting',
+      },
+      {
         uid: 'office-1',
         title: 'Office',
         start_at: '2026-05-02T14:00:00.000Z',
@@ -99,7 +113,7 @@ describe('mileage route', () => {
       start_date: '2026-05-01',
       end_date: '2026-05-02',
       from_address: '250 Pine St, Lino Lakes, MN 55014',
-      total_miles: 20,
+      total_miles: 60,
       excluded_count: 5,
     });
     expect(res.body.rows).toEqual([
@@ -112,8 +126,26 @@ describe('mileage route', () => {
         one_way_miles: 10,
         distance_source: 'osrm',
       }),
+      expect.objectContaining({
+        uid: 'teams-physical-1',
+        subject: 'Customer onsite with Teams option',
+        to_address: '860 Cliff Rd, Eagan, MN 55123',
+        type: 'round trip',
+        miles: 20,
+        one_way_miles: 10,
+        distance_source: 'osrm',
+      }),
+      expect.objectContaining({
+        uid: 'teams-physical-and-1',
+        subject: 'Commvault - Azure Protection',
+        to_address: '14701 Charlson Rd, Eden Prairie, MN 55347',
+        type: 'round trip',
+        miles: 20,
+        one_way_miles: 10,
+        distance_source: 'osrm',
+      }),
     ]);
-    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock).toHaveBeenCalledTimes(7);
 
     const cachedRes = await request(app)
       .get('/api/tools/mileage/report')
@@ -124,7 +156,15 @@ describe('mileage route', () => {
       miles: 20,
       distance_source: 'cache',
     });
-    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(cachedRes.body.rows[1]).toMatchObject({
+      miles: 20,
+      distance_source: 'cache',
+    });
+    expect(cachedRes.body.rows[2]).toMatchObject({
+      miles: 20,
+      distance_source: 'cache',
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(7);
 
     const manualRes = await request(app)
       .post('/api/tools/mileage/calculate')
@@ -142,7 +182,7 @@ describe('mileage route', () => {
       one_way_miles: 10,
       distance_source: 'cache',
     });
-    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock).toHaveBeenCalledTimes(7);
   }, 10_000);
 
   it('exports editable mileage rows to a PDF in the MasterControl reports vault', async () => {

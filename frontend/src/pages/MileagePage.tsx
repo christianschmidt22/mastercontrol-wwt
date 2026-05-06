@@ -186,6 +186,7 @@ export function MileagePage() {
   const [pdfSavePath, setPdfSavePath] = useState<string | null>(null);
   const [manualRows, setManualRows] = useState<ManualMileageRow[]>([]);
   const [subjectOverrides, setSubjectOverrides] = useState<Record<string, string>>({});
+  const [removedGeneratedRowIds, setRemovedGeneratedRowIds] = useState<Set<string>>(() => new Set());
   const [calculatingManualRowId, setCalculatingManualRowId] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState({
     startDate: defaultStartDate(),
@@ -204,8 +205,10 @@ export function MileagePage() {
   const exportMileagePdf = useExportMileagePdf();
   const rows = useMemo(() => reportQuery.data?.rows ?? [], [reportQuery.data?.rows]);
   const generatedRows = useMemo(
-    () => rows.map((row) => ({ ...row, subject: subjectOverrides[row.uid] ?? row.subject })),
-    [rows, subjectOverrides],
+    () => rows
+      .filter((row) => !removedGeneratedRowIds.has(row.uid))
+      .map((row) => ({ ...row, subject: subjectOverrides[row.uid] ?? row.subject })),
+    [removedGeneratedRowIds, rows, subjectOverrides],
   );
   const expenseRows: ExpenseMileageRow[] = useMemo(
     () => [
@@ -267,6 +270,18 @@ export function MileagePage() {
 
   function updateGeneratedSubject(uid: string, subject: string) {
     setSubjectOverrides((current) => ({ ...current, [uid]: subject }));
+  }
+
+  function removeGeneratedRow(uid: string) {
+    setRemovedGeneratedRowIds((current) => {
+      const next = new Set(current);
+      next.add(uid);
+      return next;
+    });
+    setSubjectOverrides((current) => {
+      const { [uid]: _removed, ...rest } = current;
+      return rest;
+    });
   }
 
   function removeManualRow(id: string) {
@@ -595,7 +610,19 @@ export function MileagePage() {
                             </span>
                           )}
                         </span>
-                      ) : formatMiles(row.miles)}
+                      ) : (
+                        <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8 }}>
+                          <span>{formatMiles(row.miles)}</span>
+                          <button
+                            type="button"
+                            aria-label={`Remove mileage entry: ${row.subject}`}
+                            onClick={() => removeGeneratedRow(row.uid)}
+                            style={{ ...buttonStyle(), padding: '7px 8px' }}
+                          >
+                            <Trash2 size={14} strokeWidth={1.5} />
+                          </button>
+                        </span>
+                      )}
                     </td>
                   </tr>
                 ))

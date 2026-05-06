@@ -25,6 +25,7 @@ export interface FindFreetimeInput {
   weekdays: number[];
   work_start_minutes: number;
   work_end_minutes: number;
+  minimum_duration_minutes: number;
 }
 
 export interface FindFreetimeResult {
@@ -53,7 +54,7 @@ function parseResult(stdout: string): Ps1FreetimeResult {
 export async function findFreetime(input: FindFreetimeInput): Promise<FindFreetimeResult> {
   return new Promise((resolve, reject) => {
     let stdout = '';
-    let stderrBytes = 0;
+    let stderr = '';
     const child = spawn('powershell.exe', [
       '-NonInteractive',
       '-NoProfile',
@@ -75,19 +76,22 @@ export async function findFreetime(input: FindFreetimeInput): Promise<FindFreeti
       String(input.work_end_minutes),
       '-IncludeSelf',
       input.include_self ? 'true' : 'false',
+      '-MinimumDurationMinutes',
+      String(input.minimum_duration_minutes),
     ]);
 
     child.stdout.on('data', (chunk: Buffer) => {
       stdout += chunk.toString('utf8');
     });
     child.stderr.on('data', (chunk: Buffer) => {
-      stderrBytes += chunk.length;
+      stderr += chunk.toString('utf8');
     });
     child.on('error', (err) => reject(new Error(`Failed to start Outlook FreeBusy lookup: ${err.message}`)));
     child.on('close', (code) => {
-      if (stderrBytes > 0) console.warn('[freetime] ps1 stderr', { bytes: stderrBytes });
+      const trimmedStderr = stderr.trim();
+      if (trimmedStderr) console.warn('[freetime] ps1 stderr', { message: trimmedStderr });
       if (code !== 0) {
-        reject(new Error(`Outlook FreeBusy lookup exited with code ${code ?? 'unknown'}.`));
+        reject(new Error(`Outlook FreeBusy lookup exited with code ${code ?? 'unknown'}${trimmedStderr ? `: ${trimmedStderr}` : ''}.`));
         return;
       }
       try {

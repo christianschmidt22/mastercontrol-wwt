@@ -25,6 +25,7 @@ const VIRTUAL_LOCATION_NEEDLES = [
   'google meet',
   'https://',
 ];
+const STREET_ADDRESS_RE = /\b\d{1,6}\s+[a-z0-9 .'-]+?\b(?:avenue|ave|street|st|road|rd|boulevard|blvd|drive|dr|lane|ln|way|parkway|pkwy|court|ct|circle|cir|terrace|ter|highway|hwy|trail|trl|place|pl)\b/i;
 const ROUND_TRIP = 'round trip';
 
 interface Coordinate {
@@ -146,12 +147,42 @@ function normalizeLocation(location: string): string {
   return location.trim().replace(/\s+/g, ' ');
 }
 
+function hasStreetAddress(value: string): boolean {
+  return STREET_ADDRESS_RE.test(value);
+}
+
+function stripVirtualLocationText(value: string): string {
+  return normalizeLocation(value
+    .replace(/https?:\/\/\S+/gi, '')
+    .replace(/\b(?:microsoft teams meeting|teams meeting|online meeting|virtual meeting|zoom|webex|google meet)\b/gi, ''));
+}
+
+function cleanMileageAddressText(value: string): string {
+  return normalizeLocation(value)
+    .replace(/\s+(?:and|or)\s*$/i, '')
+    .replace(/\s*[,;|/-]\s*$/g, '')
+    .replace(/\s*,\s*(?:and|or)\s*$/i, '')
+    .trim();
+}
+
+function extractMileageLocation(location: string): string {
+  const normalized = normalizeLocation(location);
+  if (!normalized) return '';
+
+  const parts = normalized
+    .split(/(?:\r?\n|;|\||\u2022)/)
+    .map((part) => normalizeLocation(part))
+    .filter(Boolean);
+  const addressPart = parts.find((part) => hasStreetAddress(part));
+  return cleanMileageAddressText(stripVirtualLocationText(addressPart ?? normalized));
+}
+
 function isMileageLocation(event: CalendarEvent): boolean {
-  const location = normalizeLocation(event.location ?? '');
+  const location = extractMileageLocation(event.location ?? '');
   if (!location) return false;
   const lower = location.toLowerCase();
   if (EXCLUDED_LOCATION_NEEDLES.some((needle) => lower.includes(needle))) return false;
-  if (VIRTUAL_LOCATION_NEEDLES.some((needle) => lower === needle || lower.includes(needle))) return false;
+  if (VIRTUAL_LOCATION_NEEDLES.some((needle) => lower === needle || lower.includes(needle)) && !hasStreetAddress(location)) return false;
   return true;
 }
 
@@ -384,7 +415,7 @@ export async function buildMileageReport(
   const rows: MileageReportRow[] = [];
 
   for (const event of eligible) {
-    const toAddress = normalizeLocation(event.location ?? '');
+    const toAddress = extractMileageLocation(event.location ?? '');
     const distance = await getDistance(MILEAGE_HOME_ADDRESS, toAddress, calculate);
     const miles = distance.oneWayMiles == null ? null : roundMiles(distance.oneWayMiles * 2);
     rows.push({

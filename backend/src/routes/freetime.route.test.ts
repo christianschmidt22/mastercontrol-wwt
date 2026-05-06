@@ -40,6 +40,7 @@ describe('POST /api/tools/freetime/find', () => {
         weekdays: [1, 2, 3, 4, 5],
         work_start_minutes: 480,
         work_end_minutes: 960,
+        minimum_duration_minutes: 60,
       });
 
     expect(res.status).toBe(200);
@@ -47,6 +48,7 @@ describe('POST /api/tools/freetime/find', () => {
     expect(mockedFindFreetime).toHaveBeenCalledWith(expect.objectContaining({
       participant_emails: ['maya.patel@wwt.com'],
       include_self: true,
+      minimum_duration_minutes: 60,
     }));
   });
 
@@ -61,6 +63,23 @@ describe('POST /api/tools/freetime/find', () => {
         weekdays: [1],
         work_start_minutes: 480,
         work_end_minutes: 960,
+      });
+
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects minimum openings longer than the selected work window', async () => {
+    const res = await request(app)
+      .post('/api/tools/freetime/find')
+      .send({
+        participant_emails: ['maya.patel@wwt.com'],
+        include_self: true,
+        start_date: '2026-05-05',
+        end_date: '2026-05-19',
+        weekdays: [1],
+        work_start_minutes: 480,
+        work_end_minutes: 510,
+        minimum_duration_minutes: 60,
       });
 
     expect(res.status).toBe(400);

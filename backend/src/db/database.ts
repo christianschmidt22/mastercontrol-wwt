@@ -1,5 +1,5 @@
 import Database from 'better-sqlite3';
-import { readdirSync, readFileSync } from 'node:fs';
+import { mkdirSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -12,6 +12,10 @@ const DB_PATH: string =
   rawPath === ':memory:' ? ':memory:' : (rawPath ?? join(__dirname, '../../../database/mastercontrol.db'));
 
 const MIGRATIONS_DIR = join(__dirname, 'migrations');
+
+if (DB_PATH !== ':memory:') {
+  mkdirSync(dirname(DB_PATH), { recursive: true });
+}
 
 export const db = new Database(DB_PATH);
 

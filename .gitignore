@@ -15,3 +15,5 @@ agent-*
 .claude/worktrees/
 reports/m365-graph/
 .secrets/
+release/
+desktop/runtime/

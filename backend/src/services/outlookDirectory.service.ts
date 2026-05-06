@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const PS1_PATH = fileURLToPath(new URL('../scripts/outlook-directory-search.ps1', import.meta.url));
+const DIRECTORY_SEARCH_TIMEOUT_MS = 25_000;
 
 export interface WwtDirectoryResult {
   name: string;
@@ -50,7 +51,8 @@ function parseResult(stdout: string): Ps1DirectoryResult {
 export async function searchWwtDirectory(query: string, limit = 20): Promise<WwtDirectoryResult[]> {
   return new Promise((resolve, reject) => {
     let stdout = '';
-    let stderrBytes = 0;
+    let stderr = '';
+    let settled = false;
     const child = spawn('powershell.exe', [
       '-NonInteractive',
       '-NoProfile',
@@ -63,29 +65,44 @@ export async function searchWwtDirectory(query: string, limit = 20): Promise<Wwt
       '-Limit',
       String(limit),
     ]);
+    const timeout = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      child.kill();
+      reject(new Error('Outlook directory search timed out. Try a more specific first and last name.'));
+    }, DIRECTORY_SEARCH_TIMEOUT_MS);
+
+    const finish = (fn: () => void) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      fn();
+    };
 
     child.stdout.on('data', (chunk: Buffer) => {
       stdout += chunk.toString('utf8');
     });
     child.stderr.on('data', (chunk: Buffer) => {
-      stderrBytes += chunk.length;
+      stderr += chunk.toString('utf8');
     });
-    child.on('error', (err) => reject(new Error(`Failed to start Outlook directory search: ${err.message}`)));
+    child.on('error', (err) => finish(() => reject(new Error(`Failed to start Outlook directory search: ${err.message}`))));
     child.on('close', (code) => {
-      if (stderrBytes > 0) console.warn('[outlookDirectory] ps1 stderr', { bytes: stderrBytes });
+      const trimmedStderr = stderr.trim();
+      if (trimmedStderr) console.warn('[outlookDirectory] ps1 stderr', { message: trimmedStderr });
       if (code !== 0) {
-        reject(new Error(`Outlook directory search exited with code ${code ?? 'unknown'}.`));
+        finish(() => reject(new Error(`Outlook directory search exited with code ${code ?? 'unknown'}${trimmedStderr ? `: ${trimmedStderr}` : ''}.`)));
         return;
       }
       try {
         const result = parseResult(stdout);
         if (result.error) {
-          reject(new Error(result.error));
+          const message = result.error;
+          finish(() => reject(new Error(message)));
           return;
         }
-        resolve(result.results);
+        finish(() => resolve(result.results));
       } catch (err) {
-        reject(err instanceof Error ? err : new Error('Failed to parse Outlook directory output.'));
+        finish(() => reject(err instanceof Error ? err : new Error('Failed to parse Outlook directory output.')));
       }
     });
   });
