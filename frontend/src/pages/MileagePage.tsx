@@ -74,7 +74,8 @@ function formatMiles(value: number | null): string {
   return value == null ? 'Needs calculation' : value.toFixed(1);
 }
 
-function sourceLabel(row: MileageReportRow): string {
+function sourceLabel(row: Pick<MileageReportRow, 'distance_source' | 'distance_error'>): string {
+  if (row.distance_error) return row.distance_error;
   if (row.distance_source === 'cache') return 'Cached';
   if (row.distance_source === 'osrm') return 'Calculated';
   if (row.distance_source === 'unavailable') return 'Unavailable';
@@ -234,6 +235,7 @@ export function MileagePage() {
     [expenseRows],
   );
   const isBusy = reportQuery.isFetching;
+  const calculateAllBusy = isBusy || calculatingManualRowId !== null || calculateMileage.isPending;
 
   function runReport(nextCalculate = calculate) {
     if (!dateRangeValid) return;
@@ -416,13 +418,14 @@ export function MileagePage() {
               type="button"
               onClick={() => {
                 setCalculate(true);
-                runReport(true);
+                setSubmitted({ startDate, endDate, calculate: true });
+                void reportQuery.refetch();
                 void calculateManualRows(manualRows);
               }}
-              disabled={!dateRangeValid || isBusy || calculatingManualRowId !== null}
-              style={buttonStyle(!dateRangeValid || isBusy || calculatingManualRowId !== null)}
+              disabled={!dateRangeValid || calculateAllBusy}
+              style={buttonStyle(!dateRangeValid || calculateAllBusy)}
             >
-              {calculatingManualRowId ? <Loader2 size={14} className="animate-spin" /> : <Calculator size={14} strokeWidth={1.5} />}
+              {calculateAllBusy ? <Loader2 size={14} className="animate-spin" /> : <Calculator size={14} strokeWidth={1.5} />}
               Calculate all
             </button>
             <button type="button" onClick={addManualRow} style={buttonStyle()}>
@@ -577,7 +580,7 @@ export function MileagePage() {
                       )}
                     </td>
                     <td style={{ padding: '10px 12px', borderBottom: '1px solid var(--rule)', color: 'var(--ink-2)' }}>{row.type}</td>
-                    <td style={{ padding: '10px 12px', borderBottom: '1px solid var(--rule)', textAlign: 'right', color: row.miles == null ? 'var(--ink-3)' : 'var(--ink-1)' }} title={row.isManual ? 'Manual entry' : row.distance_error ?? sourceLabel(row as MileageReportRow)}>
+                    <td style={{ padding: '10px 12px', borderBottom: '1px solid var(--rule)', textAlign: 'right', color: row.miles == null ? 'var(--ink-3)' : 'var(--ink-1)' }} title={row.isManual ? 'Manual entry' : sourceLabel(row)}>
                       {row.isManual ? (
                         <span style={{ display: 'grid', gap: 6, justifyItems: 'end' }}>
                           <span style={{ display: 'inline-flex', gap: 8, alignItems: 'center', justifyContent: 'flex-end' }}>
@@ -611,16 +614,23 @@ export function MileagePage() {
                           )}
                         </span>
                       ) : (
-                        <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8 }}>
-                          <span>{formatMiles(row.miles)}</span>
-                          <button
-                            type="button"
-                            aria-label={`Remove mileage entry: ${row.subject}`}
-                            onClick={() => removeGeneratedRow(row.uid)}
-                            style={{ ...buttonStyle(), padding: '7px 8px' }}
-                          >
-                            <Trash2 size={14} strokeWidth={1.5} />
-                          </button>
+                        <span style={{ display: 'grid', gap: 5, justifyItems: 'end' }}>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8 }}>
+                            <span>{row.distance_source === 'unavailable' && row.miles == null ? 'Unavailable' : formatMiles(row.miles)}</span>
+                            <button
+                              type="button"
+                              aria-label={`Remove mileage entry: ${row.subject}`}
+                              onClick={() => removeGeneratedRow(row.uid)}
+                              style={{ ...buttonStyle(), padding: '7px 8px' }}
+                            >
+                              <Trash2 size={14} strokeWidth={1.5} />
+                            </button>
+                          </span>
+                          {row.distance_error && (
+                            <span style={{ color: 'var(--danger)', fontSize: 11, textAlign: 'right', maxWidth: 240, whiteSpace: 'normal' }}>
+                              {row.distance_error}
+                            </span>
+                          )}
                         </span>
                       )}
                     </td>

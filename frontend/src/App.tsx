@@ -7,6 +7,7 @@ import { TasksPage } from './pages/TasksPage';
 import { AlertsPage } from './pages/AlertsPage';
 import { ReportsPage } from './pages/ReportsPage';
 import { ContactsPage } from './pages/ContactsPage';
+import { DealRegPage } from './pages/DealRegPage';
 import { ToolsPage } from './pages/ToolsPage';
 import { MileagePage } from './pages/MileagePage';
 import { FreetimePage } from './pages/FreetimePage';
@@ -62,6 +63,7 @@ export function App() {
           <Route path="/alerts" element={<AlertsPage />} />
           <Route path="/reports" element={<ReportsPage />} />
           <Route path="/contacts" element={<ContactsPage />} />
+          <Route path="/deal-reg" element={<DealRegPage />} />
           <Route path="/tools" element={<ToolsPage />} />
           <Route path="/mileage" element={<MileagePage />} />
           <Route path="/freetime" element={<FreetimePage />} />

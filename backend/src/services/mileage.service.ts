@@ -14,6 +14,10 @@ const EXCLUDED_LOCATION_NEEDLES = [
   '601 utica ave',
   'link included',
   'gooseberry falls',
+  'mastercontrol local api test',
+];
+const EXCLUDED_LOCATION_PREFIXES = [
+  'usa-mn',
 ];
 const VIRTUAL_LOCATION_NEEDLES = [
   'microsoft teams',
@@ -159,6 +163,7 @@ function stripVirtualLocationText(value: string): string {
 
 function cleanMileageAddressText(value: string): string {
   return normalizeLocation(value)
+    .replace(/^[^a-z0-9]+/i, '')
     .replace(/\s+(?:and|or)\s*$/i, '')
     .replace(/\s*[,;|/-]\s*$/g, '')
     .replace(/\s*,\s*(?:and|or)\s*$/i, '')
@@ -174,13 +179,19 @@ function extractMileageLocation(location: string): string {
     .map((part) => normalizeLocation(part))
     .filter(Boolean);
   const addressPart = parts.find((part) => hasStreetAddress(part));
-  return cleanMileageAddressText(stripVirtualLocationText(addressPart ?? normalized));
+  const stripped = stripVirtualLocationText(addressPart ?? normalized);
+  const parentheticalAddress = stripped.match(/\(([^)]*\d{1,6}[^)]*)\)/);
+  if (parentheticalAddress?.[1] && hasStreetAddress(parentheticalAddress[1])) {
+    return cleanMileageAddressText(parentheticalAddress[1]);
+  }
+  return cleanMileageAddressText(stripped);
 }
 
 function isMileageLocation(event: CalendarEvent): boolean {
   const location = extractMileageLocation(event.location ?? '');
   if (!location) return false;
   const lower = location.toLowerCase();
+  if (EXCLUDED_LOCATION_PREFIXES.some((prefix) => lower.startsWith(prefix))) return false;
   if (EXCLUDED_LOCATION_NEEDLES.some((needle) => lower.includes(needle))) return false;
   if (VIRTUAL_LOCATION_NEEDLES.some((needle) => lower === needle || lower.includes(needle)) && !hasStreetAddress(location)) return false;
   return true;

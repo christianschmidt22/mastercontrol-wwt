@@ -659,10 +659,12 @@ export function ToolsPage() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const restoredState = useMemo(() => readStoredBomToolState(), []);
   const [organizationId, setOrganizationId] = useState('');
+  const [customerSelectionTouched, setCustomerSelectionTouched] = useState(false);
   const [filter, setFilter] = useState('');
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
   const [prompt, setPrompt] = useState(restoredState?.prompt ?? DEFAULT_BOM_PROMPT);
   const [output, setOutput] = useState(restoredState?.output ?? '');
+  const [analysisError, setAnalysisError] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [moveTargetOrgId, setMoveTargetOrgId] = useState('');
@@ -684,17 +686,18 @@ export function ToolsPage() {
   const moveFiles = useMoveBomFiles();
 
   useEffect(() => {
-    if (organizationId) return;
+    if (organizationId || customerSelectionTouched) return;
     const restoredCustomer = restoredState
       ? customers.find((customer) => customer.id === restoredState.organization_id)
       : undefined;
     const initialCustomer = restoredCustomer ?? customers[0];
     if (initialCustomer) setOrganizationId(String(initialCustomer.id));
-  }, [customers, organizationId, restoredState]);
+  }, [customerSelectionTouched, customers, organizationId, restoredState]);
 
   useEffect(() => {
     setSelectedFiles(new Set());
     setMessage(null);
+    setMoveTargetOrgId('');
   }, [selectedOrgId]);
 
   useEffect(() => {
@@ -708,16 +711,10 @@ export function ToolsPage() {
   }, [output, outputMode, prompt, selectedOrgId]);
 
   useEffect(() => {
-    const fallbackTarget = customers.find((customer) => customer.id !== selectedOrgId);
-    const fairviewTarget = customers.find(
-      (customer) => customer.id !== selectedOrgId && customer.name.toLowerCase().includes('fairview'),
-    );
     const currentTargetStillValid = customers.some(
       (customer) => customer.id === Number(moveTargetOrgId) && customer.id !== selectedOrgId,
     );
-    if (!currentTargetStillValid) {
-      setMoveTargetOrgId(String((fairviewTarget ?? fallbackTarget)?.id ?? ''));
-    }
+    if (moveTargetOrgId && !currentTargetStillValid) setMoveTargetOrgId('');
   }, [customers, moveTargetOrgId, selectedOrgId]);
 
   useEffect(() => {
@@ -850,6 +847,7 @@ export function ToolsPage() {
     if (selectedOrgId <= 0 || selectedCount === 0) return;
     setMessage(null);
     setOutput('');
+    setAnalysisError(null);
     setAnalysisActivity('Preparing selected files for Claude Code...');
     try {
       const result = await analyze.mutateAsync({
@@ -861,7 +859,12 @@ export function ToolsPage() {
       setOutputMode('preview');
       setAnalysisActivity('Analysis complete.');
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : 'BOM analysis failed');
+      const errorMessage = err instanceof Error ? err.message : 'BOM analysis failed';
+      setMessage(`BOM analysis failed: ${errorMessage}`);
+      setAnalysisError(
+        `BOM analysis failed.\n\n${errorMessage}\n\nNo report was saved. Try again with the same selected files, or narrow the request if Claude runs out of tool turns again.`,
+      );
+      setOutputMode('raw');
       setAnalysisActivity(null);
     }
   }
@@ -883,19 +886,39 @@ export function ToolsPage() {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 420px), 1fr))', gap: 20 }}>
         <section style={panelStyle}>
           <div style={{ padding: 16, borderBottom: '1px solid var(--rule)', display: 'grid', gap: 12 }}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(180px, 260px) 1fr auto', gap: 10, alignItems: 'end' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(220px, 310px) 1fr auto', gap: 10, alignItems: 'end' }}>
               <label style={{ display: 'grid', gap: 5, fontSize: 11, color: 'var(--ink-3)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
                 Customer
-                <select
-                  value={organizationId}
-                  onChange={(event) => setOrganizationId(event.target.value)}
-                  style={fieldStyle}
-                  disabled={customersQuery.isLoading}
-                >
-                  {customers.map((customer) => (
-                    <option key={customer.id} value={customer.id}>{customer.name}</option>
-                  ))}
-                </select>
+                <span style={{ display: 'grid', gridTemplateColumns: organizationId ? '1fr auto' : '1fr', gap: 8 }}>
+                  <select
+                    value={organizationId}
+                    onChange={(event) => {
+                      setCustomerSelectionTouched(true);
+                      setOrganizationId(event.target.value);
+                    }}
+                    style={fieldStyle}
+                    disabled={customersQuery.isLoading}
+                  >
+                    <option value="">Select customer...</option>
+                    {customers.map((customer) => (
+                      <option key={customer.id} value={customer.id}>{customer.name}</option>
+                    ))}
+                  </select>
+                  {organizationId && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCustomerSelectionTouched(true);
+                        setOrganizationId('');
+                      }}
+                      style={{ ...buttonStyle(), padding: '8px 10px' }}
+                      aria-label="Clear selected customer"
+                      title="Clear selected customer"
+                    >
+                      <X size={14} strokeWidth={1.5} />
+                    </button>
+                  )}
+                </span>
               </label>
               <label style={{ display: 'grid', gap: 5, fontSize: 11, color: 'var(--ink-3)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
                 Filter files
@@ -905,8 +928,32 @@ export function ToolsPage() {
                     value={filter}
                     onChange={(event) => setFilter(event.target.value)}
                     placeholder="Search filename"
-                    style={{ ...fieldStyle, width: '100%', paddingLeft: 30 }}
+                    style={{ ...fieldStyle, width: '100%', paddingLeft: 30, paddingRight: filter ? 34 : 10 }}
                   />
+                  {filter && (
+                    <button
+                      type="button"
+                      onClick={() => setFilter('')}
+                      aria-label="Clear file filter"
+                      title="Clear file filter"
+                      style={{
+                        position: 'absolute',
+                        right: 6,
+                        top: 6,
+                        width: 26,
+                        height: 26,
+                        display: 'grid',
+                        placeItems: 'center',
+                        border: '1px solid transparent',
+                        borderRadius: 5,
+                        background: 'transparent',
+                        color: 'var(--ink-3)',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <X size={14} strokeWidth={1.5} />
+                    </button>
+                  )}
                 </span>
               </label>
               <button
@@ -929,8 +976,9 @@ export function ToolsPage() {
                   value={moveTargetOrgId}
                   onChange={(event) => setMoveTargetOrgId(event.target.value)}
                   style={{ ...fieldStyle, minWidth: 210 }}
-                  disabled={customers.length <= 1}
+                  disabled={customers.length <= 1 || selectedOrgId <= 0}
                 >
+                  <option value="">Choose destination...</option>
                   {customers
                     .filter((customer) => customer.id !== selectedOrgId)
                     .map((customer) => (
@@ -1033,7 +1081,11 @@ export function ToolsPage() {
           </div>
 
           <div style={{ overflow: 'auto', maxHeight: 'calc(100vh - 430px)', minHeight: 260 }}>
-            {filesQuery.isLoading ? (
+            {selectedOrgId <= 0 ? (
+              <div style={{ padding: 18, color: 'var(--ink-3)', fontSize: 13 }}>
+                Select a customer to view that customer's BOMs, quotes, and configs.
+              </div>
+            ) : filesQuery.isLoading ? (
               <div style={{ padding: 18, display: 'flex', gap: 8, alignItems: 'center', color: 'var(--ink-3)' }}>
                 <Loader2 size={15} className="animate-spin" />
                 Loading files
@@ -1136,7 +1188,13 @@ export function ToolsPage() {
             ) : (
               <textarea
                 readOnly
-                value={output || (analyze.isPending ? `${analysisActivity ?? 'Claude Code is working...'}\n\nThe analysis request is still running. The final report will replace this status text when Claude returns.` : '')}
+                value={
+                  output ||
+                  analysisError ||
+                  (analyze.isPending
+                    ? `${analysisActivity ?? 'Claude Code is working...'}\n\nThe analysis request is still running. The final report will replace this status text when Claude returns.`
+                    : '')
+                }
                 placeholder="Claude's BOM analysis and reusable output blocks will appear here."
                 style={{
                   ...fieldStyle,

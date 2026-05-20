@@ -2655,7 +2655,7 @@ export async function runBomQuoteAnalysis(
     prompt: buildBomAnalysisPrompt(input),
     systemPrompt: BOM_ANALYZER_SYSTEM_PROMPT,
     model,
-    maxTurns: 8,
+    maxTurns: 20,
     source: 'other',
     taskSummary: 'bomAnalyzer',
     tools: ['Read', 'Bash'],

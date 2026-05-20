@@ -143,3 +143,8 @@ export type {
   FreetimeParticipant,
   FreetimeSlot,
 } from './freetime';
+
+export type {
+  DealReg,
+  DealRegInput,
+} from './dealReg';

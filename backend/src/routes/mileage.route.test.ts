@@ -90,6 +90,34 @@ describe('mileage route', () => {
         end_at: '2026-05-02T19:00:00.000Z',
         location: 'Gooseberry Falls State Park',
       },
+      {
+        uid: 'wwt-room-1',
+        title: 'WWT room hold',
+        start_at: '2026-05-02T20:00:00.000Z',
+        end_at: '2026-05-02T21:00:00.000Z',
+        location: 'USA-MN-Minneapolis-1601 Utica-Conf Room',
+      },
+      {
+        uid: 'wwt-room-leading-punctuation-1',
+        title: 'WWT room hold with punctuation',
+        start_at: '2026-05-02T20:30:00.000Z',
+        end_at: '2026-05-02T21:30:00.000Z',
+        location: ': USA-MN-SLP-Copper Falls',
+      },
+      {
+        uid: 'api-test-1',
+        title: 'MasterControl Graph smoke test',
+        start_at: '2026-05-02T21:00:00.000Z',
+        end_at: '2026-05-02T22:00:00.000Z',
+        location: 'MasterControl local API test',
+      },
+      {
+        uid: 'venue-parenthetical-1',
+        title: 'Customer lunch',
+        start_at: '2026-05-02T22:00:00.000Z',
+        end_at: '2026-05-02T23:00:00.000Z',
+        location: 'Redstone American Grill (8000 Town Center Pl, Eden Prairie, MN 55344, United States)',
+      },
     ]);
 
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) => {
@@ -113,8 +141,8 @@ describe('mileage route', () => {
       start_date: '2026-05-01',
       end_date: '2026-05-02',
       from_address: '250 Pine St, Lino Lakes, MN 55014',
-      total_miles: 60,
-      excluded_count: 5,
+      total_miles: 80,
+      excluded_count: 8,
     });
     expect(res.body.rows).toEqual([
       expect.objectContaining({
@@ -144,8 +172,17 @@ describe('mileage route', () => {
         one_way_miles: 10,
         distance_source: 'osrm',
       }),
+      expect.objectContaining({
+        uid: 'venue-parenthetical-1',
+        subject: 'Customer lunch',
+        to_address: '8000 Town Center Pl, Eden Prairie, MN 55344, United States',
+        type: 'round trip',
+        miles: 20,
+        one_way_miles: 10,
+        distance_source: 'osrm',
+      }),
     ]);
-    expect(fetchMock).toHaveBeenCalledTimes(7);
+    expect(fetchMock).toHaveBeenCalledTimes(9);
 
     const cachedRes = await request(app)
       .get('/api/tools/mileage/report')
@@ -164,7 +201,11 @@ describe('mileage route', () => {
       miles: 20,
       distance_source: 'cache',
     });
-    expect(fetchMock).toHaveBeenCalledTimes(7);
+    expect(cachedRes.body.rows[3]).toMatchObject({
+      miles: 20,
+      distance_source: 'cache',
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(9);
 
     const manualRes = await request(app)
       .post('/api/tools/mileage/calculate')
@@ -182,8 +223,8 @@ describe('mileage route', () => {
       one_way_miles: 10,
       distance_source: 'cache',
     });
-    expect(fetchMock).toHaveBeenCalledTimes(7);
-  }, 10_000);
+    expect(fetchMock).toHaveBeenCalledTimes(9);
+  }, 20_000);
 
   it('exports editable mileage rows to a PDF in the MasterControl reports vault', async () => {
     const app = await buildApp();

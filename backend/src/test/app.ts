@@ -77,6 +77,7 @@ export async function buildApp(): Promise<Express> {
     ['/api/tools/bom',     '../routes/bomTool.route.js'],
     ['/api/tools/mileage', '../routes/mileage.route.js'],
     ['/api/tools/freetime', '../routes/freetime.route.js'],
+    ['/api/deal-regs',     '../routes/dealRegs.route.js'],
   ];
 
   for (const [prefix, specifier] of mounts) {

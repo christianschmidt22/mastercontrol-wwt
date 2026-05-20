@@ -207,6 +207,21 @@ CREATE INDEX IF NOT EXISTS idx_tasks_project ON tasks(project_id);
 CREATE INDEX IF NOT EXISTS idx_tasks_kind_status_due ON tasks(kind, status, due_date);
 CREATE INDEX IF NOT EXISTS idx_tasks_contact ON tasks(contact_id);
 
+CREATE TABLE IF NOT EXISTS deal_regs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  vendor TEXT NOT NULL DEFAULT '',
+  customer TEXT NOT NULL DEFAULT '',
+  deal_reg_number TEXT NOT NULL DEFAULT '',
+  project TEXT NOT NULL DEFAULT '',
+  notes TEXT NOT NULL DEFAULT '',
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_deal_regs_vendor_customer
+  ON deal_regs(vendor, customer);
+CREATE INDEX IF NOT EXISTS idx_deal_regs_deal_reg_number
+  ON deal_regs(deal_reg_number);
+
 CREATE TABLE IF NOT EXISTS customer_bom_preferences (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   organization_id INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,

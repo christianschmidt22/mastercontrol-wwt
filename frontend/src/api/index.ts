@@ -112,3 +112,11 @@ export {
   useExportMileagePdf,
   useMileageReport,
 } from './useMileage';
+
+export {
+  dealRegKeys,
+  useCreateDealReg,
+  useDealRegs,
+  useDeleteDealReg,
+  useUpdateDealReg,
+} from './useDealRegs';

@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+- Added a Deal Reg page with local persistence, inline table editing, delete
+  actions, and a live filter across vendor, customer, registration number,
+  project, and notes.
+- BOM Analyzer now leaves the move destination unset until explicitly chosen,
+  adds clear controls for customer/file filters, gives Claude Code more turns
+  for deeper quote analysis, and keeps analysis failures visible in the output
+  pane instead of falling back to the empty placeholder.
+- Mileage now excludes WWT room-style `USA-MN*` calendar locations and
+  MasterControl/API smoke-test locations from expense-report rows.
+- Mileage calculation now extracts parenthetical street addresses from venue
+  names, forces a calculated report refresh from the Calculate all button, and
+  surfaces generated-row distance errors instead of silently leaving rows at
+  `Needs calculation`.
 - Added an Electron desktop wrapper for `MasterControl_work`, including a
   Windows installer target, single-instance behavior, startup screen, local
   backend launch, packaged frontend serving, and app icon generation from the
