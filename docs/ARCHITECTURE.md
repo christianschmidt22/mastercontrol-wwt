@@ -351,10 +351,9 @@ DB does, so schema drift between environments is impossible.
 ## Scheduler architecture (Phase 2)
 
 The user's laptop is suspended whenever it's closed. Scheduled jobs that
-fire-and-forget would silently drop. The solution is Task Scheduler only —
-no Windows Service, no `node-windows`, no `nssm` (see
-[ADR-0004](adr/0004-task-scheduler-not-windows-service.md)). The approach
-has three parts:
+fire-and-forget would silently drop. The supported daily-use runtime is now
+the installed Electron app (`MasterControl_work.exe`), which owns the local
+backend process while the app is open. The approach has two parts:
 
 1. **Catch-up at startup**: [`runMissedJobs()`](../backend/src/services/scheduler.service.ts)
    runs before the HTTP server binds. For each enabled `report_schedules`
@@ -371,20 +370,13 @@ has three parts:
    enabled schedule while the process is awake. Standard cron pattern;
    each tick calls `runReport(scheduleId, fireTime)`.
 
-3. **Windows Task Scheduler safety net**: two entries are registered once
-   via a PowerShell script (`docs/ops/scheduler-install.md`):
-   - `MasterControl Backend` — trigger: *At logon*. Starts the Express
-     backend.
-   - `MasterControl Scheduler Tick` — trigger: *Repeat every 1 hour*.
-     Runs `npm run --prefix C:\mastercontrol\backend scheduler:tick`,
-     which imports the same `runMissedJobs()` function, connects the DB,
-     fires any missed jobs, then exits. This is the hourly safety net for
-     the case where the backend crashed between logon triggers.
+The legacy Startup-folder and Task Scheduler dev-server launchers were
+removed after the desktop wrapper became the supported user-facing runtime.
+Development still uses `npm run dev`, but that is not an installed-app launch
+path. See [`docs/ops/autostart.md`](ops/autostart.md).
 
-The combination tolerates: laptop suspend during a fire-time (catch-up
-runs it on next wake), backend crash (hourly tick catches up), reboot
-(logon trigger restarts the backend). No admin elevation is required at
-install time.
+The combination tolerates laptop suspend during a fire-time: when the desktop
+app is opened again, catch-up runs missed jobs before the HTTP server binds.
 
 ## Ingest pipeline (Phase 2)
 

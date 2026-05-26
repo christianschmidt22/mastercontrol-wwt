@@ -1,10 +1,15 @@
 # ADR-0004: Use Windows Task Scheduler, not a Windows Service, for Phase 2 scheduling
 
-**Status**: Accepted
+**Status**: Superseded for daily-use launch by the Electron desktop wrapper.
 **Date**: 2026-04-25
 **Deciders**: Christian Schmidt (user), architecture review (Q-3 resolution)
 **Supersedes**: the `§ Scheduler design` section of `docs/PRD.md` v0.4 which
 described a Windows Service as the primary runtime.
+
+The original Task Scheduler decision below is preserved for historical
+context. The supported user-facing runtime is now the installed
+`MasterControl_work.exe`; legacy Startup-folder and Task Scheduler launchers
+that started repo dev servers have been removed.
 
 ---
 
@@ -43,8 +48,8 @@ restart policies; Windows Event Log integration.
 
 ### Option B — Windows Task Scheduler only (this decision)
 
-Two Task Scheduler entries, registered once via a PowerShell script
-(`docs/ops/scheduler-install.md`):
+Two Task Scheduler entries were registered once via a PowerShell script
+that has since been removed with the legacy dev-server launch path:
 
 1. **`MasterControl Backend`** — trigger: *At logon* (current user). Action:
    start the Express backend. The backend process is long-lived for the
@@ -103,7 +108,8 @@ the first place.
 - Install is a single PowerShell script the user can read and audit.
 - No admin UAC prompt at install or update time.
 - No `node-windows` or `nssm` dependencies in `package.json`.
-- `docs/ops/scheduler-install.md` is a short, self-contained one-pager.
+- The install instructions were easy to audit while this launch path was
+  active.
 - The architecture is honest about the hardware: the backend is a dev-style
   process, not an enterprise service.
 
@@ -136,4 +142,4 @@ equally correct under a Service runtime, so that transition is mechanical.
 - `docs/REVIEW.md` Performance #10 (recommendation to collapse to Task Scheduler)
 - `docs/REVIEW.md` Security #5a (if Service, run as interactive user)
 - `docs/plans/phase-2.md` § Step 6 — Scheduler
-- `docs/ops/scheduler-install.md` — install script (created in Phase 2 Step 11)
+- `docs/ops/autostart.md` — current desktop-app launch notes

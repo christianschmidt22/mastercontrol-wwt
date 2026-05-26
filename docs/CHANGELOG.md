@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Removed the legacy Windows Startup-folder / Task Scheduler dev-server
+  launch path. The supported daily-use runtime is now the installed
+  `MasterControl_work.exe`, while `npm run dev` remains development-only.
 - Added a Deal Reg page with local persistence, inline table editing, delete
   actions, and a live filter across vendor, customer, registration number,
   project, and notes.
@@ -873,11 +876,9 @@ Five Sonnet 4.6 agents in parallel.
   `INSERT … WHERE NOT EXISTS`.
 - **Architecture and ops docs** (Steps 10 + 11): `docs/ARCHITECTURE.md`
   refreshed (§ Schema migration policy, § Scheduler architecture, new §
-  Ingest pipeline, plus incidental staleness fixes). New
-  `docs/ops/scheduler-install.md` — Windows Task Scheduler install
-  one-pager with two `Register-ScheduledTask` blocks (Backend at logon
-  + Scheduler Tick hourly), verification, uninstall, and four
-  troubleshooting bullets.
+  Ingest pipeline, plus incidental staleness fixes). A Windows Task Scheduler
+  install one-pager was added at the time, then later removed when the
+  Electron desktop wrapper became the supported launch path.
 
 Three real bugs caught during integration: frontmatter regex left a
 leading `\n` on bodies separated from FM by a blank line (which

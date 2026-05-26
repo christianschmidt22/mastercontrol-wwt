@@ -248,25 +248,21 @@ a detail modal with evidence plus Approve, Deny, and Discuss actions.
 **Constraint:** laptop suspends when closed; in-process timers won't fire,
 and the OS may not wake on schedule.
 
-**Architecture (Task Scheduler only):**
-1. A Windows Task Scheduler entry (registered once via PowerShell,
-   `docs/ops/scheduler-install.md`) starts the backend at user logon.
-   The backend is a long-lived Express process for the duration of the
-   session.
-2. A second Task Scheduler entry fires `npm run scheduler:tick` every hour
-   as a safety net in case the backend restarts between ticks.
-3. On every backend startup, `runMissedJobs()` computes the most recent
+**Architecture (desktop app + in-process catch-up):**
+1. The installed Electron wrapper (`MasterControl_work.exe`) starts the local
+   backend and serves the packaged frontend from the installed app bundle.
+2. On every backend startup, `runMissedJobs()` computes the most recent
    fire-time for each enabled schedule. If `last_run_at` is earlier than
    that fire-time, the job runs immediately. Idempotency is keyed on
    `UNIQUE(schedule_id, fire_time)` in `report_runs` — second call is a
    no-op.
-4. While running, in-process `node-cron` fires jobs at their normal cron
+3. While running, in-process `node-cron` fires jobs at their normal cron
    times.
 
 **Guarantees:**
-- Close laptop → wake → backend starts (logon trigger) → catch-up runs
-  missed jobs.
-- Job's fire-time passes while closed → next wake catches it up.
+- Close laptop → wake → open `MasterControl_work` → catch-up runs missed
+  jobs.
+- Job's fire-time passes while closed → next app launch catches it up.
 - No dependence on the OS waking the machine.
 - No Windows Service, no elevated install, no third-party service manager.
 

@@ -1002,7 +1002,8 @@ new document.
 
 ### Step 11 — Ops documentation
 
-**New file**: `docs/ops/scheduler-install.md`
+**Historical file**: the former Windows Task Scheduler install doc was
+removed when the Electron desktop wrapper became the supported launch path.
 
 Single-page install guide. See the separate section in this plan for the
 full content spec; the actual file is written in Step 11 when the scheduler
@@ -1011,8 +1012,8 @@ code is complete and the exact script can be confirmed.
 Content outline:
 1. Prerequisites (Node on PATH, backend built or run via tsx).
 2. PowerShell commands to register two Task Scheduler entries:
-   - `MasterControl Backend` — runs at logon, starts the Express server.
-   - `MasterControl Scheduler Tick` — runs hourly, runs `scheduler:tick`.
+   - `MasterControl Backend` — ran at logon, started the Express server.
+   - `MasterControl Scheduler Tick` — ran hourly, ran `scheduler:tick`.
 3. Verification steps (open Task Scheduler, confirm entries, trigger a
    manual run, check `report_runs` table).
 4. Uninstall (PowerShell `Unregister-ScheduledTask` commands).
@@ -1087,7 +1088,7 @@ above checks pass.
 - `frontend/src/types/report.ts`
 
 **New (docs)**:
-- `docs/ops/scheduler-install.md`
+- Historical Task Scheduler install doc, now removed after desktop wrapper
 - `docs/adr/0004-task-scheduler-not-windows-service.md`
 
 **Modified**:

@@ -1,6 +1,7 @@
 # ADR-0006: In-process node-cron with Windows Task Scheduler as watchdog
 
-**Status**: Accepted
+**Status**: Partially superseded; in-process scheduling remains, Task
+Scheduler watchdog launch is retired.
 **Date**: 2026-04-25
 **Depends on**: ADR-0004 (Task Scheduler over Windows Service)
 
@@ -78,15 +79,19 @@ This means:
 
 ## Consequences
 
+Update 2026-05-26: the Task Scheduler watchdog described below is no longer
+part of the supported daily-use launch path. `MasterControl_work.exe` owns the
+local backend while the desktop app is open, and startup catch-up handles jobs
+missed while the laptop/app was closed. The in-process scheduler remains.
+
 ### Positive
 - Zero OS-level side effects when a report is created, updated, or
   deleted — all scheduling state lives in the DB and the in-process
   task map.
 - The UI can display next/last run times from `report_schedules` DB
   columns, updated by `scheduler.service` directly.
-- The Task Scheduler install script (`docs/ops/scheduler-install.md`)
-  remains a fixed two-entry PowerShell script regardless of how many
-  reports the user defines.
+- The desktop app remains the single user-facing launch path regardless of
+  how many reports the user defines.
 - `node-cron` validates cron expressions at registration time and logs
   a warning for invalid ones (skips them cleanly rather than crashing).
 
