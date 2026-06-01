@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Project pages now replace the Recent Notes tile with a dedicated New Notes
+  capture tile. Project Notes open in preview mode from the backing markdown
+  file, can be edited directly on demand, and fresh discussion notes are saved,
+  merged into Project Notes, and sent through the existing extraction queue.
 - Removed the legacy Windows Startup-folder / Task Scheduler dev-server
   launch path. The supported daily-use runtime is now the installed
   `MasterControl_work.exe`, while `npm run dev` remains development-only.

@@ -17,6 +17,7 @@ import { ReferenceTile } from '../components/tiles/customer/ReferenceTile';
 import { DocumentsTile } from '../components/tiles/customer/DocumentsTile';
 import { OrgTimelineTile } from '../components/tiles/customer/OrgTimelineTile';
 import { ProjectNextStepsTile } from '../components/tiles/customer/ProjectNextStepsTile';
+import { ProjectNewNotesTile } from '../components/tiles/customer/ProjectNewNotesTile';
 import { ProjectResourcesTile } from '../components/tiles/customer/ProjectResourcesTile';
 import { MasterNotesTile } from '../components/tiles/customer/MasterNotesTile';
 import { ContactQuestionsTile } from '../components/tiles/customer/ContactQuestionsTile';
@@ -415,10 +416,12 @@ function ProjectConfigPanel({ project }: { project: Project }) {
 // ── Project page ──────────────────────────────────────────────────────────────
 
 const DEFAULT_PROJECT_LAYOUT: TileLayout[] = [
-  { id: 'master-notes',       x: 1, y: 1, w: 12, h: 4 },
-  { id: 'recent-notes',       x: 1, y: 5, w: 12, h: 4 },
-  { id: 'project-next-steps', x: 1, y: 9, w: 12, h: 3 },
+  { id: 'project-notes',      x: 1, y: 1, w: 8,  h: 5 },
+  { id: 'new-notes',          x: 9, y: 1, w: 4,  h: 5 },
+  { id: 'project-next-steps', x: 1, y: 6, w: 12, h: 3 },
 ];
+
+const PROJECT_TILE_IDS = new Set(DEFAULT_PROJECT_LAYOUT.map((tile) => tile.id));
 
 function ProjectPage({ project }: { project: Project }) {
   const { mutate: openPath } = useOpenPath();
@@ -454,7 +457,7 @@ function ProjectPage({ project }: { project: Project }) {
   }, [resourcesOpen]);
 
   const handleLayoutSave = () => {
-    save(layout, false);
+    save(layout.filter((tile) => PROJECT_TILE_IDS.has(tile.id)), false);
     setEditMode(false);
   };
   const handleLayoutCancel = () => {
@@ -468,23 +471,25 @@ function ProjectPage({ project }: { project: Project }) {
 
   const tiles: TileGridItem[] = [
     {
-      id: 'master-notes',
-      title: 'Master Notes',
+      id: 'project-notes',
+      title: 'Project Notes',
       node: (
         <MasterNotesTile
           orgId={project.organization_id}
           projectId={project.id}
+          title="Project Notes"
+          defaultMode="preview"
+          showProcessAction={false}
         />
       ),
     },
     {
-      id: 'recent-notes',
-      title: 'Recent Notes',
+      id: 'new-notes',
+      title: 'New Notes',
       node: (
-        <RecentNotesTile
+        <ProjectNewNotesTile
           orgId={project.organization_id}
           projectId={project.id}
-          captureSource="mastercontrol_project"
         />
       ),
     },
@@ -494,6 +499,7 @@ function ProjectPage({ project }: { project: Project }) {
       node: <ProjectNextStepsTile projectId={project.id} orgId={project.organization_id} />,
     },
   ];
+  const projectLayout = layout.filter((tile) => PROJECT_TILE_IDS.has(tile.id));
 
   const iconBtnStyle: CSSProperties = {
     ...tileActionIconButtonStyle,
@@ -566,7 +572,7 @@ function ProjectPage({ project }: { project: Project }) {
         <ProjectConfigPanel project={project} />
       </TileLayoutControls>
 
-      <TileGrid items={tiles} layout={layout} editMode={editMode} onLayoutChange={save} />
+      <TileGrid items={tiles} layout={projectLayout} editMode={editMode} onLayoutChange={save} />
     </div>
   );
 }

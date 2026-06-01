@@ -21,11 +21,23 @@ vi.mock('./noteProposal.service.js', () => ({
   runLlmExtraction: vi.fn(async () => undefined),
 }));
 
-import { scanExternalMasterNoteEdits } from './masterNote.service.js';
+vi.mock('./claude.service.js', () => ({
+  mergeProjectNotesFromDiscussion: vi.fn(async () => ({
+    updatedContent: '# Project Notes\n\nMerged discussion context.',
+    changeSummary: 'Merged discussion context.',
+  })),
+}));
+
+import {
+  captureProjectDiscussionNote,
+  loadMasterNote,
+  scanExternalMasterNoteEdits,
+} from './masterNote.service.js';
 import { masterNoteModel } from '../models/masterNote.model.js';
 import { systemAlertModel } from '../models/systemAlert.model.js';
 import { runLlmExtraction } from './noteProposal.service.js';
-import { makeOrg } from '../test/factories.js';
+import { mergeProjectNotesFromDiscussion } from './claude.service.js';
+import { makeOrg, makeProject } from '../test/factories.js';
 
 function tmpFile(name: string): string {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mnscan-'));
@@ -38,6 +50,7 @@ function sha256(value: string): string {
 
 beforeEach(() => {
   vi.mocked(runLlmExtraction).mockClear();
+  vi.mocked(mergeProjectNotesFromDiscussion).mockClear();
 });
 
 describe('scanExternalMasterNoteEdits', () => {
@@ -175,5 +188,33 @@ describe('scanExternalMasterNoteEdits', () => {
       .filter((a) => a.source === 'masterNoteScan');
     expect(alerts.length).toBeGreaterThanOrEqual(1);
     expect(alerts[0]?.severity).toBe('warn');
+  });
+});
+
+describe('captureProjectDiscussionNote', () => {
+  it('saves the discussion note and merges it into the project master note', async () => {
+    const org = makeOrg({ name: 'C.H. Robinson' });
+    const project = makeProject(org.id, { name: 'ADM' });
+
+    const result = await captureProjectDiscussionNote({
+      organization_id: org.id,
+      project_id: project.id,
+      content: 'Cory asked us to validate the ADM design and follow up Tuesday.',
+    });
+
+    expect(result.note.organization_id).toBe(org.id);
+    expect(result.note.project_id).toBe(project.id);
+    expect(result.project_note_updated).toBe(true);
+    expect(result.warning).toBeNull();
+    expect(mergeProjectNotesFromDiscussion).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orgName: 'C.H. Robinson',
+        projectName: 'ADM',
+        discussionNote: 'Cory asked us to validate the ADM design and follow up Tuesday.',
+      }),
+    );
+
+    const note = loadMasterNote(org.id, project.id);
+    expect(note.content).toContain('Merged discussion context');
   });
 });

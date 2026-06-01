@@ -7,6 +7,7 @@ import {
   type UseQueryResult,
 } from '@tanstack/react-query';
 import { request } from './http';
+import type { Note, NoteCaptureResponse } from '../types';
 
 export interface MasterNote {
   id: number;
@@ -20,6 +21,14 @@ export interface MasterNote {
   last_ingested_at: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface ProjectDiscussionNoteResponse extends NoteCaptureResponse {
+  note: Note;
+  master_note: MasterNote;
+  project_note_updated: boolean;
+  merge_summary: string | null;
+  warning: string | null;
 }
 
 const keys = {
@@ -90,6 +99,27 @@ export function useProcessMasterNote(): UseMutationResult<
           ? keys.org(vars.orgId)
           : keys.project(vars.orgId, vars.projectId);
       void qc.invalidateQueries({ queryKey });
+    },
+  });
+}
+
+export function useCaptureProjectDiscussionNote(): UseMutationResult<
+  ProjectDiscussionNoteResponse,
+  Error,
+  { orgId: number; projectId: number; content: string }
+> {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ orgId, projectId, content }) =>
+      request<ProjectDiscussionNoteResponse>(
+        'POST',
+        `${endpoint(orgId, projectId)}/discussion-notes`,
+        { content },
+      ),
+    onSuccess: (result, vars) => {
+      qc.setQueryData(keys.project(vars.orgId, vars.projectId), result.master_note);
+      void qc.invalidateQueries({ queryKey: ['note_proposals'] });
+      void qc.invalidateQueries({ queryKey: ['notes', vars.orgId] });
     },
   });
 }

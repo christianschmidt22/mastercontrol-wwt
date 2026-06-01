@@ -16,8 +16,14 @@ import { HttpError } from '../middleware/errorHandler.js';
 import { noteModel } from '../models/note.model.js';
 import { runLlmExtraction } from './noteProposal.service.js';
 import { logAlert } from '../models/systemAlert.model.js';
+import { captureMarkdownNote, type CaptureNoteResult } from './noteCapture.service.js';
+import { mergeProjectNotesFromDiscussion } from './claude.service.js';
 
 const MASTER_NOTE_FILENAME = 'master-notes.md';
+
+function sha256(content: string): string {
+  return crypto.createHash('sha256').update(content, 'utf8').digest('hex');
+}
 
 /**
  * Resolve the on-disk path for a master note. Returns `null` when the user
@@ -56,6 +62,41 @@ function mirrorToFile(
   fs.writeFileSync(filePath, content, 'utf8');
   const mtime = fs.statSync(filePath).mtime.toISOString();
   return { path: filePath, mtime };
+}
+
+function readFileBackedNote(
+  orgId: number,
+  projectId: number | null,
+  existing: MasterNote | null,
+): MasterNote | null {
+  const filePath = existing?.file_path ?? resolveFilePath(orgId, projectId);
+  if (!filePath || !fs.existsSync(filePath)) return existing;
+
+  const stat = fs.statSync(filePath);
+  const diskMtime = stat.mtime.toISOString();
+  const dbMtimeMs = existing?.file_mtime ? new Date(existing.file_mtime).getTime() : 0;
+  const diskMtimeMs = stat.mtime.getTime();
+
+  if (existing && diskMtimeMs <= dbMtimeMs) return existing;
+
+  const content = fs.readFileSync(filePath, 'utf8');
+  if (existing && sha256(content) === existing.content_sha256) {
+    return masterNoteModel.upsert({
+      organization_id: orgId,
+      project_id: projectId,
+      content: existing.content,
+      file_path: filePath,
+      file_mtime: diskMtime,
+    });
+  }
+
+  return masterNoteModel.upsert({
+    organization_id: orgId,
+    project_id: projectId,
+    content,
+    file_path: filePath,
+    file_mtime: diskMtime,
+  });
 }
 
 /**
@@ -103,11 +144,22 @@ export function loadMasterNote(
   orgId: number,
   projectId: number | null,
 ): MasterNote {
+  const org = organizationModel.get(orgId);
+  if (!org) throw new HttpError(404, 'Organization not found');
+  if (projectId !== null) {
+    const project = projectModel.get(projectId);
+    if (!project) throw new HttpError(404, 'Project not found');
+    if (project.organization_id !== orgId) {
+      throw new HttpError(400, 'Project does not belong to organization');
+    }
+  }
+
   const existing =
     projectId === null
       ? masterNoteModel.getForOrg(orgId)
       : masterNoteModel.getForProject(orgId, projectId);
-  if (existing) return existing;
+  const fileBacked = readFileBackedNote(orgId, projectId, existing);
+  if (fileBacked) return fileBacked;
   // Lazy-create so PUT semantics aren't required before first GET.
   return masterNoteModel.upsert({
     organization_id: orgId,
@@ -244,4 +296,67 @@ export async function scanExternalMasterNoteEdits(): Promise<{
   }
 
   return { scanned, updated, errors };
+}
+
+export interface ProjectDiscussionCaptureResult extends CaptureNoteResult {
+  master_note: MasterNote;
+  project_note_updated: boolean;
+  merge_summary: string | null;
+  warning: string | null;
+}
+
+export async function captureProjectDiscussionNote(input: {
+  organization_id: number;
+  project_id: number;
+  content: string;
+}): Promise<ProjectDiscussionCaptureResult> {
+  const org = organizationModel.get(input.organization_id);
+  if (!org) throw new HttpError(404, 'Organization not found');
+  const project = projectModel.get(input.project_id);
+  if (!project) throw new HttpError(404, 'Project not found');
+  if (project.organization_id !== org.id) {
+    throw new HttpError(400, 'Project does not belong to organization');
+  }
+
+  const captured = captureMarkdownNote({
+    organization_id: org.id,
+    project_id: project.id,
+    content: input.content,
+    capture_source: 'mastercontrol_project_discussion',
+  });
+
+  const current = loadMasterNote(org.id, project.id);
+  try {
+    const merged = await mergeProjectNotesFromDiscussion({
+      existingContent: current.content,
+      discussionNote: input.content,
+      orgName: org.name,
+      projectName: project.name,
+    });
+    const saved = saveMasterNote({
+      organization_id: org.id,
+      project_id: project.id,
+      content: merged.updatedContent,
+    });
+    return {
+      ...captured,
+      master_note: saved,
+      project_note_updated: true,
+      merge_summary: merged.changeSummary,
+      warning: null,
+    };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    logAlert('warn', 'noteExtraction', `Project note merge failed: ${message}`, {
+      note_id: captured.note.id,
+      project_id: project.id,
+    });
+    return {
+      ...captured,
+      master_note: current,
+      project_note_updated: false,
+      merge_summary: null,
+      warning: message,
+    };
+  }
 }

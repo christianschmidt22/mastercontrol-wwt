@@ -1,5 +1,5 @@
 import { useState, type CSSProperties } from 'react';
-import { Sparkles } from 'lucide-react';
+import { Eye, Pencil, Sparkles } from 'lucide-react';
 import { Tile } from '../Tile';
 import {
   useMasterNoteEditor,
@@ -10,6 +10,9 @@ import { MarkdownViewer } from '../../shared/MarkdownViewer';
 interface MasterNotesTileProps {
   orgId: number;
   projectId?: number | null;
+  title?: string;
+  defaultMode?: EditorTab;
+  showProcessAction?: boolean;
 }
 
 const textareaStyle: CSSProperties = {
@@ -51,10 +54,16 @@ const statusColor: Record<'idle' | 'saving' | 'saved' | 'error', string> = {
  */
 type EditorTab = 'edit' | 'preview';
 
-export function MasterNotesTile({ orgId, projectId = null }: MasterNotesTileProps) {
+export function MasterNotesTile({
+  orgId,
+  projectId = null,
+  title = 'Master Notes',
+  defaultMode = 'edit',
+  showProcessAction = true,
+}: MasterNotesTileProps) {
   const editor = useMasterNoteEditor({ orgId, projectId });
   const process = useProcessMasterNote();
-  const [activeTab, setActiveTab] = useState<EditorTab>('edit');
+  const [activeTab, setActiveTab] = useState<EditorTab>(defaultMode);
 
   const status = editor.status;
 
@@ -67,94 +76,94 @@ export function MasterNotesTile({ orgId, projectId = null }: MasterNotesTileProp
       }).format(new Date(editor.lastIngestedAt))
     : null;
 
-  const tabBtnStyle = (tab: EditorTab): CSSProperties => ({
+  const modeBtnStyle = (active = false): CSSProperties => ({
     display: 'inline-flex',
     alignItems: 'center',
+    gap: 4,
     border: '1px solid var(--rule)',
-    background: activeTab === tab ? 'var(--bg-2)' : 'transparent',
-    color: activeTab === tab ? 'var(--ink-1)' : 'var(--ink-3)',
-    borderRadius: 3,
-    padding: '2px 8px',
+    background: active ? 'var(--bg-2)' : 'transparent',
+    color: active ? 'var(--ink-1)' : 'var(--ink-3)',
+    borderRadius: 4,
+    padding: '3px 8px',
     cursor: 'pointer',
     fontSize: 11,
     fontFamily: 'var(--body)',
-    fontWeight: activeTab === tab ? 500 : 400,
+    fontWeight: active ? 500 : 400,
   });
 
   return (
     <Tile
-      title="Master Notes"
+      title={title}
       titleAction={
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          {/* Edit / Preview toggle */}
-          <div
-            role="group"
-            aria-label="Editor view"
-            style={{ display: 'flex', gap: 2 }}
-            data-no-drag
-          >
+          {activeTab === 'preview' ? (
             <button
               type="button"
-              role="tab"
-              aria-selected={activeTab === 'edit'}
               onClick={() => setActiveTab('edit')}
-              style={tabBtnStyle('edit')}
+              style={modeBtnStyle()}
+              data-no-drag
             >
+              <Pencil size={11} strokeWidth={1.5} aria-hidden="true" />
               Edit
             </button>
+          ) : (
             <button
               type="button"
-              role="tab"
-              aria-selected={activeTab === 'preview'}
               onClick={() => setActiveTab('preview')}
-              style={tabBtnStyle('preview')}
+              style={modeBtnStyle()}
+              data-no-drag
             >
+              <Eye size={11} strokeWidth={1.5} aria-hidden="true" />
               Preview
             </button>
-          </div>
-          <span
-            aria-live="polite"
-            style={{
-              fontSize: 11,
-              color: statusColor[status],
-              fontFamily: 'var(--body)',
-              letterSpacing: '0.04em',
-            }}
-          >
-            {statusCopy[status]}
-          </span>
-          <button
-            type="button"
-            onClick={() =>
-              process.mutate(
-                { orgId, projectId },
-                {
-                  onError: (err) => {
-                    // Surface inline; alert log captures the detail server-side.
-                    console.warn('[master-notes] process failed', err);
+          )}
+          {activeTab === 'edit' && (
+            <span
+              aria-live="polite"
+              style={{
+                fontSize: 11,
+                color: statusColor[status],
+                fontFamily: 'var(--body)',
+                letterSpacing: '0.04em',
+              }}
+            >
+              {statusCopy[status]}
+            </span>
+          )}
+          {showProcessAction && (
+            <button
+              type="button"
+              onClick={() =>
+                process.mutate(
+                  { orgId, projectId },
+                  {
+                    onError: (err) => {
+                      // Surface inline; alert log captures the detail server-side.
+                      console.warn('[master-notes] process failed', err);
+                    },
                   },
-                },
-              )
-            }
-            disabled={process.isPending}
-            data-no-drag
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 4,
-              border: '1px solid var(--rule)',
-              borderRadius: 4,
-              background: 'transparent',
-              padding: '3px 8px',
-              cursor: process.isPending ? 'wait' : 'pointer',
-              fontSize: 11,
-              color: 'var(--ink-2)',
-              fontFamily: 'var(--body)',
-            }}
-          >
-            <Sparkles size={11} strokeWidth={1.5} aria-hidden="true" />
-            {process.isPending ? 'Processing…' : 'Process now'}
-          </button>
+                )
+              }
+              disabled={process.isPending}
+              data-no-drag
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4,
+                border: '1px solid var(--rule)',
+                borderRadius: 4,
+                background: 'transparent',
+                padding: '3px 8px',
+                cursor: process.isPending ? 'wait' : 'pointer',
+                fontSize: 11,
+                color: 'var(--ink-2)',
+                fontFamily: 'var(--body)',
+              }}
+            >
+              <Sparkles size={11} strokeWidth={1.5} aria-hidden="true" />
+              {process.isPending ? 'Processing…' : 'Process now'}
+            </button>
+          )}
         </div>
       }
     >
@@ -169,10 +178,10 @@ export function MasterNotesTile({ orgId, projectId = null }: MasterNotesTileProp
       >
         {activeTab === 'edit' ? (
           <textarea
-            aria-label="Master notes for this account/project"
+            aria-label={`${title} editor`}
             placeholder={
               editor.loaded
-                ? 'Free-form notes. Autosaves while you type. Click "Process now" to extract tasks, OEM mentions, and customer asks into the approvals queue.'
+                ? 'Edit the canonical markdown file directly. Autosaves while you type.'
                 : 'Loading…'
             }
             value={editor.value}
@@ -197,7 +206,7 @@ export function MasterNotesTile({ orgId, projectId = null }: MasterNotesTileProp
           >
             <MarkdownViewer
               source={editor.value}
-              ariaLabel="Master notes preview"
+              ariaLabel={`${title} preview`}
             />
           </div>
         )}

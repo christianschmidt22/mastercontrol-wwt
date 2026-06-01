@@ -5,6 +5,11 @@ export const MasterNoteSaveSchema = z.object({
   content: z.string().max(200_000),
 });
 
+/** POST body — capture a fresh discussion note and merge it into project notes. */
+export const ProjectDiscussionNoteSchema = z.object({
+  content: z.string().trim().min(1).max(200_000),
+});
+
 /** Path params for org-scoped routes. */
 export const OrgIdParamsSchema = z.object({
   orgId: z.coerce.number().int().min(1),

@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import {
+  captureProjectDiscussionNote,
   loadMasterNote,
   processMasterNote,
   saveMasterNote,
@@ -9,6 +10,7 @@ import {
   MasterNoteSaveSchema,
   OrgIdParamsSchema,
   OrgProjectIdParamsSchema,
+  ProjectDiscussionNoteSchema,
 } from '../schemas/masterNote.schema.js';
 import { validateBody, validateParams } from '../lib/validate.js';
 import { HttpError } from '../middleware/errorHandler.js';
@@ -124,6 +126,30 @@ masterNotesRouter.post(
       logAlert('warn', 'noteExtraction', `Master-note processing failed: ${message}`, {
         master_note_id: note.id,
       });
+      next(err);
+    }
+  },
+);
+
+// POST /api/master-notes/orgs/:orgId/projects/:projectId/discussion-notes
+// Save a fresh discussion note, merge durable context into the project notes
+// file, and let the existing extraction pipeline propose tasks/resources/asks.
+masterNotesRouter.post(
+  '/orgs/:orgId/projects/:projectId/discussion-notes',
+  validateParams(OrgProjectIdParamsSchema),
+  validateBody(ProjectDiscussionNoteSchema),
+  async (req, res, next) => {
+    const { orgId, projectId } = req.validatedParams as { orgId: number; projectId: number };
+    const { content } = req.validatedBody as { content: string };
+    try {
+      const result = await captureProjectDiscussionNote({
+        organization_id: orgId,
+        project_id: projectId,
+        content,
+      });
+      bumpOrgVersion(orgId);
+      res.status(201).json(result);
+    } catch (err) {
       next(err);
     }
   },
