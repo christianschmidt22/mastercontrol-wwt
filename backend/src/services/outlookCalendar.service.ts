@@ -1,9 +1,9 @@
 /**
  * outlookCalendar.service.ts
  *
- * Calendar read path backed by the user's running Classic Outlook session.
- * This does not launch Outlook or manage auth. The active COM session is the
- * delegated Microsoft 365 boundary.
+ * Calendar read path backed by the user's Classic Outlook COM session. The
+ * PowerShell bridge starts Classic Outlook when COM is not already available;
+ * that interactive session remains the delegated Microsoft 365 boundary.
  */
 
 import { spawn } from 'node:child_process';

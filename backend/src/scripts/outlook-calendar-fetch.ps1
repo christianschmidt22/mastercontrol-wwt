@@ -1,8 +1,9 @@
 # outlook-calendar-fetch.ps1
 #
-# Reads calendar events from the locally running Outlook desktop app via COM.
-# The script intentionally does not launch Outlook. MasterControl treats the
-# user's Classic Outlook session as the delegated auth boundary.
+# Reads calendar events from Classic Outlook desktop via COM. If Classic
+# Outlook is not already running, the script starts it and waits for COM to
+# become available. MasterControl treats that interactive Outlook session as
+# the delegated auth boundary.
 #
 # Usage:
 #   powershell -NonInteractive -File outlook-calendar-fetch.ps1 `
@@ -22,12 +23,117 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $culture = [System.Globalization.CultureInfo]::InvariantCulture
+$utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+[Console]::OutputEncoding = $utf8NoBom
+$OutputEncoding = $utf8NoBom
 
 function Empty-Result($message) {
     @{
         error  = $message
         events = @()
     } | ConvertTo-Json -Depth 5
+}
+
+function Clean-JsonText($value, [int]$maxLength = 0) {
+    if ($null -eq $value) { return '' }
+
+    $raw = [string]$value
+    $builder = New-Object System.Text.StringBuilder
+
+    foreach ($ch in $raw.ToCharArray()) {
+        $code = [int][char]$ch
+
+        # JSON.parse rejects raw C0 control characters. ConvertTo-Json in
+        # Windows PowerShell can leak some Outlook body controls through, so
+        # normalize them before serialization. Keep tab/CR/LF for readable
+        # meeting bodies. Drop surrogate code units; preserving emoji is less
+        # important than producing valid JSON for the sync.
+        $isBadControl = $code -lt 32 -and $code -ne 9 -and $code -ne 10 -and $code -ne 13
+        $isSurrogate = $code -ge 0xD800 -and $code -le 0xDFFF
+        if ($isBadControl -or $isSurrogate) {
+            [void]$builder.Append(' ')
+        } else {
+            [void]$builder.Append($ch)
+        }
+    }
+
+    $clean = $builder.ToString()
+    if ($maxLength -gt 0 -and $clean.Length -gt $maxLength) {
+        return $clean.Substring(0, $maxLength)
+    }
+    return $clean
+}
+
+function Resolve-OutlookExe {
+    $appPathKeys = @(
+        'Registry::HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\OUTLOOK.EXE',
+        'Registry::HKEY_LOCAL_MACHINE\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\App Paths\OUTLOOK.EXE',
+        'Registry::HKEY_CURRENT_USER\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\OUTLOOK.EXE'
+    )
+
+    foreach ($key in $appPathKeys) {
+        try {
+            $value = (Get-ItemProperty -Path $key -ErrorAction Stop).'(default)'
+            if (-not [string]::IsNullOrWhiteSpace($value) -and (Test-Path $value)) {
+                return $value
+            }
+        } catch {}
+    }
+
+    $command = Get-Command OUTLOOK.EXE -ErrorAction SilentlyContinue
+    if ($command -and (Test-Path $command.Source)) {
+        return $command.Source
+    }
+
+    $candidates = @(
+        "$env:ProgramFiles\Microsoft Office\root\Office16\OUTLOOK.EXE",
+        "${env:ProgramFiles(x86)}\Microsoft Office\root\Office16\OUTLOOK.EXE",
+        "$env:ProgramFiles\Microsoft Office\Office16\OUTLOOK.EXE",
+        "${env:ProgramFiles(x86)}\Microsoft Office\Office16\OUTLOOK.EXE"
+    )
+
+    foreach ($candidate in $candidates) {
+        if (-not [string]::IsNullOrWhiteSpace($candidate) -and (Test-Path $candidate)) {
+            return $candidate
+        }
+    }
+
+    return $null
+}
+
+function Get-OutlookComObject {
+    try {
+        return [System.Runtime.InteropServices.Marshal]::GetActiveObject('Outlook.Application')
+    } catch {
+        return $null
+    }
+}
+
+function Get-OrStartOutlookComObject {
+    $outlookObject = Get-OutlookComObject
+    if ($null -ne $outlookObject) { return $outlookObject }
+
+    $classic = @(Get-Process -Name OUTLOOK -ErrorAction SilentlyContinue)
+    if ($classic.Count -eq 0) {
+        $outlookExe = Resolve-OutlookExe
+        if ([string]::IsNullOrWhiteSpace($outlookExe)) {
+            $newOutlook = @(Get-Process -Name olk -ErrorAction SilentlyContinue)
+            if ($newOutlook.Count -gt 0) {
+                throw "New Outlook is running, but Classic Outlook was not found. Install/open Classic Outlook (OUTLOOK.EXE) for calendar sync."
+            }
+            throw "Classic Outlook is not installed or OUTLOOK.EXE could not be found."
+        }
+        Start-Process -FilePath $outlookExe -WindowStyle Minimized | Out-Null
+    }
+
+    $deadline = (Get-Date).AddSeconds(75)
+    do {
+        Start-Sleep -Seconds 3
+        $outlookObject = Get-OutlookComObject
+        if ($null -ne $outlookObject) { return $outlookObject }
+    } while ((Get-Date) -lt $deadline)
+
+    throw "Classic Outlook was launched, but COM did not become available before timeout."
 }
 
 try {
@@ -49,15 +155,9 @@ try {
 }
 
 try {
-    $outlook = [System.Runtime.InteropServices.Marshal]::GetActiveObject('Outlook.Application')
+    $outlook = Get-OrStartOutlookComObject
 } catch {
-    $classic = @(Get-Process -Name OUTLOOK -ErrorAction SilentlyContinue)
-    $newOutlook = @(Get-Process -Name olk -ErrorAction SilentlyContinue)
-    if ($classic.Count -eq 0 -and $newOutlook.Count -gt 0) {
-        Empty-Result "New Outlook is running, but Classic Outlook COM is not available. Open Classic Outlook (OUTLOOK.EXE) for calendar sync."
-    } else {
-        Empty-Result "Classic Outlook is not running or COM is not accessible."
-    }
+    Empty-Result (Clean-JsonText $_.Exception.Message 1000)
     exit 0
 }
 
@@ -88,12 +188,12 @@ try {
         }
 
         $baseId = ''
-        try { $baseId = [string]$item.GlobalAppointmentID } catch { $baseId = '' }
+        try { $baseId = Clean-JsonText $item.GlobalAppointmentID 1000 } catch { $baseId = '' }
         if ([string]::IsNullOrWhiteSpace($baseId)) {
-            try { $baseId = [string]$item.EntryID } catch { $baseId = '' }
+            try { $baseId = Clean-JsonText $item.EntryID 1000 } catch { $baseId = '' }
         }
         if ([string]::IsNullOrWhiteSpace($baseId)) {
-            $baseId = ([string]$item.Subject) + ':' + $start.ToString('o', $culture)
+            $baseId = (Clean-JsonText $item.Subject 500) + ':' + $start.ToString('o', $culture)
         }
 
         $uidStart = $start.ToUniversalTime().ToString('yyyyMMddTHHmmssZ', $culture)
@@ -104,20 +204,19 @@ try {
 
         $body = ''
         try {
-            $rawBody = [string]$item.Body
-            $body = $rawBody.Substring(0, [Math]::Min(4000, $rawBody.Length))
+            $body = Clean-JsonText $item.Body 4000
         } catch {
             $body = ''
         }
 
         $events += @{
             uid            = $uid
-            title          = [string]$item.Subject
+            title          = Clean-JsonText $item.Subject 500
             start_at       = $start.ToUniversalTime().ToString('o', $culture)
             end_at         = $end.ToUniversalTime().ToString('o', $culture)
-            location       = [string]$item.Location
+            location       = Clean-JsonText $item.Location 1000
             body           = $body
-            organizer      = [string]$item.Organizer
+            organizer      = Clean-JsonText $item.Organizer 500
             attendee_count = $attendeeCount
             is_all_day     = if ($item.IsAllDayEvent) { 1 } else { 0 }
         }

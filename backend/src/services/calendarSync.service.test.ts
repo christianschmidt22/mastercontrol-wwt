@@ -17,12 +17,24 @@ describe('syncCalendar', () => {
   });
 
   it('syncs calendar events from the running Outlook COM session', async () => {
+    const eventStart = new Date();
+    eventStart.setDate(eventStart.getDate() + 1);
+    eventStart.setUTCHours(15, 0, 0, 0);
+    const eventEnd = new Date(eventStart);
+    eventEnd.setUTCMinutes(eventEnd.getUTCMinutes() + 30);
+    const eventDay = eventStart.toISOString().slice(0, 10);
+    const eventStamp = eventStart
+      .toISOString()
+      .replace(/[-:]/g, '')
+      .replace(/\.\d{3}Z$/, 'Z');
+    const uid = `outlook-com:self:abc:${eventStamp}`;
+
     mockedFetchOutlookCalendarEvents.mockResolvedValue([
       {
-        uid: 'outlook-com:self:abc:20260506T150000Z',
+        uid,
         title: 'Customer availability review',
-        start_at: '2026-05-06T15:00:00.000Z',
-        end_at: '2026-05-06T15:30:00.000Z',
+        start_at: eventStart.toISOString(),
+        end_at: eventEnd.toISOString(),
         location: 'Microsoft Teams Meeting',
         body: 'Join here: https://teams.microsoft.com/l/meetup-join/abc',
         organizer: 'Maya Patel',
@@ -35,10 +47,10 @@ describe('syncCalendar', () => {
 
     expect(result.upserted).toBe(1);
     expect(mockedFetchOutlookCalendarEvents).toHaveBeenCalledOnce();
-    const events = calendarEventModel.listForDay('2026-05-06');
+    const events = calendarEventModel.listForDay(eventDay);
     expect(events).toHaveLength(1);
     expect(events[0]).toMatchObject({
-      uid: 'outlook-com:self:abc:20260506T150000Z',
+      uid,
       title: 'Customer availability review',
       location: 'Microsoft Teams Meeting',
       meeting_url: 'https://teams.microsoft.com/l/meetup-join/abc',

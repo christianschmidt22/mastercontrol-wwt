@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Outlook calendar sync now starts Classic Outlook when COM is unavailable and
+  sanitizes Outlook text before JSON serialization, preventing stale
+  `calendarSync` alerts from bad control characters or a closed Outlook client.
 - Project pages now replace the Recent Notes tile with a dedicated New Notes
   capture tile. Project Notes open in preview mode from the backing markdown
   file, can be edited directly on demand, and fresh discussion notes are saved,
