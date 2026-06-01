@@ -24,6 +24,12 @@ const textareaStyle: CSSProperties = {
   resize: 'vertical',
 };
 
+const statusStyle: CSSProperties = {
+  margin: 0,
+  fontSize: 13,
+  lineHeight: 1.5,
+};
+
 export function ProjectNewNotesTile({ orgId, projectId }: ProjectNewNotesTileProps) {
   const capture = useCaptureProjectDiscussionNote();
   const [content, setContent] = useState('');
@@ -82,6 +88,12 @@ export function ProjectNewNotesTile({ orgId, projectId }: ProjectNewNotesTilePro
           data-no-drag
         />
 
+        {capture.isPending && (
+          <p role="status" style={{ ...statusStyle, color: 'var(--ink-2)' }}>
+            Saving the discussion note, updating Project Notes, and checking for task/resource proposals.
+          </p>
+        )}
+
         {capture.isError && (
           <p role="alert" style={{ margin: 0, color: 'var(--accent)', fontSize: 13 }}>
             {capture.error.message}
@@ -91,14 +103,12 @@ export function ProjectNewNotesTile({ orgId, projectId }: ProjectNewNotesTilePro
           <p
             role="status"
             style={{
-              margin: 0,
+              ...statusStyle,
               color: lastResult.updated ? 'var(--ink-2)' : 'var(--accent)',
-              fontSize: 13,
-              lineHeight: 1.5,
             }}
           >
             {lastResult.updated
-              ? lastResult.summary ?? 'Project Notes updated. Extraction queued for approval.'
+              ? `${lastResult.summary ?? 'Project Notes updated.'} See the Project Notes tile on the left and the mirrored markdown file. Any extracted tasks, resources, or customer asks are in Agents > Insights for approval.`
               : `Saved the note, but Project Notes were not updated: ${lastResult.warning ?? 'unknown error'}`}
           </p>
         )}

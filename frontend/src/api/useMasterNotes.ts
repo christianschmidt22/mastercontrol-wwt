@@ -172,17 +172,28 @@ export function useMasterNoteEditor(args: {
     setLoaded(false);
   }, [scopeKey]);
 
-  // Seed the textarea when the server response for the active scope arrives.
+  // Seed/sync the editor when the server response for the active scope arrives.
+  // New Notes can update the same project note from a sibling tile; when the
+  // local draft is not dirty, reflect that server update immediately.
   useEffect(() => {
-    if (note.data) {
-      serverContentRef.current = note.data.content;
-    }
+    if (!note.data) return;
 
-    if (note.data && hydratedScopeRef.current !== scopeKey) {
-      setValueState(note.data.content);
-      latestRef.current = note.data.content;
+    const nextServerContent = note.data.content;
+    const previousServerContent = serverContentRef.current;
+    const hasHydratedScope = hydratedScopeRef.current === scopeKey;
+    const localHasUnsavedChanges =
+      previousServerContent !== null && latestRef.current !== previousServerContent;
+
+    serverContentRef.current = nextServerContent;
+
+    if (!hasHydratedScope || !localHasUnsavedChanges) {
+      setValueState(nextServerContent);
+      latestRef.current = nextServerContent;
       hydratedScopeRef.current = scopeKey;
       setLoaded(true);
+      if (hasHydratedScope && previousServerContent !== nextServerContent) {
+        setStatus('saved');
+      }
     }
   }, [note.data, scopeKey]);
 

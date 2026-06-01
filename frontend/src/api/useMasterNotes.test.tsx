@@ -125,4 +125,25 @@ describe('useMasterNoteEditor', () => {
       keepalive: true,
     });
   });
+
+  it('reflects same-scope server updates when the local draft is clean', async () => {
+    const fetchMock = vi.mocked(fetch);
+    fetchMock.mockResolvedValue(jsonResponse(makeNote(2, 'Original notes')));
+
+    const qc = makeClient();
+    const { result } = renderHook(
+      () => useMasterNoteEditor({ orgId: 2, projectId: 17 }),
+      { wrapper: makeWrapper(qc) },
+    );
+
+    await waitFor(() => expect(result.current.value).toBe('Original notes'));
+
+    act(() => {
+      qc.setQueryData(['master_notes', 'project', 2, 17], {
+        ...makeNote(2, 'Merged project notes', { project_id: 17 }),
+      });
+    });
+
+    await waitFor(() => expect(result.current.value).toBe('Merged project notes'));
+  });
 });
