@@ -72,6 +72,7 @@ export async function fetchOutlookCalendarEvents(
   return new Promise((resolve, reject) => {
     let stdout = '';
     let stderrBytes = 0;
+    let settled = false;
 
     const child = spawn('powershell.exe', [
       '-NonInteractive',
@@ -85,6 +86,19 @@ export async function fetchOutlookCalendarEvents(
       '-WindowEndIso',
       windowEnd.toISOString(),
     ]);
+    const timeout = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      child.kill();
+      reject(new Error('Outlook calendar COM fetch timed out after 90 seconds.'));
+    }, 90_000);
+
+    const finish = (fn: () => void): void => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      fn();
+    };
 
     child.stdout.on('data', (chunk: Buffer) => {
       stdout += chunk.toString('utf8');
@@ -95,34 +109,38 @@ export async function fetchOutlookCalendarEvents(
     });
 
     child.on('error', (err) => {
-      reject(new Error(`Failed to start Outlook calendar COM fetch: ${err.message}`));
+      finish(() => {
+        reject(new Error(`Failed to start Outlook calendar COM fetch: ${err.message}`));
+      });
     });
 
     child.on('close', (code) => {
-      if (stderrBytes > 0) {
-        console.warn('[outlookCalendar] ps1 stderr', { bytes: stderrBytes });
-      }
+      finish(() => {
+        if (stderrBytes > 0) {
+          console.warn('[outlookCalendar] ps1 stderr', { bytes: stderrBytes });
+        }
 
-      if (code !== 0) {
-        reject(new Error(`Outlook calendar COM fetch exited with code ${code ?? 'unknown'}.`));
-        return;
-      }
-
-      if (!stdout.trim()) {
-        reject(new Error('Outlook calendar COM fetch returned no output.'));
-        return;
-      }
-
-      try {
-        const result = parsePs1Result(stdout);
-        if (result.error) {
-          reject(new Error(result.error));
+        if (code !== 0) {
+          reject(new Error(`Outlook calendar COM fetch exited with code ${code ?? 'unknown'}.`));
           return;
         }
-        resolve(result.events);
-      } catch (err) {
-        reject(err instanceof Error ? err : new Error('Failed to parse Outlook calendar COM output.'));
-      }
+
+        if (!stdout.trim()) {
+          reject(new Error('Outlook calendar COM fetch returned no output.'));
+          return;
+        }
+
+        try {
+          const result = parsePs1Result(stdout);
+          if (result.error) {
+            reject(new Error(result.error));
+            return;
+          }
+          resolve(result.events);
+        } catch (err) {
+          reject(err instanceof Error ? err : new Error('Failed to parse Outlook calendar COM output.'));
+        }
+      });
     });
   });
 }

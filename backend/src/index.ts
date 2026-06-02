@@ -124,43 +124,6 @@ try {
   );
 }
 
-// Phase 2 startup sequence: seed default reports, catch up any missed
-// scheduler runs (e.g. machine was suspended past a cron fire-time), then
-// register the in-process node-cron jobs. Each step is best-effort; logging
-// the failure is preferable to refusing to boot the HTTP server.
-try {
-  seedDailyTaskReview();
-} catch (err) {
-  console.warn(
-    '[mastercontrol] seedDailyTaskReview failed — Reports page will start empty.',
-    err instanceof Error ? err.message : String(err),
-  );
-}
-try {
-  await runMissedJobs();
-} catch (err) {
-  console.warn(
-    '[mastercontrol] runMissedJobs failed at boot — missed schedules will not be caught up until the next tick.',
-    err instanceof Error ? err.message : String(err),
-  );
-}
-try {
-  startInProcessScheduler();
-} catch (err) {
-  console.warn(
-    '[mastercontrol] startInProcessScheduler failed — scheduled reports will not fire from this process.',
-    err instanceof Error ? err.message : String(err),
-  );
-}
-try {
-  scheduleCalendarSync();
-} catch (err) {
-  console.warn(
-    '[mastercontrol] scheduleCalendarSync failed — calendar sync will not run.',
-    err instanceof Error ? err.message : String(err),
-  );
-}
-
 // R-001: bind loopback only. `0.0.0.0` would expose the backend on every
 // network the laptop joins (coffee shops, hotels, conference Wi-Fi) — once
 // the Phase 2 Windows Service starts the process at logon, that becomes a
@@ -170,4 +133,45 @@ const PORT = Number(process.env.PORT ?? 3001);
 const HOST = '127.0.0.1';
 app.listen(PORT, HOST, () => {
   console.log(`[mastercontrol] backend listening on http://${HOST}:${PORT}`);
+  void startBackgroundJobs();
 });
+
+// Phase 2 startup sequence: seed default reports, catch up any missed
+// scheduler runs (e.g. machine was suspended past a cron fire-time), then
+// register the in-process node-cron jobs. Run these after the HTTP server is
+// healthy so expensive Outlook/LLM work cannot leave the desktop shell stuck
+// on its startup screen or page-level Loading placeholders.
+async function startBackgroundJobs(): Promise<void> {
+  try {
+    seedDailyTaskReview();
+  } catch (err) {
+    console.warn(
+      '[mastercontrol] seedDailyTaskReview failed — Reports page will start empty.',
+      err instanceof Error ? err.message : String(err),
+    );
+  }
+  try {
+    await runMissedJobs();
+  } catch (err) {
+    console.warn(
+      '[mastercontrol] runMissedJobs failed at boot — missed schedules will not be caught up until the next tick.',
+      err instanceof Error ? err.message : String(err),
+    );
+  }
+  try {
+    startInProcessScheduler();
+  } catch (err) {
+    console.warn(
+      '[mastercontrol] startInProcessScheduler failed — scheduled reports will not fire from this process.',
+      err instanceof Error ? err.message : String(err),
+    );
+  }
+  try {
+    scheduleCalendarSync();
+  } catch (err) {
+    console.warn(
+      '[mastercontrol] scheduleCalendarSync failed — calendar sync will not run.',
+      err instanceof Error ? err.message : String(err),
+    );
+  }
+}

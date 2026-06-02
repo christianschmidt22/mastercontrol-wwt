@@ -109,31 +109,69 @@ function Get-OutlookComObject {
     }
 }
 
-function Get-OrStartOutlookComObject {
-    $outlookObject = Get-OutlookComObject
-    if ($null -ne $outlookObject) { return $outlookObject }
+function Test-ClassicOutlookProcess {
+    $byProcess = @(Get-Process -Name OUTLOOK -ErrorAction SilentlyContinue)
+    if ($byProcess.Count -gt 0) { return $true }
 
-    $classic = @(Get-Process -Name OUTLOOK -ErrorAction SilentlyContinue)
-    if ($classic.Count -eq 0) {
-        $outlookExe = Resolve-OutlookExe
-        if ([string]::IsNullOrWhiteSpace($outlookExe)) {
-            $newOutlook = @(Get-Process -Name olk -ErrorAction SilentlyContinue)
-            if ($newOutlook.Count -gt 0) {
-                throw "New Outlook is running, but Classic Outlook was not found. Install/open Classic Outlook (OUTLOOK.EXE) for calendar sync."
-            }
-            throw "Classic Outlook is not installed or OUTLOOK.EXE could not be found."
-        }
-        Start-Process -FilePath $outlookExe -WindowStyle Minimized | Out-Null
+    try {
+        $byCim = @(Get-CimInstance Win32_Process -Filter "Name = 'OUTLOOK.EXE'" -ErrorAction SilentlyContinue)
+        return $byCim.Count -gt 0
+    } catch {
+        return $false
     }
+}
 
-    $deadline = (Get-Date).AddSeconds(75)
+function Wait-OutlookCom {
+    param([int]$Seconds)
+
+    $deadline = (Get-Date).AddSeconds($Seconds)
     do {
         Start-Sleep -Seconds 3
         $outlookObject = Get-OutlookComObject
         if ($null -ne $outlookObject) { return $outlookObject }
     } while ((Get-Date) -lt $deadline)
 
-    throw "Classic Outlook was launched, but COM did not become available before timeout."
+    return $null
+}
+
+function Get-OrStartOutlookComObject {
+    $outlookObject = Get-OutlookComObject
+    if ($null -ne $outlookObject) { return $outlookObject }
+
+    $launchMutex = New-Object System.Threading.Mutex($false, 'Global\MasterControlOutlookLaunch')
+    $hasMutex = $false
+    try {
+        $hasMutex = $launchMutex.WaitOne([TimeSpan]::FromSeconds(75))
+        if (-not $hasMutex) {
+            throw "Timed out waiting for another MasterControl Outlook launch attempt to finish."
+        }
+
+        # Another sync path may have made COM available while we were waiting.
+        $outlookObject = Get-OutlookComObject
+        if ($null -ne $outlookObject) { return $outlookObject }
+
+        if (Test-ClassicOutlookProcess) {
+            $outlookObject = Wait-OutlookCom -Seconds 75
+            if ($null -ne $outlookObject) { return $outlookObject }
+            throw "Classic Outlook is already running, but COM did not become available before timeout."
+        }
+
+        $outlookExe = Resolve-OutlookExe
+        if ([string]::IsNullOrWhiteSpace($outlookExe)) {
+            throw "Classic Outlook is not installed or OUTLOOK.EXE could not be found."
+        }
+        Start-Process -FilePath $outlookExe -WindowStyle Minimized | Out-Null
+
+        $outlookObject = Wait-OutlookCom -Seconds 75
+        if ($null -ne $outlookObject) { return $outlookObject }
+
+        throw "Classic Outlook was launched, but COM did not become available before timeout."
+    } finally {
+        if ($hasMutex) {
+            $launchMutex.ReleaseMutex() | Out-Null
+        }
+        $launchMutex.Dispose()
+    }
 }
 
 try {
