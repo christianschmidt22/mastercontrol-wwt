@@ -8,6 +8,9 @@
 - MasterControl now brings the backend online before startup background jobs
   run, and Outlook COM launch paths share a system mutex so mail/calendar syncs
   reuse an existing Classic Outlook session instead of racing to launch another.
+- Outlook mail sync now leaves Classic Outlook running when MasterControl starts
+  it for COM, avoiding repeated close/relaunch cycles and duplicate-launch
+  Outlook warning popups.
 - Project pages now replace the Recent Notes tile with a dedicated New Notes
   capture tile. Project Notes open in preview mode from the backing markdown
   file, can be edited directly on demand, and fresh discussion notes are saved,
